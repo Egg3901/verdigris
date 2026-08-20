@@ -79,19 +79,23 @@ interface Family {
   wall: [string, string];
   shape: RoofShape;
   trim?: string;
+  /** A glazed ground floor and an awning. */
+  shop?: boolean;
+  /** Dormers on the near slope, for the deeper roofs. */
+  dormers?: number;
 }
 
 const FAMILY: Partial<Record<string, Family>> = {
-  townhall: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold },
-  exchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold },
-  bank: { roof: [PAL.verd1, PAL.verd0, PAL.verd2], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold },
-  postexchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone3, PAL.stone1], shape: 'hip', trim: PAL.brass2 },
+  townhall: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, dormers: 2 },
+  exchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, shop: true },
+  bank: { roof: [PAL.verd1, PAL.verd0, PAL.verd2], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, shop: true },
+  postexchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone3, PAL.stone1], shape: 'hip', trim: PAL.brass2, shop: true },
   glasshouse: { roof: [PAL.verd3, PAL.verd2, PAL.rivGlint], wall: [PAL.stone3, PAL.stone1], shape: 'gable', trim: PAL.verd3 },
   chapel: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone3, PAL.stone1], shape: 'gable' },
-  school: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone2, PAL.stone1], shape: 'hip' },
+  school: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone2, PAL.stone1], shape: 'hip', dormers: 2 },
   bathhouse: { roof: [PAL.verd1, PAL.verd0, PAL.verd2], wall: [PAL.stone3, PAL.stone1], shape: 'hip' },
-  dispensary: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream2, PAL.cream1], shape: 'gable' },
-  newspaper: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.cream1, PAL.cream0], shape: 'gable' },
+  dispensary: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream2, PAL.cream1], shape: 'gable', shop: true },
+  newspaper: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.cream1, PAL.cream0], shape: 'gable', shop: true },
   constabulary: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone2, PAL.stone1], shape: 'gable' },
   // Was a solid gold pyramid, which at zoom 1 was by far the loudest thing on the
   // map and read as a circus tent. Gold is under half a percent of pixels by
@@ -108,14 +112,14 @@ const FAMILY: Partial<Record<string, Family>> = {
   warehouse: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.wood2, PAL.wood1], shape: 'gable' },
   wharfshed: { roof: [PAL.thatch2, PAL.thatch1, PAL.thatch2], wall: [PAL.wood2, PAL.wood1], shape: 'gable' },
 
-  pub: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.buntRed, PAL.brick1], shape: 'gable', trim: PAL.brass2 },
-  shop: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.cream2, PAL.cream1], shape: 'gable', trim: PAL.brass1 },
-  villa: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream3, PAL.cream1], shape: 'hip', trim: PAL.brass2 },
+  pub: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.buntRed, PAL.brick1], shape: 'gable', trim: PAL.brass2, shop: true, dormers: 1 },
+  shop: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.cream2, PAL.cream1], shape: 'gable', trim: PAL.brass1, shop: true },
+  villa: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream3, PAL.cream1], shape: 'hip', trim: PAL.brass2, dormers: 2 },
   terrace: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.cream2, PAL.cream1], shape: 'gable' },
-  tenement: { roof: [PAL.slate1, PAL.slate0, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gable' },
+  tenement: { roof: [PAL.slate1, PAL.slate0, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gable', dormers: 2 },
   // Was thatch1 on ochre1: 16 luma apart, so roof and wall were the same colour
   // across 62 buildings. Lead slate against ochre is 60 apart and the row reads.
-  lodging: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.ochre1, PAL.ochre0], shape: 'gable' },
+  lodging: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.ochre1, PAL.ochre0], shape: 'gable', dormers: 1 },
   courtdwelling: { roof: [PAL.soot3, PAL.soot2, PAL.soot3], wall: [PAL.brick1, PAL.brick0], shape: 'gable' },
 };
 
@@ -156,6 +160,21 @@ function pickFrom<T>(table: readonly T[], salt: number, shift = 0): T {
   return table[i];
 }
 
+/** Buildings fronting the civic square. Bunting hangs here and nowhere else,
+ *  because the point of the flags is that they are where they will be seen. */
+function nearSquare(city: City, b: Building): boolean {
+  const d = city.district;
+  for (const k of b.cells) {
+    const x = k % d.width;
+    const y = (k - x) / d.width;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (x + dx < 0 || y + dy < 0 || x + dx >= d.width || y + dy >= d.height) continue;
+      if (d.tile[cellKey(d, x + dx, y + dy)] === Tile.Square) return true;
+    }
+  }
+  return false;
+}
+
 function specFor(city: City, b: Building, grime: number, variant: Variant): HouseSpec {
   const fam = FAMILY[b.kind] ?? DEFAULT_FAMILY;
   const def = DEFS[b.kind];
@@ -189,6 +208,9 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     roofShade: roofWashOf(fam.roof[1], roofWash),
     roofRidge: roofWashOf(fam.roof[2], roofWash + 0.1),
     trim: b.facade > 780 ? gradeHex(fam.trim ?? PAL.gold, variant, true) : undefined,
+    // Chimneys are brick or soot, never the wall colour, and they carry the same
+    // grime the walls do.
+    chimney: gradeHex(shadeHex(soot > 0.18 ? PAL.soot2 : PAL.brick1, -soot * 0.5), variant),
     // Lit windows at dusk and after. A gaslight-era city with no lit window in it
     // was the single most conspicuous absence in the build: variantFor and the
     // palette entries both existed and neither had ever been called.
@@ -206,9 +228,22 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     : fam.shape === 'pyramid' ? Math.round(16 + storeys * 3)
       : Math.max(8, Math.round(wallH * 0.65 + (salt % 3)));
 
+  const AWNINGS = [PAL.buntRed, PAL.buntBlue, PAL.verd1, PAL.brick1, PAL.ochre0];
+
   return {
     w: b.w, d: b.d, wallH, roofH,
     shape: fam.shape,
+    salt: salt >>> 11,
+    shopfront: fam.shop === true && b.w * b.d >= 1,
+    sign: fam.shop === true,
+    awning: gradeHex(pickFrom(AWNINGS, salt, 7), variant),
+    // Dormers need a slope deep enough to sit one on.
+    dormers: fam.dormers && roofH >= 12 ? fam.dormers : 0,
+    // The rot, on the building rather than only in the prose. A building whose
+    // fabric has genuinely failed gets its windows boarded.
+    boarded: b.fabric < 260,
+    // The flags the player paid for, on whatever fronts the square.
+    bunting: city.buntingUntil > city.tick && nearSquare(city, b),
     chimneys: fam.shape === 'flat' || fam.shape === 'pyramid' ? 0
       : b.kind === 'mill' || b.kind === 'foundry' ? 2
         : 1 + ((salt >>> 6) % 2),

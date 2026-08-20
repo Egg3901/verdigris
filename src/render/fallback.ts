@@ -108,17 +108,68 @@ export function drawIsoBox(
   }
 }
 
-/** A soul: eleven by nineteen pixels at zoom 1, which is small enough that the
- *  click slop in pick.ts is doing most of the work of making them selectable. */
+/**
+ * A soul.
+ *
+ * The old version was a 4x7 coat block with a 4x3 hat sitting flush on top of it
+ * and one leg stub. Magnified, there was NO HEAD: the hat met the shoulders
+ * directly, and because the hat was the same width as the body there was no
+ * shoulder line either, so a pale-coated child rendered as a solid stick with a
+ * slightly different cap. They read as candles.
+ *
+ * Same eleven-pixel budget, spent better: a 2px crown over a 1px band of skin
+ * over a 4px body, legs in a constant dark rather than the coat colour, and a
+ * contact shadow so they stand on the street instead of hovering over it.
+ */
+const SKIN = ['#c9a07a', '#e0bb95', '#a5764f', '#8a5e3c'];
+const LEG = '#1a1712';
+
 export function drawSoul(
   ctx: CanvasRenderingContext2D, x: number, y: number,
-  coat: string, hat: string, step: number,
+  coat: string, hat: string, step: number, salt = 0,
 ): void {
+  const px = Math.round(x);
+  const py = Math.round(y);
   const bob = step === 1 ? -1 : step === 3 ? 1 : 0;
+
+  // Contact shadow first, at ground level, never bobbing. Without it every soul
+  // in the district floats a pixel above the cobbles.
+  ctx.fillStyle = 'rgba(10,12,16,0.55)';
+  ctx.fillRect(px - 2, py, 4, 1);
+
+  // Legs. A constant dark, so a cream coat does not produce cream legs.
+  ctx.fillStyle = LEG;
+  if (step === 0 || step === 2) {
+    ctx.fillRect(px - 1, py - 3, 1, 3);
+    ctx.fillRect(px, py - 3, 1, 3);
+  } else {
+    // Mid-stride: one leg forward, one back, which is the whole gait read.
+    ctx.fillRect(px - 2, py - 3, 1, 3);
+    ctx.fillRect(px + 1, py - 3, 1, 3);
+  }
+
+  // Body, two pixels narrower than the old block so there are shoulders.
   ctx.fillStyle = coat;
-  ctx.fillRect(Math.round(x) - 2, Math.round(y) - 9 + bob, 4, 7);
-  ctx.fillRect(Math.round(x) - 1, Math.round(y) - 2, 1, 2);
-  ctx.fillRect(Math.round(x), Math.round(y) - 2 - (bob === 0 ? 0 : 1), 1, 2);
+  ctx.fillRect(px - 2, py - 9 + bob, 4, 6);
+  // A darker side, west light as everywhere else.
+  ctx.fillStyle = shadeDark(coat);
+  ctx.fillRect(px + 1, py - 9 + bob, 1, 6);
+
+  // The head. One pixel of skin is all it takes, and it is the whole difference.
+  ctx.fillStyle = SKIN[salt % SKIN.length];
+  ctx.fillRect(px - 1, py - 11 + bob, 2, 2);
+
+  // Crown narrower than the shoulders, with a brim the full width.
   ctx.fillStyle = hat;
-  ctx.fillRect(Math.round(x) - 2, Math.round(y) - 12 + bob, 4, 3);
+  ctx.fillRect(px - 2, py - 12 + bob, 4, 1);
+  ctx.fillRect(px - 1, py - 14 + bob, 2, 2);
+}
+
+function shadeDark(hex: string): string {
+  if (hex.length !== 7) return hex;
+  const v = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, ((v >> 16) & 255) - 34);
+  const g = Math.max(0, ((v >> 8) & 255) - 34);
+  const b = Math.max(0, (v & 255) - 34);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }

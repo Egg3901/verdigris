@@ -16,6 +16,12 @@
 import { TILE_W, TILE_H, isoX, isoY } from './iso';
 import { shadeHex } from './palette';
 import { fillPolyHard, ditherPolyHard, lineHard } from './raster';
+import { PAL } from './palette';
+import {
+  makeFace, drawDoor, drawShopfront, drawSign, drawWindowGrid, drawBoarded,
+  drawCourses, drawDormer, drawBunting,
+} from './detail';
+import type { DetailSkin } from './detail';
 
 export type RoofShape = 'gable' | 'hip' | 'pyramid' | 'flat' | 'mansard';
 
@@ -31,6 +37,8 @@ export interface HouseSkin {
   roofShade: string;
   roofRidge: string;
   trim?: string;
+  /** Chimney brick. Never the wall colour: a cream chimney reads as a candle. */
+  chimney?: string;
   window?: string;
   /** Windows glow rather than recede once the lamps are lit. */
   windowLit?: boolean;
@@ -47,6 +55,20 @@ export interface HouseSpec {
   chimneys: number;
   /** Rows of windows on the visible faces. */
   windowRows: number;
+  /** A glazed ground floor with an awning: shops, pubs, banks. */
+  shopfront?: boolean;
+  /** A hanging signboard. */
+  sign?: boolean;
+  /** Dormers on the near roof slope. */
+  dormers?: number;
+  /** Windows boarded over: the rot, on the building itself. */
+  boarded?: boolean;
+  /** Flags up. The player paid for these. */
+  bunting?: boolean;
+  /** Awning colour for a shopfront. */
+  awning?: string;
+  /** Stable per-building number, so detail varies without being random. */
+  salt?: number;
   skin: HouseSkin;
   /** Ridge along the tx axis when true, otherwise along ty. Defaults to the
    *  longer footprint axis, which is what makes a terrace read as a row. */
@@ -108,10 +130,15 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   poly(ctx, [eave.W, ground.W, ground.S, eave.S], skin.wallLit, 2);
   poly(ctx, [eave.S, ground.S, ground.E, eave.E], skin.wallShade, 3);
 
-  drawWindows(ctx, ground, eave, spec);
-
   const alongX = spec.ridgeAlongX ?? w >= d;
-  drawRoof(ctx, eave, spec, alongX);
+  const roofQuad = drawRoof(ctx, eave, spec, alongX);
+  drawFacade(ctx, eave, spec);
+  if (roofQuad && spec.dormers) {
+    const n = Math.min(3, spec.dormers);
+    for (let i = 0; i < n; i++) {
+      drawDormer(ctx, roofQuad, (i + 1) / (n + 1), detailSkin(spec), spec.skin.roofLit);
+    }
+  }
 
   if (skin.trim) {
     // The cornice: one line where the wall meets the eave. This is the gilding,
@@ -126,11 +153,54 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   lineHard(ctx, ground.S, ground.E, skin.outline);
 }
 
+function detailSkin(spec: HouseSpec): DetailSkin {
+  return {
+    wall: spec.skin.wallLit,
+    wallDark: shadeHex(spec.skin.wallShade, -0.2),
+    timber: shadeHex(spec.skin.wallShade, -0.3),
+    glass: spec.skin.window ?? PAL.darkWindow,
+    glassLit: spec.skin.windowLit === true,
+    trim: spec.skin.trim,
+    outline: spec.skin.outline,
+  };
+}
+
+/**
+ * Everything that happens on a wall: shopfront, door, windows, sign, boards,
+ * bunting. Drawn AFTER the roof so an awning can overlap the eave line, which is
+ * how a real shopfront sits.
+ */
+function drawFacade(
+  ctx: CanvasRenderingContext2D,
+  eave: { W: Pt; N: Pt; E: Pt; S: Pt },
+  spec: HouseSpec,
+): void {
+  const skin = detailSkin(spec);
+  const salt = spec.salt ?? 0;
+  const lit = makeFace(eave.W, eave.S, true);
+  const shade = makeFace(eave.S, eave.E, false);
+
+  for (const f of [lit, shade]) {
+    if (f.span < 8) continue;
+    drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true, salt + (f.lit ? 0 : 5));
+    if (spec.boarded) drawBoarded(ctx, f, spec.wallH, skin);
+  }
+
+  // The shopfront and the door go on the lit face: the one the camera can see.
+  if (spec.shopfront && lit.span >= 10) {
+    drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed);
+  } else if (lit.span >= 8) {
+    drawDoor(ctx, lit, 0.28 + ((salt % 5) / 12), spec.wallH, skin);
+  }
+  if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin);
+  if (spec.bunting && lit.span >= 12) drawBunting(ctx, lit, spec.wallH);
+}
+
 function drawRoof(
   ctx: CanvasRenderingContext2D,
   eave: { W: Pt; N: Pt; E: Pt; S: Pt },
   spec: HouseSpec, alongX: boolean,
-): void {
+): Pt[] | null {
   const { roofH, skin } = spec;
   const over = 1.5; // eaves overhang, which is what casts the shadow line
 
@@ -145,7 +215,7 @@ function drawRoof(
       { x: N.x, y: N.y - 3 }, { x: E.x, y: E.y - 3 },
       { x: S.x, y: S.y - 3 }, { x: W.x, y: W.y - 3 },
     ], skin.roofLit);
-    return;
+    return null;
   }
 
   if (spec.shape === 'pyramid') {
@@ -156,7 +226,7 @@ function drawRoof(
     poly(ctx, [S, W, apex], skin.roofLit);
     lineHard(ctx, S, apex, skin.roofRidge);
     lineHard(ctx, apex, E, skin.roofRidge);
-    return;
+    return null;
   }
 
   // Gable and hip both have a ridge. Along tx the ridge spans the W-N edge
@@ -182,7 +252,9 @@ function drawRoof(
     }
     ridgeLine(ctx, h0, h1, skin.roofRidge);
     chimneys(ctx, h0, h1, spec);
-    return;
+    const nearHip: Pt[] = [W, S, h1, h0];
+    drawCourses(ctx, nearHip, shadeHex(skin.roofLit, -0.1), 4);
+    return nearHip;
   }
 
   // Gable. Far slope first, then the near one, then the near gable triangle.
@@ -199,62 +271,40 @@ function drawRoof(
   }
   ridgeLine(ctx, r0, r1, skin.roofRidge);
   chimneys(ctx, r0, r1, spec);
+  // Tile courses on the near slope. Four lines, and a roof stops being a plane.
+  const near: Pt[] = [W, S, r1, r0];
+  drawCourses(ctx, near, shadeHex(skin.roofLit, -0.12), 4);
+  return near;
 }
 
 function ridgeLine(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, colour: string): void {
   lineHard(ctx, a, b, colour);
 }
 
-/** Chimneys sit ON the ridge, which is the only place they read as chimneys and
- *  not as posts stuck in a roof. */
+/**
+ * Chimneys, at the ridge ENDS.
+ *
+ * They used to sit at t = 1/2 on every single house in the district, in the WALL
+ * colour, four pixels wide on a seven pixel roof: bright cream sticks dead centre
+ * of every terrace, reading as candles. A chimney belongs at a gable end because
+ * that is where the flue runs, it is brick or soot rather than stucco, and it is
+ * narrow.
+ */
 function chimneys(ctx: CanvasRenderingContext2D, r0: Pt, r1: Pt, spec: HouseSpec): void {
   if (spec.chimneys <= 0) return;
   const n = Math.min(3, spec.chimneys);
-  for (let i = 0; i < n; i++) {
-    const t = (i + 1) / (n + 1);
+  const stops = n === 1 ? [0.12] : n === 2 ? [0.1, 0.9] : [0.1, 0.5, 0.9];
+  const brick = spec.skin.chimney ?? PAL.brick0;
+  for (let i = 0; i < stops.length; i++) {
+    const t = stops[i];
     const x = Math.round(r0.x + (r1.x - r0.x) * t);
     const y = Math.round(r0.y + (r1.y - r0.y) * t);
-    const h = 7 + (i % 2) * 2;
-    ctx.fillStyle = spec.skin.wallShade;
-    ctx.fillRect(x - 2, y - h, 4, h);
-    ctx.fillStyle = spec.skin.wallLit;
-    ctx.fillRect(x - 2, y - h, 2, h);
+    const h = 4 + ((i + (spec.salt ?? 0)) % 2);
+    ctx.fillStyle = brick;
+    ctx.fillRect(x - 1, y - h, 3, h);
+    ctx.fillStyle = shadeHex(brick, 0.15);
+    ctx.fillRect(x - 1, y - h, 1, h);
     ctx.fillStyle = spec.skin.outline;
-    ctx.fillRect(x - 2, y - h - 1, 4, 1);
+    ctx.fillRect(x - 1, y - h - 1, 3, 1);
   }
-}
-
-/** Window rows on the two visible faces. Small, dark, regular: at this scale a
- *  window is two pixels and its job is rhythm, not detail. */
-function drawWindows(
-  ctx: CanvasRenderingContext2D,
-  ground: { W: Pt; N: Pt; E: Pt; S: Pt },
-  eave: { W: Pt; N: Pt; E: Pt; S: Pt },
-  spec: HouseSpec,
-): void {
-  if (!spec.skin.window || spec.windowRows <= 0) return;
-  ctx.fillStyle = spec.skin.window;
-  const lit = spec.skin.windowLit === true;
-  const rows = Math.min(4, spec.windowRows);
-
-  for (const [a, b, litFace] of [[eave.W, eave.S, true], [eave.S, eave.E, false]] as [Pt, Pt, boolean][]) {
-    const spanX = b.x - a.x;
-    const spanY = b.y - a.y;
-    const cells = Math.max(1, Math.round(Math.abs(spanX) / 11));
-    for (let r = 0; r < rows; r++) {
-      const yOff = 5 + r * Math.max(6, Math.floor((spec.wallH - 4) / rows));
-      if (yOff > spec.wallH - 3) break;
-      for (let c = 0; c < cells; c++) {
-        const t = (c + 0.5) / cells;
-        const x = Math.round(a.x + spanX * t);
-        const y = Math.round(a.y + spanY * t) + yOff;
-        // Not every window in a building is lit, or the town reads as a grid of
-        // fairy lights. Two in three, chosen by a stable hash of the pane.
-        if (lit && ((x * 7 + y * 13 + r * 5) % 3 === 0)) continue;
-        ctx.fillStyle = litFace ? spec.skin.window : shadeHex(spec.skin.window, lit ? -0.2 : -0.12);
-        ctx.fillRect(x - 1, y, 2, 3);
-      }
-    }
-  }
-  void ground;
 }

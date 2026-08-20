@@ -25,7 +25,7 @@ export interface PickResult {
 }
 
 const SLOP_X = 6;
-const SLOP_TOP = 16;
+const SLOP_TOP = 18;
 const SLOP_BOTTOM = 4;
 
 /** Pick radius scales with the pointer and with the zoom. The constants above are

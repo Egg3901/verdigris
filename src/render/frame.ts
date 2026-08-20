@@ -97,11 +97,11 @@ export function drawFrame(
     } else {
       const a = agentPool[ai++];
       if (a.wx > br.wx || a.wy > br.wy || a.wx < tl.wx || a.wy < tl.wy) continue;
-      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step);
+      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId);
       stats.calls++;
       if (a.soulId === sel.soulId) {
         ctx.strokeStyle = PAL.gas2;
-        ctx.strokeRect(Math.round(a.wx) - 4.5, Math.round(a.wy) - 14.5, 9, 15);
+        ctx.strokeRect(Math.round(a.wx) - 4.5, Math.round(a.wy) - 16.5, 9, 17);
         stats.calls++;
       }
     }

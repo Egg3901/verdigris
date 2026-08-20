@@ -46,6 +46,7 @@ let simMin = 0;
 let lastTickAt = 0;
 let follow = -1;
 let shell: Shell;
+let buntingShown = false;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -365,7 +366,11 @@ function loop(now: number): void {
   // Rebake when the light changes. Three or four times a game-day, never per
   // frame: the whole point of baking is that the expensive pass is rare.
   const wantVariant = variantFor(minuteOfDay(city.tick));
-  if (wantVariant !== scene.variant) scene = buildScene(city, wantVariant);
+  const buntingNow = city.buntingUntil > city.tick;
+  if (wantVariant !== scene.variant || buntingNow !== buntingShown) {
+    buntingShown = buntingNow;
+    scene = buildScene(city, wantVariant);
+  }
 
   drawFrame(ctx as CanvasRenderingContext2D, city, scene, cam, viewW, viewH, fracMin(), sel);
   shell.update(city, sel, cam.zoom, speedIndex, city.budgetLeft);
