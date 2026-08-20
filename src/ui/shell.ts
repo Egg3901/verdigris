@@ -20,12 +20,18 @@ export interface ShellHooks {
   onVerb: (verb: Verb) => void;
   onSetSpeed: (index: number) => void;
   onScrubTo: (minuteOfDay: number) => void;
+  /** Advance by n game-minutes. Time is forward only, so this is the only verb. */
+  onAdvance: (minutes: number) => void;
   onZoom: (step: ZoomStep) => void;
 }
 
 export interface Shell {
   update: (city: City, sel: Selection, zoom: ZoomStep, speedIndex: number, budget: number) => void;
   nudgeReasons: (reasons: Map<string, string | null>) => void;
+  /** On-screen feedback. Refusals used to go only to the visually-hidden live
+   *  region, so a sighted player who pressed a key twice got nothing at all. */
+  toast: (text: string, kind?: 'info' | 'loss' | 'gain') => void;
+  toggleHelp: () => void;
   insets: () => { top: number; right: number; bottom: number; left: number };
   say: (text: string) => void;
   destroy: () => void;
@@ -50,13 +56,35 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   // and 8 CSS px is not readable by anyone. If the viewport cannot hold a panel,
   // the content shrinks, never the type.
   const applyScale = () => {
-    const fromView = Math.floor(Math.min(window.innerWidth / 480, window.innerHeight / 360));
+    // floor(min(w/480, h/360)) evaluates to 0 on any phone, and the clamp then
+    // pinned it to 2, so a 390px handset got exactly the same absolute panel
+    // sizes as a 1440px monitor. 258px of title plate plus 237px of verb menu
+    // does not fit in 390px, which is why they overlapped.
     const forced = new URLSearchParams(location.search).get('ui');
-    const px = forced ? Number(forced) : fromView;
-    document.documentElement.style.setProperty('--px', String(Math.max(2, Math.min(4, px || 2))));
+    if (forced) {
+      document.documentElement.style.setProperty('--px', String(Math.max(1, Math.min(4, Number(forced)))));
+      return;
+    }
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    // Below the sheet breakpoint the panels are full-width, so a smaller scale
+    // buys legible line lengths rather than costing them.
+    const px = w < 560 ? 2 : Math.max(2, Math.min(4, Math.floor(Math.min(w / 620, h / 460))));
+    document.documentElement.style.setProperty('--px', String(px));
   };
   applyScale();
   window.addEventListener('resize', applyScale);
+
+  // The bottom bar wraps to two rows on a 320px screen, so anything floating
+  // above it has to know how tall it actually became rather than assume.
+  const measureBar = () => {
+    const h = scrub.getBoundingClientRect().height;
+    if (h > 0) document.documentElement.style.setProperty('--bar-h', `${Math.round(h)}px`);
+  };
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(measureBar).observe(document.documentElement);
+  }
+  window.addEventListener('resize', measureBar);
 
   // Title plate.
   const title = el('div', 'plate');
@@ -120,14 +148,58 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     speedButtons.push(b);
     transport.append(b);
   });
-  scrub.append(daybar, readout, transport);
+  // Sheet toggles. Only rendered on narrow screens (CSS decides), and they are
+  // the only route to the verbs and the interventions on a phone.
+  const sheetbar = el('div');
+  sheetbar.id = 'sheetbar';
+  const mkSheet = (id: string, label: string) => {
+    const b = el('button', 'brass', label) as HTMLButtonElement;
+    b.setAttribute('aria-expanded', 'false');
+    b.addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-sheet');
+      if (cur === id) document.documentElement.removeAttribute('data-sheet');
+      else document.documentElement.setAttribute('data-sheet', id);
+      syncSheets();
+    });
+    sheetbar.append(b);
+    return b;
+  };
+  const verbSheetBtn = mkSheet('verbs', 'LOOK');
+  const nudgeSheetBtn = mkSheet('nudges', 'ACT');
+  const helpBtn = el('button', 'brass', '?') as HTMLButtonElement;
+  helpBtn.setAttribute('aria-label', 'Keys and what this is');
+  helpBtn.addEventListener('click', () => toggleHelp());
+  sheetbar.append(helpBtn);
+
+  function syncSheets(): void {
+    const cur = document.documentElement.getAttribute('data-sheet');
+    verbSheetBtn.setAttribute('aria-expanded', String(cur === 'verbs'));
+    nudgeSheetBtn.setAttribute('aria-pressed', String(cur === 'verbs'));
+    nudgeSheetBtn.setAttribute('aria-expanded', String(cur === 'nudges'));
+    verbSheetBtn.setAttribute('aria-pressed', String(cur === 'verbs'));
+  }
+
+  scrub.append(daybar, readout, transport, sheetbar);
   daybar.setAttribute('role', 'slider');
-  daybar.setAttribute('aria-label', 'Time of day. Forward only.');
+  daybar.setAttribute('aria-label', 'Time of day. Forward only: clicking earlier than now advances to that hour tomorrow.');
   daybar.tabIndex = 0;
   daybar.addEventListener('click', (ev) => {
     const rect = daybar.getBoundingClientRect();
     const t = (ev.clientX - rect.left) / rect.width;
     hooks.onScrubTo(Math.max(0, Math.min(MIN_PER_DAY - 1, Math.round(t * MIN_PER_DAY))));
+  });
+  // A slider with role="slider" and no keydown handler is an ARIA failure, not a
+  // gap: arrows on a focused slider were panning the camera instead of moving
+  // time. Forward only, so every key advances.
+  daybar.addEventListener('keydown', (ev) => {
+    const step = ev.key === 'ArrowRight' || ev.key === 'ArrowUp' ? (ev.shiftKey ? 60 : 15)
+      : ev.key === 'ArrowLeft' || ev.key === 'ArrowDown' ? (ev.shiftKey ? 60 : 15)
+        : ev.key === 'PageDown' || ev.key === 'PageUp' ? 360
+          : 0;
+    if (!step) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    hooks.onAdvance(step);
   });
 
   // Verb menu. Disabled verbs stay in the tab order so the player learns they
@@ -156,7 +228,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   const nudges = el('div', 'plate');
   nudges.id = 'nudges';
   const nudgeHead = el('div', 'heading', 'INTERVENE');
-  nudges.append(nudgeHead);
+  const nudgeHint = el('div', 'hint');
+  nudges.append(nudgeHead, nudgeHint);
   const nudgeList: { verb: Verb; node: HTMLButtonElement; why: HTMLElement }[] = [];
   for (const verb of Object.keys(NUDGE_VERBS) as Verb[]) {
     const binding = BINDINGS.find((b) => b.verb === verb);
@@ -166,6 +239,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     b.append(label, key);
     b.setAttribute('aria-keyshortcuts', keycapFor(verb));
     const why = el('div', 'why');
+    why.id = `why-${verb}`;
     b.addEventListener('click', () => {
       if (b.getAttribute('aria-disabled') === 'true') return;
       hooks.onVerb(verb);
@@ -179,8 +253,57 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   const ticker = el('div');
   ticker.id = 'ticker';
 
-  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker);
+  // Toast: feedback at the point of action, on screen, for everyone.
+  const toastEl = el('div');
+  toastEl.id = 'toast';
+  toastEl.setAttribute('role', 'status');
+  let toastTimer = 0;
+  const toast: Shell['toast'] = (text, kind = 'info') => {
+    toastEl.textContent = text;
+    toastEl.className = kind;
+    toastEl.setAttribute('data-show', '1');
+    if (a11y) a11y.textContent = text;
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toastEl.removeAttribute('data-show'), 4200);
+  };
 
+  // The help sheet, generated from the binding table so the two cannot drift.
+  const help = el('div', 'plate');
+  help.id = 'help';
+  help.hidden = true;
+  help.setAttribute('role', 'dialog');
+  help.setAttribute('aria-modal', 'false');
+  help.setAttribute('aria-label', 'Keys and what this is');
+  const helpClose = el('button', 'close', '\u00d7') as HTMLButtonElement;
+  helpClose.setAttribute('aria-label', 'Close');
+  helpClose.addEventListener('click', () => toggleHelp());
+  const helpIntro = el('p', 'prose');
+  helpIntro.textContent = 'An 1890s district, from above. You do not build anything. '
+    + 'Tap a roof to see who is inside it, tap a name to follow that person, '
+    + 'and spend three interventions a day on the rest.';
+  help.append(helpClose, el('div', 'name', 'VERDIGRIS'), helpIntro);
+  const groups: [string, string][] = [
+    ['camera', 'LOOKING'], ['time', 'TIME'], ['verbs', 'VERBS'], ['nudges', 'INTERVENTIONS'],
+  ];
+  for (const [g, label] of groups) {
+    help.append(el('div', 'heading', label));
+    const ul = el('ul');
+    for (const bnd of BINDINGS.filter((x) => x.group === g)) {
+      const li = el('li');
+      li.append(el('span', 'k', bnd.keys.map((k) => (k === ' ' ? 'Space' : k)).join(' / ')));
+      li.append(el('span', undefined, bnd.label));
+      ul.append(li);
+    }
+    help.append(ul);
+  }
+  const toggleHelp = () => {
+    help.hidden = !help.hidden;
+    if (!help.hidden) helpClose.focus();
+  };
+
+  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help);
+
+  measureBar();
   const dayCtx = daybar.getContext('2d');
   let lastKey = '';
   let lastTickerLen = 0;
@@ -270,7 +393,11 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       insProse.textContent = describeBuilding(city, b.id);
       insHeading.textContent = 'INSIDE:';
       insList.textContent = '';
-      const { lines, more } = insideList(city, b.id, 6);
+      // Rows are sized from the space actually available rather than a constant.
+      const avail = inspector.clientHeight || window.innerHeight * 0.4;
+      const rowPx = 22 * (Number(getComputedStyle(document.documentElement).getPropertyValue('--px')) || 2);
+      const cap = Math.max(3, Math.min(12, Math.floor((avail - rowPx * 4) / rowPx)));
+      const { lines, more } = insideList(city, b.id, cap);
       for (const line of lines) {
         const li = el('li');
         const btn = el('button', undefined, line.line) as HTMLButtonElement;
@@ -290,18 +417,35 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   }
 
   const nudgeReasons: Shell['nudgeReasons'] = (reasons) => {
+    // Generic "pick a target" refusals are collapsed into one line at the top of
+    // the panel. Six near-identical italic sentences stacked under six rows is a
+    // wall of no, not teaching, and it made the rows reflow under the cursor
+    // every time the selection changed.
+    let needsTarget = 0;
     for (const { verb, node, why } of nudgeList) {
       const reason = reasons.get(verb);
       const ok = reason === null;
       node.setAttribute('aria-disabled', String(!ok));
-      why.textContent = ok ? '' : (reason ?? '');
-      node.setAttribute('aria-describedby', '');
+      const generic = reason === 'Pick somebody first.' || reason === 'Pick a building first.';
+      if (generic) needsTarget++;
+      const shown = ok || generic ? '' : (reason ?? '');
+      why.textContent = shown;
+      // Point at the reason so a screen reader is told WHY a row is disabled.
+      // This was an empty string, so the one thing the design is built around
+      // was the one thing assistive tech could not hear.
+      if (shown) node.setAttribute('aria-describedby', why.id);
+      else node.removeAttribute('aria-describedby');
     }
+    nudgeHint.textContent = needsTarget
+      ? 'Some of these need a target. Tap a roof, then a name inside it.'
+      : '';
   };
 
   return {
     update,
     nudgeReasons,
+    toast,
+    toggleHelp,
     insets: () => {
       const t = title.getBoundingClientRect();
       const v = verbs.getBoundingClientRect();

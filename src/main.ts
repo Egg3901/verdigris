@@ -108,16 +108,16 @@ function doVerb(verb: Verb): void {
   if (nudgeKind) {
     const target = targetFor(nudgeKind);
     if (!target) {
-      shell.say('Nothing selected to aim that at.');
+      shell.toast('Nothing chosen to aim that at. Tap a roof, then a name inside it.', 'loss');
       return;
     }
     const why = canApply(city, nudgeKind, target);
     if (why) {
-      shell.say(why);
+      shell.toast(why, 'loss');
       return;
     }
     applyNudge(city, nudgeKind, target);
-    shell.say(city.log[city.log.length - 1]?.text ?? 'Done.');
+    shell.toast(city.log[city.log.length - 1]?.text ?? 'Done.', 'gain');
     return;
   }
   switch (verb) {
@@ -142,7 +142,7 @@ function doVerb(verb: Verb): void {
         // Following from the whole-district view steps in to street level: the
         // three zoom steps map onto the three registers of the verbs.
         if (cam.zoom === 1) setZoom(2);
-        shell.say(`Following ${city.souls[follow].given} ${city.souls[follow].family}.`);
+        shell.toast(`Following ${city.souls[follow].given} ${city.souls[follow].family}.`);
       }
       break;
     case 'peek':
@@ -151,7 +151,7 @@ function doVerb(verb: Verb): void {
         b.peeked = !b.peeked;
         refreshBuilding(city, scene, b.id);
         if (cam.zoom < 3) setZoom(3);
-        shell.say(`${b.name}, roof off.`);
+        shell.toast(`${b.name}, roof off.`);
       }
       break;
     case 'hide':
@@ -160,10 +160,11 @@ function doVerb(verb: Verb): void {
       follow = -1;
       break;
     case 'dismiss':
-      if (follow >= 0) { follow = -1; shell.say('No longer following.'); }
+      if (follow >= 0) { follow = -1; shell.toast('No longer following.'); }
       else { sel.buildingId = -1; sel.soulId = -1; }
       break;
     case 'help':
+      shell.toggleHelp();
       break;
   }
 }
@@ -195,26 +196,68 @@ shell = mountShell(shellRoot, {
   onVerb: doVerb,
   onSetSpeed: (i) => { speedIndex = i; },
   onScrubTo: scrubToMinuteOfDay,
+  onAdvance: scrubForward,
   onZoom: setZoom,
 });
 
 // Input.
-let dragging = false;
+//
+// Multi-pointer, because `touch-action: none` on the canvas kills the browser's
+// native pinch, and the old single-pointer handler meant a second finger just
+// fought the first for the pan. On a phone there was no way to zoom in at all:
+// the pinch did nothing and the stepper's + button was underneath the scrubber.
+const pointers = new Map<number, { x: number; y: number }>();
 let dragMoved = false;
 let lastX = 0;
 let lastY = 0;
 let wheelAccum = 0;
+let pinchStart = 0;
+let pinchZoom: ZoomStep = 1;
+
+function pinchDistance(): number {
+  const pts = [...pointers.values()];
+  if (pts.length < 2) return 0;
+  return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+}
+
+function pinchCentre(): { x: number; y: number } {
+  const pts = [...pointers.values()];
+  return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+}
 
 canvas.addEventListener('pointerdown', (ev) => {
-  dragging = true;
+  pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
   dragMoved = false;
   lastX = ev.clientX;
   lastY = ev.clientY;
-  canvas.setPointerCapture(ev.pointerId);
+  if (pointers.size === 2) {
+    pinchStart = pinchDistance();
+    pinchZoom = cam.zoom;
+    dragMoved = true; // a pinch is never a tap
+  }
+  // Capture can throw if the pointer is already gone (or is synthetic).
+  try { canvas.setPointerCapture(ev.pointerId); } catch { /* nothing to capture */ }
 });
 
 canvas.addEventListener('pointermove', (ev) => {
-  if (!dragging) return;
+  if (!pointers.has(ev.pointerId)) return;
+  pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+
+  if (pointers.size >= 2) {
+    if (pinchStart <= 0) return;
+    const ratio = pinchDistance() / pinchStart;
+    const idx = ZOOM_STEPS.indexOf(pinchZoom);
+    // Whole steps only: the integer transform contract forbids a fractional zoom,
+    // so a pinch selects a step rather than scaling continuously.
+    const step = ratio > 1.35 ? 1 : ratio < 0.74 ? -1 : 0;
+    const want = ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + step))];
+    if (want !== cam.zoom) {
+      const c = pinchCentre();
+      setZoom(want, c.x, c.y);
+    }
+    return;
+  }
+
   const dx = ev.clientX - lastX;
   const dy = ev.clientY - lastY;
   if (Math.abs(dx) + Math.abs(dy) > 3) {
@@ -228,15 +271,20 @@ canvas.addEventListener('pointermove', (ev) => {
   clampCamera(cam, viewW, viewH, shell.insets());
 });
 
-canvas.addEventListener('pointerup', (ev) => {
-  dragging = false;
-  canvas.releasePointerCapture(ev.pointerId);
-  if (dragMoved) return;
+function endPointer(ev: PointerEvent, tap: boolean): void {
+  const had = pointers.size;
+  pointers.delete(ev.pointerId);
+  if (pointers.size < 2) pinchStart = 0;
+  try { canvas.releasePointerCapture(ev.pointerId); } catch { /* already gone */ }
+  if (!tap || had > 1 || dragMoved) return;
   const hit = pickAt(city, scene, cam, fracMin(), ev.clientX, ev.clientY);
   if (hit.kind === 'soul') { sel.soulId = hit.id; sel.buildingId = -1; }
   else if (hit.kind === 'building') { sel.buildingId = hit.id; sel.soulId = -1; }
   else { sel.buildingId = -1; sel.soulId = -1; }
-});
+}
+
+canvas.addEventListener('pointerup', (ev) => endPointer(ev, true));
+canvas.addEventListener('pointercancel', (ev) => endPointer(ev, false));
 
 canvas.addEventListener('wheel', (ev) => {
   ev.preventDefault();
@@ -253,6 +301,17 @@ canvas.addEventListener('wheel', (ev) => {
 
 window.addEventListener('keydown', (ev) => {
   if (ev.target instanceof HTMLInputElement) return;
+  // Space and Enter belong to whatever is focused. The old guard only checked for
+  // an input, so focusing PEEK IN THE ROOF and pressing Space paused the sim and
+  // did not press the button, which breaks the most basic keyboard convention on
+  // the platform.
+  const active = document.activeElement;
+  const interactive = active instanceof HTMLButtonElement || active instanceof HTMLAnchorElement;
+  if (interactive && (ev.key === ' ' || ev.key === 'Enter')) return;
+  // Likewise the day ribbon owns its own arrow keys when it has focus.
+  if (active instanceof HTMLCanvasElement && active.id === 'daybar') {
+    if (ev.key.startsWith('Arrow') || ev.key === 'PageUp' || ev.key === 'PageDown') return;
+  }
   const verb = verbForKey(ev.key);
   if (!verb) return;
   ev.preventDefault();

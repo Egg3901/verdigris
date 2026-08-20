@@ -67,8 +67,11 @@ export function worldBounds(): Bounds {
 
 export function defaultCamera(viewW: number, viewH: number): Camera {
   const b = worldBounds();
+  // Take the largest step that still shows the whole district. The old
+  // thresholds gave a 1440x900 monitor zoom 1, so the island occupied about a
+  // quarter of the screen and two thirds of the first impression was void.
   const fit = Math.min(viewW / b.w, viewH / b.h);
-  const zoom: ZoomStep = fit >= 2.2 ? 3 : fit >= 1.15 ? 2 : 1;
+  const zoom: ZoomStep = fit >= 2.6 ? 3 : fit >= 0.92 ? 2 : 1;
   const cam: Camera = { ox: 0, oy: 0, zoom };
   centreOn(cam, viewW, viewH, b.minX + b.w / 2, b.minY + b.h / 2);
   return cam;

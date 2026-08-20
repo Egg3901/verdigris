@@ -35,6 +35,14 @@
   --gas2: #ffd98a;
   --loss: #8c2f34;
 
+  /* Safe-area insets. index.html asks for viewport-fit=cover, so without these
+     the title plate sits under the notch in landscape and the scrubber sits
+     under the home indicator in portrait. */
+  --pad-top: max(var(--gap), env(safe-area-inset-top));
+  --pad-right: max(var(--gap), env(safe-area-inset-right));
+  --pad-bottom: max(var(--gap), env(safe-area-inset-bottom));
+  --pad-left: max(var(--gap), env(safe-area-inset-left));
+
   --fs-small: calc(8px * var(--px));
   --fs-body: calc(9px * var(--px));
   --fs-title: calc(13px * var(--px));
@@ -63,7 +71,9 @@ html, body {
   overscroll-behavior: none;
 }
 
-#app { position: fixed; inset: 0; }
+/* dvh, not vh: on iOS Safari the URL bar makes vh taller than the visible
+   viewport, which pushed the scrubber off the bottom of the screen. */
+#app { position: fixed; inset: 0; height: 100dvh; }
 
 #world {
   position: absolute;
@@ -76,13 +86,43 @@ html, body {
   touch-action: none;
 }
 
+/*
+  THE RAIL.
+
+  Panels used to be four independently absolutely-positioned plates, which is why
+  they collided: at 390px the verb menu sat on top of the clock and the scrubber
+  made the zoom-in button physically unclickable. Nothing coordinated them, so
+  every collision needed its own patch, and the last of those patches was
+  `#nudges { display: none }` below 981px, which deleted all eight interventions
+  from every phone.
+
+  A grid rail cannot overlap itself. Panels are placed in named areas and the
+  browser does the reserving.
+*/
 #shell {
   position: absolute;
   inset: 0;
   pointer-events: none;
   font-size: var(--fs-body);
   line-height: 1.5;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "topleft  .        topright"
+    "left     .        right"
+    "botleft  botmid   botright";
+  gap: var(--gap);
+  padding: var(--pad-top) var(--pad-right) var(--pad-bottom) var(--pad-left);
+  align-items: start;
+  justify-items: start;
 }
+
+/* Grid and flex items default to min-width:auto, which is min-content, so a
+   panel containing a long unbroken row refuses to shrink and simply overflows
+   the viewport. Measured at 390px: the title plate reported 549px wide inside a
+   374px column. Every panel opts out. */
+#shell > * { min-width: 0; max-width: 100%; }
 
 .visually-hidden {
   position: absolute;
@@ -97,8 +137,9 @@ html, body {
    (never stretch, which destroys the pixel grid). Until then a flat brass rule on
    parchment gets most of the way there. */
 .plate {
-  position: absolute;
+  position: relative;
   pointer-events: auto;
+  max-width: 100%;
   background: var(--parch2);
   color: var(--ink);
   border: calc(2px * var(--px)) solid var(--brass0);
@@ -116,7 +157,7 @@ html, body {
 }
 
 /* Title plate */
-#titleplate { top: var(--gap); left: var(--gap); min-width: calc(96px * var(--px)); }
+#titleplate { grid-area: topleft; min-width: min(96px * var(--px), 46vw); }
 #titleplate h1 {
   font-family: var(--font-instrument);
   font-size: var(--fs-title);
@@ -166,10 +207,10 @@ html, body {
    INSIDE list of a tenement is genuinely long and the panel must not run off the
    bottom of the screen. */
 #inspector {
-  top: calc(84px * var(--px));
-  left: var(--gap);
-  width: calc(132px * var(--px));
-  max-height: calc(100vh - 94px * var(--px) - 40px * var(--px));
+  grid-area: left;
+  /* Relative width, so a phone gets a phone-sized card rather than a monitor's. */
+  width: min(calc(132px * var(--px)), 42vw);
+  max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   font-size: var(--fs-small);
@@ -201,21 +242,43 @@ html, body {
 #inspector li { margin: 0; }
 #inspector li button {
   all: unset;
+  position: relative;
   display: block;
   width: 100%;
   cursor: pointer;
   font: inherit;
-  color: var(--ink);
-  padding: calc(1px * var(--px)) 0;
-  text-indent: calc(-5px * var(--px));
-  padding-left: calc(5px * var(--px));
+  /* Brass, not ink: these are the only reliable route to a person, and styled as
+     plain prose nothing said they were tappable. Hover cannot teach that on a
+     phone. */
+  color: var(--brass0);
+  text-decoration: underline;
+  text-decoration-color: rgba(107, 74, 18, 0.4);
+  text-underline-offset: 2px;
+  padding: calc(2px * var(--px)) 0 calc(2px * var(--px)) calc(6px * var(--px));
 }
-#inspector li button::before { content: "\00B7  "; color: var(--brass-ink); }
+#inspector li button::before {
+  content: "\00B7";
+  color: var(--brass-ink);
+  position: absolute;
+  left: 0;
+}
 #inspector li button:hover, #inspector li button:focus-visible {
   background: var(--parch3);
   outline: 1px solid var(--verd1);
 }
 #inspector .more { font-size: var(--fs-small); color: var(--brass-ink); font-style: italic; }
+/* A scrolled panel that simply stops mid-name reads as clipped, not scrollable.
+   The fade says there is more. */
+#inspector::after {
+  content: "";
+  position: sticky;
+  bottom: calc(-5px * var(--px));
+  display: block;
+  height: calc(9px * var(--px));
+  margin-bottom: calc(-9px * var(--px));
+  background: linear-gradient(rgba(216, 201, 163, 0), var(--parch2));
+  pointer-events: none;
+}
 #inspector .close {
   all: unset;
   position: absolute;
@@ -227,8 +290,8 @@ html, body {
 
 /* Zoom stepper */
 #zoomstepper {
-  bottom: var(--gap);
-  left: var(--gap);
+  grid-area: botleft;
+  align-self: end;
   display: flex;
   align-items: center;
   gap: calc(4px * var(--px));
@@ -244,10 +307,14 @@ html, body {
 
 /* Time scrubber */
 #scrubber {
-  bottom: var(--gap);
-  left: 50%;
-  transform: translateX(-50%);
+  grid-area: botmid;
+  align-self: end;
+  justify-self: center;
   text-align: center;
+}
+#daybar:focus-visible {
+  outline: calc(2px * var(--px)) solid var(--gas2);
+  outline-offset: 2px;
 }
 #daybar {
   display: block;
@@ -282,7 +349,7 @@ button.brass:focus-visible { outline: calc(1px * var(--px)) solid var(--verd2); 
 button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 
 /* Verb menu */
-#verbs { top: var(--gap); right: var(--gap); display: flex; flex-direction: column; gap: calc(3px * var(--px)); background: none; border: none; box-shadow: none; outline: none; padding: 0; }
+#verbs { grid-area: topright; justify-self: end; display: flex; flex-direction: column; gap: calc(3px * var(--px)); background: none; border: none; box-shadow: none; outline: none; padding: 0; }
 #verbs button > span:first-child { flex: 1 1 auto; }
 #verbs button {
   all: unset;
@@ -315,9 +382,12 @@ button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 
 /* Nudge menu */
 #nudges {
-  top: calc(84px * var(--px));
-  right: var(--gap);
-  width: calc(126px * var(--px));
+  grid-area: right;
+  justify-self: end;
+  width: min(calc(126px * var(--px)), 40vw);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: calc(4px * var(--px));
 }
 #nudges .heading {
@@ -362,37 +432,239 @@ button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
   line-height: 1.3;
 }
 
+/* Toast. Feedback at the point of action, for everyone, not only for the
+   visually-hidden live region. */
+#toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(74px * var(--px) + var(--pad-bottom));
+  max-width: min(calc(160px * var(--px)), 90vw);
+  background: var(--parch2);
+  color: var(--ink);
+  border: calc(2px * var(--px)) solid var(--brass0);
+  padding: calc(4px * var(--px)) calc(7px * var(--px));
+  font-size: var(--fs-small);
+  text-align: center;
+  box-shadow: calc(2px * var(--px)) calc(2px * var(--px)) 0 rgba(8, 9, 12, 0.65);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms linear;
+  z-index: 6;
+}
+#toast[data-show] { opacity: 1; }
+#toast.loss { border-color: var(--loss); }
+#toast.gain { border-color: var(--verd1); }
+
+/* Help sheet */
+#help {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(220px * var(--px)), 92vw);
+  max-height: 84dvh;
+  overflow-y: auto;
+  z-index: 8;
+  font-size: var(--fs-small);
+}
+#help .name { font-family: var(--font-instrument); font-size: var(--fs-body); color: var(--brass0); letter-spacing: 0.2em; }
+#help .heading { font-size: var(--fs-small); color: var(--brass-ink); letter-spacing: 0.18em; margin-top: calc(4px * var(--px)); }
+#help ul { list-style: none; margin: 0; padding: 0; }
+#help li { display: flex; gap: calc(6px * var(--px)); }
+#help li .k {
+  font-family: var(--font-instrument);
+  color: var(--brass-ink);
+  min-width: calc(34px * var(--px));
+  flex: 0 0 auto;
+}
+#help .close {
+  all: unset;
+  position: absolute;
+  top: calc(2px * var(--px));
+  right: calc(5px * var(--px));
+  cursor: pointer;
+  color: var(--brass-ink);
+}
+#nudges .hint {
+  font-size: var(--fs-small);
+  color: var(--brass-ink);
+  font-style: italic;
+  line-height: 1.3;
+  margin-bottom: calc(3px * var(--px));
+}
+#nudges .hint:empty { display: none; }
+
 /* Ticker */
 #ticker {
-  position: absolute;
-  right: var(--gap);
-  bottom: calc(48px * var(--px));
-  width: calc(130px * var(--px));
+  grid-area: botright;
+  align-self: end;
+  justify-self: end;
+  width: min(calc(130px * var(--px)), 44vw);
   text-align: right;
   pointer-events: none;
   font-size: var(--fs-small);
-  color: var(--parch1);
-  text-shadow: 1px 1px 0 var(--ink);
+  /* Was parch1 with a 1px shadow directly over the world: 6.6:1 against the void
+     but 1.80:1 over a parchment roof, so it vanished exactly where the district
+     is busiest. A plate fixes it outright. */
+  color: var(--ink);
+  background: rgba(216, 201, 163, 0.92);
+  border: 1px solid var(--brass0);
+  padding: calc(2px * var(--px)) calc(4px * var(--px));
 }
+#ticker:empty { display: none; }
 #ticker div { margin-top: calc(2px * var(--px)); }
 #ticker div.loss { color: #c98a86; }
 #ticker div.gain { color: var(--verd2); }
 
-@media (max-width: 980px) {
-  #inspector {
-    left: var(--gap);
-    right: var(--gap);
-    top: auto;
-    bottom: calc(56px * var(--px));
-    width: auto;
-    max-height: calc(38vh);
+/*
+  PHONES AND NARROW WINDOWS.
+
+  The old rule here was `#nudges { display: none }`, which removed all eight
+  interventions and the event ticker below 981px. That is the entire game: a
+  phone player could watch, tap a roof, and change speed, and nothing else.
+  Rotating an iPad added and removed the mechanics.
+
+  The replacement is a sheet. On a narrow screen the right-hand panels stop being
+  a permanent column and become a panel you summon, so they cost no width until
+  you want them and they are never in the way when you do not.
+*/
+@media (max-width: 900px), (max-height: 560px) {
+  #shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "topleft"
+      "."
+      "botmid";
   }
-  #ticker { display: none; }
-  #nudges { display: none; }
+  /* The ticker rides with the title plate at the top of the column. */
+  #shell { grid-auto-flow: row; }
+  /* One line only. The toast now carries "what you just did", so the ticker is
+     only the world talking, and on a phone it must not cost more than a line. */
+  #ticker {
+    grid-row: 1; grid-column: 1; align-self: start;
+    margin-top: calc(30px * var(--px));
+  }
+  /* One line, truncated with an ellipsis. A max-height clipped the second line
+     of a wrapped sentence in half, which reads as a rendering fault rather than
+     as truncation. */
+  #ticker div:not(:last-child) { display: none; }
+  #ticker div {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+  }
+
+  /* The title plate collapses to one line across the top. */
+  #titleplate {
+    justify-self: stretch;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0 calc(6px * var(--px));
+    padding: calc(3px * var(--px)) calc(5px * var(--px));
+  }
+  #titleplate h1 { font-size: var(--fs-body); }
+  #titleplate .rule { display: none; }
+  #titleplate .counts { display: none; }
+
+  /* Everything on the right becomes a summonable sheet. */
+  #verbs, #nudges {
+    position: fixed;
+    left: var(--pad-left);
+    right: var(--pad-right);
+    bottom: calc(var(--bar-h, 52px * var(--px)) + var(--pad-bottom) + 4px);
+    width: auto;
+    max-width: none;
+    justify-self: stretch;
+    max-height: 52dvh;
+    overflow-y: auto;
+    z-index: 3;
+  }
+  #verbs { flex-direction: row; flex-wrap: wrap; }
+  #verbs button { flex: 1 1 auto; justify-content: center; }
+  html:not([data-sheet="verbs"]) #verbs { display: none; }
+  html:not([data-sheet="nudges"]) #nudges { display: none; }
+
+  #inspector {
+    position: fixed;
+    left: var(--pad-left);
+    right: var(--pad-right);
+    bottom: calc(var(--bar-h, 52px * var(--px)) + var(--pad-bottom) + 4px);
+    top: auto;
+    width: auto;
+    max-height: 34dvh;
+    z-index: 2;
+  }
+  html[data-sheet] #inspector { display: none; }
+
+  /* One bottom bar holds the clock, the zoom and the two sheet toggles, so
+     nothing can overlap anything else. */
+  #scrubber {
+    justify-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: calc(3px * var(--px));
+    padding: calc(3px * var(--px));
+  }
+  #scrubber .transport, #sheetbar { flex: 0 1 auto; min-width: 0; }
+  #scrubber .transport button, #sheetbar button { padding: calc(1px * var(--px)) calc(3px * var(--px)); }
+  #daybar { display: none; }
+  #scrubber .readout { margin: 0; white-space: nowrap; }
+  #scrubber .transport { margin: 0; }
+
+  #zoomstepper {
+    position: fixed;
+    right: var(--pad-right);
+    bottom: calc(var(--bar-h, 52px * var(--px)) + var(--pad-bottom) + 4px);
+    z-index: 1;
+  }
+  html[data-sheet] #zoomstepper { display: none; }
+
+  /* Anchored below the title plate rather than at a guessed offset: the plate is
+     one line at 390px and two at 320px, so a fixed top always collides with one
+     of them. */
+  #ticker {
+    grid-area: unset;
+    position: static;
+    justify-self: stretch;
+    width: auto;
+    text-align: center;
+    margin-top: calc(2px * var(--px));
+  }
+}
+
+/* The sheet toggles only exist on narrow screens; on desktop the panels are
+   always visible and the buttons would be noise. */
+#sheetbar { display: none; }
+@media (max-width: 900px), (max-height: 560px) {
+  #sheetbar { display: flex; gap: calc(3px * var(--px)); }
 }
 
 @media (pointer: coarse) {
-  button.brass, #verbs button { min-height: 44px; display: flex; align-items: center; }
+  /* 44px is the floor for a finger. This previously missed the nudge rows and the
+     INSIDE list entirely, which are the two things a phone player most needs to
+     hit. */
+  button.brass, #verbs button, #sheetbar button {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  /* Rows that WRAP get their touch target from padding. A min-height on a
+     wrapped row adds the full 44px under every line, which turned four people in
+     a pub into a full screen of inspector. */
+  #nudges button, #inspector li button {
+    min-height: 0;
+    padding-top: calc(5px * var(--px));
+    padding-bottom: calc(5px * var(--px));
+  }
+  #nudges .why { padding-bottom: calc(2px * var(--px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

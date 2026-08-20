@@ -28,6 +28,14 @@ const SLOP_X = 6;
 const SLOP_TOP = 16;
 const SLOP_BOTTOM = 4;
 
+/** Pick radius scales with the pointer and with the zoom. The constants above are
+ *  WORLD pixels, so at zoom 1 six of them are six CSS px, which is a quarter of a
+ *  fingertip. Measured before this: 0 soul hits in 196 taps at zoom 2 and 3. */
+function slopScale(): number {
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  return coarse ? 2.8 : 1;
+}
+
 const pool: AgentDraw[] = [];
 
 export function pickAt(
@@ -37,10 +45,14 @@ export function pickAt(
 
   // 1. Agents, front to back. They move, so they are not in the ID buffer.
   const n = collectAgents(city, fracMin, pool);
+  const scale = slopScale();
+  const slopX = SLOP_X * scale;
+  const slopTop = SLOP_TOP * Math.max(1, scale * 0.7);
+  const slopBottom = SLOP_BOTTOM * scale;
   for (let i = n - 1; i >= 0; i--) {
     const a = pool[i];
-    if (Math.abs(a.wx - wx) > SLOP_X) continue;
-    if (wy > a.wy + SLOP_BOTTOM || wy < a.wy - SLOP_TOP) continue;
+    if (Math.abs(a.wx - wx) > slopX) continue;
+    if (wy > a.wy + slopBottom || wy < a.wy - slopTop) continue;
     return { kind: 'soul', id: a.soulId, cellX: Math.round(a.tx), cellY: Math.round(a.ty) };
   }
 
