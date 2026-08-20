@@ -49,23 +49,52 @@ Three contracts that nothing may violate:
 
 ## Where it is
 
-Built: the deterministic core, the eight-stage worldgen (river, crossings,
-arterials, blocks, plots, courts, quota assignment, gas and drain and post
-networks, tram, prehistory), the all-pairs next-hop street graph, schedules with
-errands, needs, pressures with the cause ring, the prose layer, the isometric
-renderer with ID picking, and the full UI shell.
+Live at **https://lakesidegames.net/games/verdigris/**
 
-Not built yet: `art/bake.py` and the real pixel atlas, so the city currently
-renders from the vector fallback primitives. That is the intended order. The
-renderer's contract is that a missing atlas frame falls back to a primitive, so
-art can never blank the game, and the compositor, depth sort, ID buffer and
-camera contract were all built against boxes so the atlas drops in behind an
-unchanged `blit()`.
+Built and playing:
 
-Also outstanding: claims and gossip, incidents, the interventions themselves,
-day and night baking, weather, and the 9-slice panel frames.
+- The deterministic core. The world is a pure function of
+  `(seedStr, tickCount, nudges)`, so the save format is the nudge log and
+  `hashWorld()` anchors every determinism test.
+- Eight-stage worldgen: river with polite and working banks, two crossings,
+  civic square, arterials as least-cost paths, block subdivision, plot slicing,
+  courts, quota-scored assignment, gas and drain and post networks, tram, and a
+  prehistory of grudges that predate tick 0.
+- All-pairs next-hop street graph, about 300 nodes. No runtime pathfinding.
+- Schedules with jitter plus an ambient errand layer, so the district has people
+  in it whenever you look and not only at the two rushes.
+- Eight pressures with a cause ring, and baselines that are functions of world
+  state rather than constants.
+- Claims that spread over a relationship graph, distort on transmission, and keep
+  a lineage you can walk back.
+- Six incidents with hysteresis and cooldowns, each carrying the cause chain that
+  produced it.
+- The eight interventions, each with a second-order effect and a backfire that is
+  a documented state condition rather than a dice roll.
+- Predicate-gated prose that cannot assert anything the sim does not contain.
+- Isometric renderer: pitched roofs (gable, hip, pyramid, flat), chimneys, window
+  rhythm, trees, ground texture, flatten-per-building compositor, per-object depth
+  sort, pixel-exact ID-buffer picking, discrete zoom stepper.
+- The full UI shell, and a keyboard equivalent for every verb.
 
-Time is **forward only** in this version. The sim is deterministic so a true
-rewind is a replay, and a replay of a day costs about 300ms; that is affordable
-but it needs a snapshot ring to stay affordable over a month, so the control says
-"advance to" and means it.
+Measured behaviour: undisturbed, the district settles at an average facade of 610
+against an average fabric of 520. Fourteen days of funding the bunting takes
+facade to 669 and fabric to 462. The city looks better and is structurally worse.
+
+Not built:
+
+- `art/bake.py` and a baked pixel atlas. The city renders from vector primitives
+  drawn in code. The compositor, depth sort, ID buffer and camera contract were
+  all built against those primitives, so an atlas drops in behind an unchanged
+  `blit()`. `atlas.ts`'s contract is that a missing frame falls back to a
+  primitive, so art can never blank the game.
+- Day and night grading, weather, and smoke. The lamp glow pass runs; the tint
+  does not.
+- The 9-slice panel frames and the two pixel fonts. Panels use flat CSS borders
+  and a system monospace stack.
+- The tram does not physically run yet. Delaying it is a real pressure with real
+  consequences, but there is no vehicle on the rails.
+
+Time is **forward only**. The sim is deterministic so a true rewind is a replay,
+and a replay of a day costs about 300ms; affordable, but it needs a snapshot ring
+to stay affordable over a month. The control says "advance to" and means it.
