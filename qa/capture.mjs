@@ -15,7 +15,10 @@ const BASE = process.env.VERDIGRIS_URL ?? 'http://127.0.0.1:4173/';
 const SCENES = [
   { name: 'morning', seed: 'verdigris', tick: 641, zoom: 1 },
   { name: 'morning-street', seed: 'verdigris', tick: 641, zoom: 2 },
-  { name: 'lamps', seed: 'verdigris', tick: 1140, zoom: 1 },
+  // 1260 is inside lamp hour. The scene still reads as daylight because the
+  // night grading is M9 and not built yet; the glow pass is exercised, the tint
+  // is not.
+  { name: 'lamps', seed: 'verdigris', tick: 1260, zoom: 1 },
   { name: 'dead-hour', seed: 'verdigris', tick: 180, zoom: 1 },
   { name: 'coppergate', seed: 'coppergate', tick: 641, zoom: 1 },
 ];
