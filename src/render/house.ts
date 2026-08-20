@@ -31,6 +31,8 @@ export interface HouseSkin {
   roofRidge: string;
   trim?: string;
   window?: string;
+  /** Windows glow rather than recede once the lamps are lit. */
+  windowLit?: boolean;
   outline: string;
 }
 
@@ -249,9 +251,10 @@ function drawWindows(
 ): void {
   if (!spec.skin.window || spec.windowRows <= 0) return;
   ctx.fillStyle = spec.skin.window;
+  const lit = spec.skin.windowLit === true;
   const rows = Math.min(4, spec.windowRows);
 
-  for (const [a, b, lit] of [[eave.W, eave.S, true], [eave.S, eave.E, false]] as [Pt, Pt, boolean][]) {
+  for (const [a, b, litFace] of [[eave.W, eave.S, true], [eave.S, eave.E, false]] as [Pt, Pt, boolean][]) {
     const spanX = b.x - a.x;
     const spanY = b.y - a.y;
     const cells = Math.max(1, Math.round(Math.abs(spanX) / 11));
@@ -262,7 +265,10 @@ function drawWindows(
         const t = (c + 0.5) / cells;
         const x = Math.round(a.x + spanX * t);
         const y = Math.round(a.y + spanY * t) + yOff;
-        ctx.globalAlpha = lit ? 1 : 0.8;
+        // Not every window in a building is lit, or the town reads as a grid of
+        // fairy lights. Two in three, chosen by a stable hash of the pane.
+        if (lit && ((x * 7 + y * 13 + r * 5) % 3 === 0)) continue;
+        ctx.globalAlpha = litFace ? 1 : 0.8;
         ctx.fillRect(x - 1, y, 2, 3);
       }
     }

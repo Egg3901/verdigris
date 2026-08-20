@@ -8,6 +8,7 @@ import { newCity, tickCity, warp, hashWorld, soulsOutdoors } from './sim/city';
 import type { City } from './sim/city';
 import { MAX_TICKS_PER_FRAME, MIN_PER_DAY, SPEEDS, minuteOfDay } from './sim/clock';
 import { buildScene, refreshBuilding, debugSkin } from './render/scene';
+import { variantFor } from './render/palette';
 import type { Scene } from './render/scene';
 import { drawFrame } from './render/frame';
 import type { Selection } from './render/frame';
@@ -361,6 +362,11 @@ function loop(now: number): void {
     }
   }
 
+  // Rebake when the light changes. Three or four times a game-day, never per
+  // frame: the whole point of baking is that the expensive pass is rare.
+  const wantVariant = variantFor(minuteOfDay(city.tick));
+  if (wantVariant !== scene.variant) scene = buildScene(city, wantVariant);
+
   drawFrame(ctx as CanvasRenderingContext2D, city, scene, cam, viewW, viewH, fracMin(), sel);
   shell.update(city, sel, cam.zoom, speedIndex, city.budgetLeft);
   shell.nudgeReasons(nudgeReasons());
@@ -402,4 +408,3 @@ interface QaHook {
   }),
 };
 
-void scene;

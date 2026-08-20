@@ -153,10 +153,10 @@ export interface LightGrade {
   desat: number;
 }
 
-export const LIGHT: Record<'day' | 'dusk' | 'night', LightGrade | null> = {
+export const LIGHT: Record<Variant, LightGrade | null> = {
   day: null,
-  dusk: { mul: [0.86, 0.78, 0.82], add: [14, 6, 18], desat: 0.1 },
-  night: { mul: [0.42, 0.46, 0.62], add: [8, 10, 20], desat: 0.3 },
+  dusk: { mul: [0.74, 0.66, 0.74], add: [18, 8, 22], desat: 0.16 },
+  night: { mul: [0.30, 0.34, 0.52], add: [6, 9, 20], desat: 0.42 },
 };
 
 /** Art-directed night colours. The computed tint handles the long tail; these are
@@ -196,7 +196,7 @@ export function rgbToHex(r: number, g: number, b: number): string {
 }
 
 /** Grade one palette entry into a lighting variant. Emissives are lifted, not dimmed. */
-export function gradeColour(key: PaletteKey, variant: 'day' | 'dusk' | 'night'): string {
+export function gradeColour(key: PaletteKey, variant: Variant): string {
   const override = variant === 'night' ? NIGHT_OVERRIDE[key] : undefined;
   if (override) return override;
   const grade = LIGHT[variant];
@@ -211,6 +211,39 @@ export function gradeColour(key: PaletteKey, variant: 'day' | 'dusk' | 'night'):
   g = g + (lum - g) * grade.desat;
   b = b + (lum - b) * grade.desat;
   return rgbToHex(r * grade.mul[0] + grade.add[0], g * grade.mul[1] + grade.add[1], b * grade.mul[2] + grade.add[2]);
+}
+
+/**
+ * Grade an arbitrary colour, not just a palette key.
+ *
+ * The per-key version below only works for entries that exist in PAL, but by the
+ * time a wall colour reaches the compositor it has been washed, sooted and
+ * floored, so it is no longer a palette member. This takes the same grade and
+ * applies it to whatever it is handed.
+ */
+export function gradeHex(hex: string, variant: Variant, emissive = false): string {
+  const grade = LIGHT[variant];
+  if (!grade) return hex;
+  let [r, g, b] = hexToRgb(hex);
+  if (emissive) {
+    const lift = variant === 'night' ? 1.18 : 1.08;
+    return rgbToHex(r * lift, g * lift, b * lift);
+  }
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  r = r + (lum - r) * grade.desat;
+  g = g + (lum - g) * grade.desat;
+  b = b + (lum - b) * grade.desat;
+  return rgbToHex(r * grade.mul[0] + grade.add[0], g * grade.mul[1] + grade.add[1], b * grade.mul[2] + grade.add[2]);
+}
+
+export type Variant = 'day' | 'dusk' | 'night';
+
+/** Which lighting variant a tick falls in. Dawn borrows the dusk grade: the light
+ *  is the same colour temperature going up as coming down. */
+export function variantFor(minuteOfDay: number): Variant {
+  if (minuteOfDay >= 1260 || minuteOfDay < 330) return 'night';
+  if (minuteOfDay >= 1140 || minuteOfDay < 450) return 'dusk';
+  return 'day';
 }
 
 export function shadeHex(hex: string, amount: number): string {

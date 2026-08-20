@@ -82,17 +82,44 @@ export function isWalkable(d: District, x: number, y: number): boolean {
 }
 
 /**
- * The district is a diamond inscribed in the square grid, so the whole island
- * reads as one jewel on dark ground at zoom 1. Cells outside stay Tile.Void.
+ * The district as a diamond on screen.
+ *
+ * THE METRIC IS COUNTERINTUITIVE AND I HAD IT BACKWARDS. This used to test
+ * `dx + dy <= r`, an L1 ball, on the reasoning that L1 draws a diamond. It does,
+ * in TILE space, and the isometric projection then turns that diamond into an
+ * axis-aligned RECTANGLE. Proof: with u = x-cx and v = y-cy, screen X is
+ * proportional to (u-v) and screen Y to (u+v); setting a = u-v and b = u+v gives
+ * |u|+|v| = max(|a|,|b|), so `|u|+|v| <= r` is exactly `|a| <= r AND |b| <= r`,
+ * which is a box. Measured: the old island filled 100% of its bounding box.
+ *
+ * The projection swaps the two metrics, so an L-infinity square in tile space is
+ * what lands as a diamond on screen. Measured: 56% bounding-box fill, and the
+ * silhouette the reference actually has.
+ *
+ * The 0.707 keeps the land area the same as before (about 1156 cells against
+ * 1168), so no quota or density rebalancing is needed.
  */
+const ISLAND_R = 0.707;
+
 export function insideIsland(d: District, x: number, y: number): boolean {
   const cx = (d.width - 1) / 2;
   const cy = (d.height - 1) / 2;
-  const r = (d.width - 1) / 2;
-  // A slightly bowed diamond: pure L1 looks machined, this looks surveyed.
+  const r = ((d.width - 1) / 2) * ISLAND_R;
   const dx = Math.abs(x - cx);
   const dy = Math.abs(y - cy);
-  return dx + dy <= r + 1.5 - 0.12 * Math.min(dx, dy);
+  // A slight bow off the corners: a pure square reads as machined, this reads as
+  // surveyed. Applied to the larger axis so the diamond keeps its points.
+  return Math.max(dx, dy) + 0.14 * Math.min(dx, dy) <= r + 1.2;
+}
+
+/** Tile-space extent of the island. The renderer frames on this, not on the grid:
+ *  the grid is 48x48 but the island only occupies the middle ~34, so bounding the
+ *  camera by the grid leaves the district small and floating off-centre inside a
+ *  frame of void. */
+export function islandTileBounds(): { min: number; max: number } {
+  const c = (GRID_W - 1) / 2;
+  const r = ((GRID_W - 1) / 2) * ISLAND_R + 1.2;
+  return { min: Math.floor(c - r), max: Math.ceil(c + r) };
 }
 
 export function forEachIslandCell(d: District, fn: (x: number, y: number, k: number) => void): void {

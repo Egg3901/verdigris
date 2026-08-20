@@ -8,14 +8,14 @@
 // Every atlas pixel then lands on an exact N by N block of device pixels. A
 // tweened fractional zoom would blur the whole city, which is why the zoom
 // control is a discrete stepper and not a slider.
-import { GRID_W, GRID_H } from '../sim/types';
+import { islandTileBounds } from '../sim/district';
 
 export const TILE_W = 32;
 export const TILE_H = 16;
 
 /** Headroom above the grid for the mooring mast and the campanile. */
-export const HEAD_ROOM = 160;
-export const FOOT_ROOM = 48;
+export const HEAD_ROOM = 72;
+export const FOOT_ROOM = 24;
 
 export type ZoomStep = 1 | 2 | 3;
 export const ZOOM_STEPS: readonly ZoomStep[] = [1, 2, 3];
@@ -53,15 +53,16 @@ export interface Bounds {
 /**
  * World-pixel bounds of the ISLAND, not of the grid.
  *
- * Using the grid lets the player pan into the empty void corners of the square,
- * which look broken. The island is a diamond inscribed in the grid, so its
- * extremes are the four grid corners projected.
+ * Using the grid lets the player pan into empty void, and worse, the default
+ * camera frames a box far larger than the district so the town sits small and
+ * off-centre. The island occupies roughly the middle 34 of 48 tiles.
  */
 export function worldBounds(): Bounds {
-  const minX = isoX(0, GRID_H - 1) - TILE_W / 2;
-  const maxX = isoX(GRID_W - 1, 0) + TILE_W / 2;
-  const minY = isoY(0, 0) - TILE_H / 2 - HEAD_ROOM;
-  const maxY = isoY(GRID_W - 1, GRID_H - 1) + TILE_H / 2 + FOOT_ROOM;
+  const { min, max } = islandTileBounds();
+  const minX = isoX(min, max) - TILE_W / 2;
+  const maxX = isoX(max, min) + TILE_W / 2;
+  const minY = isoY(min, min) - TILE_H / 2 - HEAD_ROOM;
+  const maxY = isoY(max, max) + TILE_H / 2 + FOOT_ROOM;
   return { minX, maxX, minY, maxY, w: maxX - minX, h: maxY - minY };
 }
 

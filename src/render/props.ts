@@ -4,7 +4,8 @@
 // unbroken green looks like a placeholder, and a district with no trees on its
 // fringe looks like it was stamped rather than grown.
 import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_STRUCT } from './iso';
-import { PAL, shadeHex } from './palette';
+import { PAL, shadeHex, gradeHex } from './palette';
+import type { Variant } from './palette';
 import { mix } from '../sim/rng';
 import { Tile } from '../sim/types';
 import type { District } from '../sim/district';
@@ -23,17 +24,17 @@ const CANOPY = [PAL.leaf1, PAL.leaf2, PAL.leaf3, PAL.moss1, PAL.moss2];
 
 /** A lime tree, eighteen pixels tall. Three overlapping canopy blobs so the
  *  silhouette is lumpy rather than a circle. */
-function bakeTree(salt: number): HTMLCanvasElement {
+function bakeTree(salt: number, variant: Variant): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = 20;
   c.height = 26;
   const ctx = c.getContext('2d') as CanvasRenderingContext2D;
   ctx.imageSmoothingEnabled = false;
-  const lit = CANOPY[salt % CANOPY.length];
+  const lit = gradeHex(CANOPY[salt % CANOPY.length], variant);
   const shade = shadeHex(lit, -0.3);
   const dark = shadeHex(lit, -0.5);
 
-  ctx.fillStyle = PAL.wood0;
+  ctx.fillStyle = gradeHex(PAL.wood0, variant);
   ctx.fillRect(9, 16, 2, 8);
 
   const blobs: [number, number, number][] = [
@@ -67,7 +68,7 @@ function bakeTree(salt: number): HTMLCanvasElement {
  * Deterministic from (seed, cell), never Math.random, so a district looks the
  * same every time it is loaded and the screenshot goldens hold.
  */
-export function buildProps(district: District, seed: number): Prop[] {
+export function buildProps(district: District, seed: number, variant: Variant): Prop[] {
   const cache = new Map<number, HTMLCanvasElement>();
   const out: Prop[] = [];
   for (let ty = 0; ty < district.height; ty++) {
@@ -82,11 +83,11 @@ export function buildProps(district: District, seed: number): Prop[] {
       const want = t === Tile.Park ? 46 : 16;
       if (roll >= want) continue;
       const salt = mix(seed, 52, tx, ty);
-      const variant = salt % CANOPY.length;
-      let sprite = cache.get(variant);
+      const canopy = salt % CANOPY.length;
+      let sprite = cache.get(canopy);
       if (!sprite) {
-        sprite = bakeTree(variant);
-        cache.set(variant, sprite);
+        sprite = bakeTree(canopy, variant);
+        cache.set(canopy, sprite);
       }
       // Jitter inside the cell, so trees do not sit on a lattice.
       // Unsigned shifts: mix() is unsigned 32-bit and `>>` would go negative.

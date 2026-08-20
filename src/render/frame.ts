@@ -1,18 +1,15 @@
 // The frame orchestrator, and the draw-call budget.
 //
 // Layer order on the single world canvas:
-//   a. ground bitmap        1 blit
-//   b. main pass            statics and agents merged in depth order, culled
-//   c. lamps                additive glow, budgeted
-//   d. selection reticle
+//   a. ground bitmap        1 blit, with the lamp pools already baked into it
+//   b. main pass            statics, props and agents merged in depth order
+//   c. selection reticle
 //
 // The whole point of the flatten-per-building compositor is that b is one
 // drawImage per visible object from a small number of source canvases, so the
 // browser batches it. If this ever needs WebGL, the Renderer interface is where
 // it slots in, but at two hundred buildings on Canvas2D it does not.
 import type { City } from '../sim/city';
-import { isLampHour } from '../sim/clock';
-import { serviceAt } from '../sim/networks';
 import { PAL } from './palette';
 import type { Camera } from './iso';
 import { TILE_W, TILE_H, clampDpr, screenToWorld } from './iso';
@@ -33,7 +30,6 @@ export interface FrameStats {
 }
 
 const CALL_BUDGET = 1200;
-const LAMP_BUDGET = 72;
 
 const agentPool: AgentDraw[] = [];
 
@@ -111,47 +107,8 @@ export function drawFrame(
     }
   }
 
-  if (isLampHour(city.tick)) stats.calls += drawLamps(ctx, city, tl, br);
-
   if (import.meta.env.DEV && stats.calls > CALL_BUDGET) {
     console.warn(`draw-call budget breached: ${stats.calls} > ${CALL_BUDGET}`);
   }
   return stats;
-}
-
-/**
- * Lamp glow, additive.
- *
- * Deliberately hard-edged concentric rings rather than createRadialGradient.
- * Smooth bloom over pixel art is the single most common tell of an indie iso game
- * with modern lighting bolted on, and the baked atlas will replace these rings
- * with dithered glow sprites made of the same chunky pixels as everything else.
- */
-function drawLamps(
-  ctx: CanvasRenderingContext2D, city: City,
-  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
-): number {
-  const prev = ctx.globalCompositeOperation;
-  ctx.globalCompositeOperation = 'lighter';
-  let drawn = 0;
-  for (const b of city.buildings) {
-    if (drawn >= LAMP_BUDGET) break;
-    if (!b.gasSeg || b.gasSeg < 0) continue;
-    if (!serviceAt(city.networks.gas, b.id)) continue;
-    if (b.doorNode < 0) continue;
-    const wx = (b.doorX - b.doorY) * (TILE_W / 2);
-    const wy = (b.doorX + b.doorY) * (TILE_H / 2);
-    if (wx < tl.wx || wx > br.wx || wy < tl.wy || wy > br.wy) continue;
-    // Flicker is a three-state swap on an integer hash, not a sine on alpha.
-    // Gas mantles flutter, and the chunkiness is period-correct.
-    const flick = (b.id * 2654435761 + Math.floor(city.tick / 3)) % 3;
-    ctx.fillStyle = flick === 0 ? PAL.gas0 : PAL.gas1;
-    ctx.globalAlpha = flick === 2 ? 0.1 : 0.16;
-    ctx.fillRect(Math.round(wx) - 7, Math.round(wy) - 5, 14, 9);
-    ctx.fillRect(Math.round(wx) - 4, Math.round(wy) - 8, 8, 15);
-    drawn += 2;
-  }
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = prev;
-  return drawn;
 }

@@ -17,8 +17,11 @@ import { DEFS } from '../sim/buildings';
 import { cellKey, insideIsland } from '../sim/district';
 import { Tile } from '../sim/types';
 import type { TileCode } from '../sim/types';
-import { PAL, shadeHex, hexToRgb, rgbToHex } from './palette';
-import { TILE_H, HEAD_ROOM, isoX, isoY, worldBounds, depthKey, LAYER_STRUCT } from './iso';
+import { PAL, shadeHex, hexToRgb, rgbToHex, gradeHex, variantFor } from './palette';
+import type { Variant } from './palette';
+import { minuteOfDay } from '../sim/clock';
+import { TILE_W, TILE_H, HEAD_ROOM, isoX, isoY, worldBounds, depthKey, LAYER_STRUCT } from './iso';
+import { serviceAt } from '../sim/networks';
 import { drawIsoDiamond } from './fallback';
 import { drawHouse, houseBounds } from './house';
 import type { HouseSpec, HouseSkin, RoofShape } from './house';
@@ -39,6 +42,9 @@ export interface StaticSprite {
 }
 
 export interface Scene {
+  /** Which lighting variant this scene was baked at. The compositor rebakes when
+   *  it changes, which is a handful of times a day, never per frame. */
+  variant: Variant;
   ground: HTMLCanvasElement;
   props: Prop[];
   idBuffer: HTMLCanvasElement;
@@ -86,7 +92,10 @@ const FAMILY: Partial<Record<string, Family>> = {
   dispensary: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream2, PAL.cream1], shape: 'gable' },
   newspaper: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.cream1, PAL.cream0], shape: 'gable' },
   constabulary: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone2, PAL.stone1], shape: 'gable' },
-  mast: { roof: [PAL.gold, PAL.brass2, PAL.gold], wall: [PAL.verd2, PAL.verd1], shape: 'pyramid', trim: PAL.gold },
+  // Was a solid gold pyramid, which at zoom 1 was by far the loudest thing on the
+  // map and read as a circus tent. Gold is under half a percent of pixels by
+  // design; spending the entire budget on one roof wastes it.
+  mast: { roof: [PAL.verd2, PAL.verd1, PAL.gold], wall: [PAL.verd2, PAL.verd1], shape: 'pyramid', trim: PAL.gold },
 
   mill: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.brick1, PAL.brick0], shape: 'gable' },
   foundry: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gable' },
@@ -94,7 +103,8 @@ const FAMILY: Partial<Record<string, Family>> = {
   tramdepot: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.brick1, PAL.brick0], shape: 'gable' },
   pumphouse: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.brick1, PAL.brick0], shape: 'hip' },
   workshop: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gable' },
-  warehouse: { roof: [PAL.thatch1, PAL.thatch0, PAL.thatch2], wall: [PAL.wood2, PAL.wood1], shape: 'gable' },
+  // Same defect: thatch on timber was 14 luma apart.
+  warehouse: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.wood2, PAL.wood1], shape: 'gable' },
   wharfshed: { roof: [PAL.thatch2, PAL.thatch1, PAL.thatch2], wall: [PAL.wood2, PAL.wood1], shape: 'gable' },
 
   pub: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.buntRed, PAL.brick1], shape: 'gable', trim: PAL.brass2 },
@@ -102,7 +112,9 @@ const FAMILY: Partial<Record<string, Family>> = {
   villa: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream3, PAL.cream1], shape: 'hip', trim: PAL.brass2 },
   terrace: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.cream2, PAL.cream1], shape: 'gable' },
   tenement: { roof: [PAL.slate1, PAL.slate0, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gable' },
-  lodging: { roof: [PAL.thatch1, PAL.thatch0, PAL.thatch2], wall: [PAL.ochre1, PAL.ochre0], shape: 'gable' },
+  // Was thatch1 on ochre1: 16 luma apart, so roof and wall were the same colour
+  // across 62 buildings. Lead slate against ochre is 60 apart and the row reads.
+  lodging: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.ochre1, PAL.ochre0], shape: 'gable' },
   courtdwelling: { roof: [PAL.soot3, PAL.soot2, PAL.soot3], wall: [PAL.brick1, PAL.brick0], shape: 'gable' },
 };
 
@@ -141,7 +153,7 @@ function pickFrom<T>(table: readonly T[], salt: number, shift = 0): T {
   return table[i];
 }
 
-function specFor(city: City, b: Building, grime: number): HouseSpec {
+function specFor(city: City, b: Building, grime: number, variant: Variant): HouseSpec {
   const fam = FAMILY[b.kind] ?? DEFAULT_FAMILY;
   const def = DEFS[b.kind];
   const salt = mix(city.seed, 41, b.id);
@@ -152,12 +164,12 @@ function specFor(city: City, b: Building, grime: number): HouseSpec {
   // Soot lands on WALLS. Shading roofs by grime as well drove a third of the
   // district to near-black, and a town seen from above is mostly roof: lose the
   // roof colour and you lose the town.
-  const wash = (c: string, k: number) => shadeHex(shadeHex(c, k), -soot);
+  const wash = (c: string, k: number) => gradeHex(shadeHex(shadeHex(c, k), -soot), variant);
   // Plus a hard luminance floor on every roof. Family colours, washes, soot and
   // neglect all stack, and any two of them together can push a roof to black. A
   // black roof is a hole in the town, and enough of them and the district reads
   // as a burnt-out lot rather than a working city.
-  const roofWashOf = (c: string, k: number) => liftToFloor(shadeHex(c, k - soot * 0.25), 62);
+  const roofWashOf = (c: string, k: number) => gradeHex(liftToFloor(shadeHex(c, k - soot * 0.25), 62), variant);
 
   // A neglected building loses its highlights; a kept-up one keeps its trim.
   const tired = b.fabric < 420 ? -0.08 : 0;
@@ -167,21 +179,28 @@ function specFor(city: City, b: Building, grime: number): HouseSpec {
     wallShade: wash(fam.wall[1], wallWash + tired - 0.06),
     // Gable ends carry the same floor as the roof, for the same reason: they are
     // large and they face the camera.
-    gableLit: liftToFloor(wash(fam.wall[0], wallWash + tired - 0.04), 58),
-    gableShade: liftToFloor(wash(fam.wall[1], wallWash + tired - 0.1), 48),
+    gableLit: gradeHex(liftToFloor(shadeHex(shadeHex(fam.wall[0], wallWash + tired - 0.04), -soot), 58), variant),
+    gableShade: gradeHex(liftToFloor(shadeHex(shadeHex(fam.wall[1], wallWash + tired - 0.1), -soot), 48), variant),
     roofLit: roofWashOf(fam.roof[0], roofWash),
     roofShade: roofWashOf(fam.roof[1], roofWash),
     roofRidge: roofWashOf(fam.roof[2], roofWash + 0.1),
-    trim: b.facade > 780 ? fam.trim : undefined,
-    window: PAL.darkWindow,
-    outline: PAL.soot0,
+    trim: b.facade > 780 ? gradeHex(fam.trim ?? PAL.gold, variant, true) : undefined,
+    // Lit windows at dusk and after. A gaslight-era city with no lit window in it
+    // was the single most conspicuous absence in the build: variantFor and the
+    // palette entries both existed and neither had ever been called.
+    window: variant === 'day' ? gradeHex(PAL.darkWindow, variant) : PAL.litWindow,
+    windowLit: variant !== 'day',
+    outline: gradeHex(PAL.soot0, variant),
   };
 
   const storeys = def.storeys;
   const wallH = Math.max(7, Math.round(storeys * 8 + 2));
+  // A town seen from above is a field of ROOFS. At 0.3 of the wall height the
+  // roofs were small hats on tall walls, and the tan wall hue dominated the
+  // frame. Around 0.65 is where the silhouette starts carrying the image.
   const roofH = fam.shape === 'flat' ? 3
-    : fam.shape === 'pyramid' ? Math.round(14 + storeys * 3)
-      : Math.round(5 + Math.min(b.w, b.d) * 2 + (salt % 3));
+    : fam.shape === 'pyramid' ? Math.round(16 + storeys * 3)
+      : Math.max(8, Math.round(wallH * 0.65 + (salt % 3)));
 
   return {
     w: b.w, d: b.d, wallH, roofH,
@@ -211,7 +230,7 @@ function ctxOf(c: HTMLCanvasElement, readFrequently = false): CanvasRenderingCon
 
 /** Build everything static. Called at startup and whenever a building's look
  *  changes (peek, fire, boarded windows), never per frame. */
-export function buildScene(city: City): Scene {
+export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay(city.tick))): Scene {
   const b = worldBounds();
   const originX = -b.minX;
   const originY = -b.minY;
@@ -234,9 +253,43 @@ export function buildScene(city: City): Scene {
         // dirtier as you walk east IS the theme, rendered.
         colour = shadeHex(colour, -Math.min(0.4, d.grime[k] / 700));
       }
-      drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), colour);
+      drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), gradeHex(colour, variant));
       textureCell(gctx, city.seed, tx, ty, tile, originX, originY);
     }
+  }
+
+  // Lamp pools are baked INTO THE GROUND, not drawn per frame over everything.
+  //
+  // The old pass ran after the whole merge walk with no depth participation and
+  // no height term, so soft cream squares floated in the middle of roofs and up
+  // walls. A street lamp lights the street: baking the pool under the buildings
+  // is both correct occlusion and free, because lamps do not move and the ground
+  // is already rebaked once per lighting variant.
+  if (variant !== 'day') {
+    gctx.globalCompositeOperation = 'lighter';
+    for (const bld of city.buildings) {
+      if (bld.gasSeg < 0 || !serviceAt(city.networks.gas, bld.id)) continue;
+      const lx = originX + isoX(bld.doorX, bld.doorY);
+      const ly = originY + isoY(bld.doorX, bld.doorY);
+      // Hard-edged concentric diamonds, not a radial gradient. Smooth bloom over
+      // flat-shaded art is the classic tell.
+      const rings: [number, number, string][] = [
+        [2.6, 0.16, PAL.gas1], [1.7, 0.13, PAL.gas1], [1.0, 0.11, PAL.gas2],
+      ];
+      for (const [scale, alpha, colour] of rings) {
+        gctx.globalAlpha = alpha;
+        gctx.fillStyle = colour;
+        gctx.beginPath();
+        gctx.moveTo(lx, ly - (TILE_H / 2) * scale);
+        gctx.lineTo(lx + (TILE_W / 2) * scale, ly);
+        gctx.lineTo(lx, ly + (TILE_H / 2) * scale);
+        gctx.lineTo(lx - (TILE_W / 2) * scale, ly);
+        gctx.closePath();
+        gctx.fill();
+      }
+    }
+    gctx.globalAlpha = 1;
+    gctx.globalCompositeOperation = 'source-over';
   }
 
   const statics: StaticSprite[] = [];
@@ -247,13 +300,13 @@ export function buildScene(city: City): Scene {
 
   const ordered = city.buildings.slice().sort((p, q) => depthOf(p) - depthOf(q));
   for (const bld of ordered) {
-    const s = flattenBuilding(city, bld);
+    const s = flattenBuilding(city, bld, variant);
     statics.push(s);
     stampId(idCtx, sctx, scratch, s, bld.id, originX, originY);
   }
   statics.sort((p, q) => p.depth - q.depth);
 
-  return { ground, props: buildProps(d, city.seed), idBuffer, idCtx, statics, originX, originY };
+  return { variant, ground, props: buildProps(d, city.seed, variant), idBuffer, idCtx, statics, originX, originY };
 }
 
 function depthOf(b: Building): number {
@@ -261,12 +314,14 @@ function depthOf(b: Building): number {
 }
 
 export function debugSkin(city: City, b: Building) {
-  return specFor(city, b, city.district.grime[cellKey(city.district, b.ox, b.oy)]);
+  return specFor(city, b, city.district.grime[cellKey(city.district, b.ox, b.oy)], variantFor(minuteOfDay(city.tick)));
 }
 
-export function flattenBuilding(city: City, b: Building): StaticSprite {
+export function flattenBuilding(
+  city: City, b: Building, variant: Variant = variantFor(minuteOfDay(city.tick)),
+): StaticSprite {
   const grime = city.district.grime[cellKey(city.district, b.ox, b.oy)];
-  const spec = specFor(city, b, grime);
+  const spec = specFor(city, b, grime, variant);
   const bounds = houseBounds(spec);
   const pad = 2;
   const w = bounds.maxX - bounds.minX + pad * 2;
