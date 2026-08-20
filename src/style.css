@@ -1,0 +1,326 @@
+/*
+  Verdigris UI shell.
+
+  The panels are HTML and CSS over the canvas, not drawn in it. That buys real
+  text semantics, screen readers, prefers-reduced-motion and flow layout for the
+  variable-length INSIDE list, all for nothing. In-canvas UI is the trap here.
+
+  --px is the pixel scale. It NEVER drops below 2 where text lives: the pixel
+  fonts are designed at 8px, and 8 CSS px is not readable. If a panel will not
+  fit, the content shrinks (fewer INSIDE rows), never the type.
+
+  Contrast, measured against parch2 #d8c9a3:
+    ink      #08090c  12.1:1  AAA
+    brass0   #4a3411   7.2:1  AAA
+    brassInk #6b4a12   4.9:1  AA
+    brass1   #8a6318   3.3:1  FAILS. Emissive and dark-background use only.
+*/
+
+:root {
+  --px: 2;
+
+  --void: #0b0e12;
+  --ink: #08090c;
+  --parch0: #6b5c42;
+  --parch1: #a8946c;
+  --parch2: #d8c9a3;
+  --parch3: #efe4c6;
+  --brass0: #4a3411;
+  --brass-ink: #6b4a12;
+  --brass2: #c9942c;
+  --brass3: #f0c552;
+  --gold: #ffe79a;
+  --verd1: #1f5a48;
+  --verd2: #3d8f74;
+  --gas2: #ffd98a;
+  --loss: #8c2f34;
+
+  --fs-small: calc(8px * var(--px));
+  --fs-body: calc(9px * var(--px));
+  --fs-title: calc(13px * var(--px));
+  --gap: calc(4px * var(--px));
+
+  --font-instrument: ui-monospace, "Departure Mono", "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --font-label: ui-monospace, "Silkscreen", "SF Mono", Menlo, Consolas, monospace;
+}
+
+html[data-contrast="high"] {
+  --parch2: #efe4c6;
+  --brass-ink: #3a2708;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--void);
+  color: var(--parch2);
+  font-family: var(--font-label);
+  overflow: hidden;
+  -webkit-font-smoothing: none;
+  overscroll-behavior: none;
+}
+
+#app { position: fixed; inset: 0; }
+
+#world {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+#shell {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The plate. M6 replaces this border with a 9-slice border-image using repeat
+   (never stretch, which destroys the pixel grid). Until then a flat brass rule on
+   parchment gets most of the way there. */
+.plate {
+  position: absolute;
+  pointer-events: auto;
+  background: var(--parch2);
+  color: var(--ink);
+  border: calc(2px * var(--px)) solid var(--brass0);
+  outline: 1px solid var(--brass-ink);
+  outline-offset: calc(-4px * var(--px));
+  padding: calc(5px * var(--px)) calc(7px * var(--px));
+  box-shadow: calc(2px * var(--px)) calc(2px * var(--px)) 0 rgba(8, 9, 12, 0.65);
+  font-family: var(--font-label);
+}
+
+.plate h1, .plate h2 {
+  margin: 0;
+  font-weight: normal;
+  letter-spacing: 0.08em;
+}
+
+/* Title plate */
+#titleplate { top: var(--gap); left: var(--gap); min-width: calc(96px * var(--px)); }
+#titleplate h1 {
+  font-family: var(--font-instrument);
+  font-size: var(--fs-title);
+  color: var(--brass0);
+  letter-spacing: 0.22em;
+  text-shadow: 1px 1px 0 rgba(216, 201, 163, 0.9);
+}
+#titleplate .rule {
+  height: 1px;
+  background: var(--brass-ink);
+  margin: calc(3px * var(--px)) 0;
+  opacity: 0.6;
+}
+#titleplate .clock {
+  font-family: var(--font-instrument);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+#titleplate .counts {
+  font-size: var(--fs-small);
+  color: var(--brass-ink);
+  letter-spacing: 0.06em;
+}
+#titleplate .budget {
+  margin-top: calc(3px * var(--px));
+  font-size: var(--fs-small);
+  color: var(--brass-ink);
+  letter-spacing: 0.14em;
+  display: flex;
+  align-items: center;
+  gap: calc(3px * var(--px));
+}
+.token {
+  display: inline-block;
+  width: calc(4px * var(--px));
+  height: calc(4px * var(--px));
+  background: var(--brass0);
+  border: 1px solid var(--brass-ink);
+}
+.token.spent { background: transparent; opacity: 0.45; }
+
+/* Inspector */
+#inspector {
+  max-width: calc(150px * var(--px));
+  min-width: calc(110px * var(--px));
+}
+#inspector .name {
+  font-family: var(--font-instrument);
+  font-size: var(--fs-body);
+  color: var(--brass0);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+#inspector .district {
+  font-size: var(--fs-small);
+  color: var(--verd1);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+#inspector .prose {
+  margin: calc(4px * var(--px)) 0;
+  color: var(--ink);
+}
+#inspector .heading {
+  font-size: var(--fs-small);
+  color: var(--brass-ink);
+  letter-spacing: 0.16em;
+}
+#inspector ul { list-style: none; margin: calc(2px * var(--px)) 0 0; padding: 0; }
+#inspector li { margin: 0; }
+#inspector li button {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+  padding: calc(1px * var(--px)) 0;
+}
+#inspector li button::before { content: "\00B7  "; color: var(--brass-ink); }
+#inspector li button:hover, #inspector li button:focus-visible {
+  background: var(--parch3);
+  outline: 1px solid var(--verd1);
+}
+#inspector .more { font-size: var(--fs-small); color: var(--brass-ink); font-style: italic; }
+#inspector .close {
+  all: unset;
+  position: absolute;
+  top: calc(2px * var(--px));
+  right: calc(4px * var(--px));
+  cursor: pointer;
+  color: var(--brass-ink);
+}
+
+/* Zoom stepper */
+#zoomstepper {
+  bottom: var(--gap);
+  left: var(--gap);
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--px));
+}
+#zoomstepper .label { font-size: var(--fs-small); letter-spacing: 0.18em; color: var(--brass-ink); }
+.pip {
+  display: inline-block;
+  width: calc(3px * var(--px));
+  height: calc(3px * var(--px));
+  background: var(--brass0);
+}
+.pip.off { opacity: 0.25; }
+
+/* Time scrubber */
+#scrubber {
+  bottom: var(--gap);
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+#daybar {
+  display: block;
+  image-rendering: pixelated;
+  border: 1px solid var(--brass-ink);
+  cursor: pointer;
+}
+#scrubber .readout {
+  font-family: var(--font-instrument);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-small);
+  letter-spacing: 0.12em;
+  color: var(--brass0);
+  margin-top: calc(2px * var(--px));
+}
+#scrubber .transport { display: flex; gap: calc(3px * var(--px)); justify-content: center; margin-top: calc(3px * var(--px)); }
+
+button.brass {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-instrument);
+  font-size: var(--fs-small);
+  color: var(--ink);
+  background: var(--parch3);
+  border: 1px solid var(--brass-ink);
+  padding: calc(1px * var(--px)) calc(4px * var(--px));
+  min-width: calc(11px * var(--px));
+  text-align: center;
+}
+button.brass[aria-pressed="true"] { background: var(--brass2); }
+button.brass:focus-visible { outline: calc(1px * var(--px)) solid var(--verd2); outline-offset: 1px; }
+button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+
+/* Verb menu */
+#verbs { top: var(--gap); right: var(--gap); display: flex; flex-direction: column; gap: calc(3px * var(--px)); background: none; border: none; box-shadow: none; outline: none; padding: 0; }
+#verbs button {
+  all: unset;
+  cursor: pointer;
+  pointer-events: auto;
+  background: var(--parch2);
+  color: var(--ink);
+  border: calc(2px * var(--px)) solid var(--brass0);
+  padding: calc(3px * var(--px)) calc(6px * var(--px));
+  font-size: var(--fs-small);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  gap: calc(8px * var(--px));
+  box-shadow: calc(2px * var(--px)) calc(2px * var(--px)) 0 rgba(8, 9, 12, 0.65);
+}
+#verbs button .key {
+  font-family: var(--font-instrument);
+  color: var(--brass-ink);
+  border: 1px solid var(--brass-ink);
+  padding: 0 calc(2px * var(--px));
+}
+#verbs button[aria-disabled="true"] { color: #5a5342; letter-spacing: 0.2em; }
+#verbs button[aria-disabled="true"] .key { display: none; }
+#verbs button:focus-visible { outline: calc(1px * var(--px)) solid var(--gas2); outline-offset: calc(1px * var(--px)); }
+
+/* Ticker */
+#ticker {
+  position: absolute;
+  right: var(--gap);
+  top: calc(90px * var(--px));
+  width: calc(130px * var(--px));
+  text-align: right;
+  pointer-events: none;
+  font-size: var(--fs-small);
+  color: var(--parch1);
+  text-shadow: 1px 1px 0 var(--ink);
+}
+#ticker div { margin-top: calc(2px * var(--px)); }
+#ticker div.loss { color: #c98a86; }
+#ticker div.gain { color: var(--verd2); }
+
+@media (max-width: 720px) {
+  #inspector { left: var(--gap) !important; right: var(--gap); top: auto !important; bottom: calc(52px * var(--px)); max-width: none; }
+  #ticker { display: none; }
+}
+
+@media (pointer: coarse) {
+  button.brass, #verbs button { min-height: 44px; display: flex; align-items: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "verdigris",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "prebuild": "node qa/atlascheck.mjs",
+    "build": "tsc && vite build",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "bake": "python3 art/bake.py && python3 art/preview.py",
+    "qa:capture": "node qa/capture.mjs",
+    "qa:compare": "node qa/compare.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1",
+    "vitest": "^4.1.10"
+  }
+}
