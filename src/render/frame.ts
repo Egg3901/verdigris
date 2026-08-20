@@ -62,13 +62,28 @@ export function drawFrame(
   const agentCount = collectAgents(city, fracMin, agentPool);
   stats.agents = agentCount;
 
-  // Merge-walk the pre-sorted statics against the freshly sorted agents.
+  // Merge-walk three pre-sorted lists: statics, props and the freshly sorted
+  // agents. All three share one depth key, so a soul walks behind a tree on the
+  // far side of the street and in front of one on the near side, for free.
   let ai = 0;
   let si = 0;
+  let pi = 0;
   const statics = scene.statics;
-  while (si < statics.length || ai < agentCount) {
-    const useStatic = ai >= agentCount
-      || (si < statics.length && statics[si].depth <= agentPool[ai].depth);
+  const props = scene.props;
+  while (si < statics.length || ai < agentCount || pi < props.length) {
+    const sDepth = si < statics.length ? statics[si].depth : Infinity;
+    const pDepth = pi < props.length ? props[pi].depth : Infinity;
+    const aDepth = ai < agentCount ? agentPool[ai].depth : Infinity;
+    if (pDepth <= sDepth && pDepth <= aDepth) {
+      const p = props[pi++];
+      const px = p.wx - p.ax;
+      const py = p.wy - p.ay;
+      if (px > br.wx || py > br.wy || px + p.sprite.width < tl.wx || py + p.sprite.height < tl.wy) continue;
+      ctx.drawImage(p.sprite, Math.round(px), Math.round(py));
+      stats.calls++;
+      continue;
+    }
+    const useStatic = sDepth <= aDepth;
     if (useStatic) {
       const s = statics[si++];
       const x = s.wx - s.ax;

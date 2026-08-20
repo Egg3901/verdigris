@@ -6,7 +6,7 @@
 import { CAPS, NodeKind, Tile } from './types';
 import type { BuildingId, NodeId } from './types';
 import type { District } from './district';
-import { cellKey, dumpDistrict, inBounds, newDistrict, tileAt } from './district';
+import { cellKey, dumpDistrict, inBounds, insideIsland, newDistrict, tileAt } from './district';
 import { carveRiver, layBanks } from './gen/river';
 import type { RiverPlan } from './gen/river';
 import { layStreets } from './gen/streets';
@@ -100,6 +100,17 @@ export function generateWorld(seedStr: string): World {
       firmId: -1, householdIds: [], occupants: [],
       grudges: [], lastIncidentTick: -1, heat: 0, peeked: false,
     });
+  }
+
+  // The island fringe is grass, not a hole. Anything inside the diamond that no
+  // stage claimed becomes park, which is what gives the district a green edge
+  // instead of a hard cut against the void.
+  for (let y = 0; y < district.height; y++) {
+    for (let x = 0; x < district.width; x++) {
+      if (!insideIsland(district, x, y)) continue;
+      const k = cellKey(district, x, y);
+      if (district.tile[k] === Tile.Void) district.tile[k] = Tile.Park;
+    }
   }
 
   // Plots nobody built on are back gardens and waste ground, not holes.

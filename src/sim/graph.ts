@@ -36,7 +36,10 @@ const DX = [1, -1, 0, 0];
 const DY = [0, 0, 1, -1];
 
 const PAVED = new Uint8Array(16);
-for (const t of [Tile.Street, Tile.Alley, Tile.Embankment, Tile.Wharf, Tile.Bridge, Tile.Square, Tile.Court, Tile.Park, Tile.Rail]) {
+// Park is deliberately absent, as Yard is. The fringe grass around the island is
+// scenery, not route: including it hangs marooned nodes off the graph and fails
+// the connectivity invariant that next-hop, schedules and the tram all assume.
+for (const t of [Tile.Street, Tile.Alley, Tile.Embankment, Tile.Wharf, Tile.Bridge, Tile.Square, Tile.Court, Tile.Rail]) {
   PAVED[t] = 1;
 }
 

@@ -7,7 +7,7 @@ import './style.css';
 import { newCity, tickCity, warp, hashWorld, soulsOutdoors } from './sim/city';
 import type { City } from './sim/city';
 import { MAX_TICKS_PER_FRAME, MIN_PER_DAY, SPEEDS, minuteOfDay } from './sim/clock';
-import { buildScene, refreshBuilding } from './render/scene';
+import { buildScene, refreshBuilding, debugSkin } from './render/scene';
 import type { Scene } from './render/scene';
 import { drawFrame } from './render/frame';
 import type { Selection } from './render/frame';
@@ -273,6 +273,7 @@ interface QaHook {
   hash: () => number;
   zoom: (step: ZoomStep) => void;
   select: (kind: 'building' | 'soul', id: number) => void;
+  debugSkin: (id: number) => unknown;
   state: () => { tick: number; outdoors: number; buildings: number; souls: number };
 }
 
@@ -287,6 +288,7 @@ interface QaHook {
     sel.buildingId = kind === 'building' ? id : -1;
     sel.soulId = kind === 'soul' ? id : -1;
   },
+  debugSkin: (id: number) => debugSkin(city, city.buildings[id]),
   state: () => ({
     tick: city.tick,
     outdoors: soulsOutdoors(city),

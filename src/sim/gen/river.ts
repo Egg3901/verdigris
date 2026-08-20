@@ -34,9 +34,13 @@ export function carveRiver(d: District, seed: number): RiverPlan {
     const n = fbm2(seed + phase, Stream.GenRiver, x * 0.09, 4.5, 3);
     const y = Math.round(baseY + (n - 0.5) * 2 * amp);
     const wob = fbm2(seed + 991, Stream.GenRiver, x * 0.16, 11.25, 2);
-    const hw = Math.round(2 + wob * 1.6);
+    const hw = Math.round(1 + wob * 1.8);
     centre[x] = y;
-    halfWidth[x] = Math.max(2, Math.min(3, hw));
+    // One to two cells of channel, not three. A river that takes a third of the
+    // island leaves a district too sparse to read as a town: the reference is a
+    // packed field of roofs with water at the edge of it, not a waterway with
+    // some houses either side.
+    halfWidth[x] = Math.max(1, Math.min(2, hw));
   }
 
   for (let x = 0; x < d.width; x++) {

@@ -16,21 +16,57 @@
 // copy is asserted against this one by a test, so there is one source of truth.
 export const PAL = {
   // void and background
-  void: '#0b0e12',
-  voidhi: '#141a21',
+  void: '#0d0f13',
+  voidhi: '#161b22',
 
-  // white stone: the civic pride
-  stone0: '#3a3f47',
-  stone1: '#6d717a',
-  stone2: '#a8a99f',
-  stone3: '#d9d6c4',
-  stone4: '#f2eeda',
+  // ROOFS. The single most important group in the game: a town seen from above
+  // is a field of roofs, and the silhouette plus the colour of those roofs is
+  // most of what the eye reads. Saturated and warm, in four families that carry
+  // the district's social geography.
+  tileRed0: '#5e2418',
+  tileRed1: '#8f3a24',
+  tileRed2: '#b8583a',
+  tileRed3: '#d4794a',
+  slate0: '#232a3d',
+  slate1: '#3b4763',
+  slate2: '#5c6b8c',
+  moss0: '#2a3a1f',
+  moss1: '#46602f',
+  moss2: '#6b8a45',
+  thatch0: '#5a4423',
+  thatch1: '#8a6c33',
+  thatch2: '#b89a53',
 
-  // verdigris: the name of the game
+  // verdigris: the name of the game, and the civic roof
   verd0: '#123028',
   verd1: '#1f5a48',
   verd2: '#3d8f74',
   verd3: '#6fc4a2',
+
+  // WALLS. Warm cream stucco, ochre, timber and brick.
+  cream0: '#7a6a4c',
+  cream1: '#b09c72',
+  cream2: '#ddc79a',
+  cream3: '#f2e3c0',
+  ochre0: '#6b4d22',
+  ochre1: '#a5773a',
+  ochre2: '#d1a662',
+  brick0: '#40201a',
+  brick1: '#6e3527',
+  brick2: '#9c5138',
+  wood0: '#2e2015',
+  wood1: '#4f3722',
+  wood2: '#7d5b34',
+  plaster0: '#6d6a62',
+  plaster1: '#a09a8c',
+  plaster2: '#cfc7b4',
+
+  // white stone: the civic pride
+  stone0: '#3f4149',
+  stone1: '#75766f',
+  stone2: '#aeab97',
+  stone3: '#dcd5b8',
+  stone4: '#f5eeda',
 
   // brass and gold leaf
   brass0: '#4a3411',
@@ -41,63 +77,59 @@ export const PAL = {
   gold: '#ffe79a',
 
   // soot and iron: the rot
-  soot0: '#0f1114',
-  soot1: '#1e2228',
-  soot2: '#33383f',
-  soot3: '#545a63',
-
-  // brick and terracotta: the factory quarter
-  brick0: '#3b1f18',
-  brick1: '#6e3524',
-  brick2: '#a4553a',
-
-  // roofs
-  slate0: '#1c2230',
-  slate1: '#313b4d',
-  slate2: '#4e5a70',
-  lead0: '#262a2e',
-  lead1: '#414750',
-  lead2: '#656d78',
-
-  // timber
-  wood0: '#2a1d14',
-  wood1: '#4b3423',
-  wood2: '#7a5636',
+  soot0: '#111318',
+  soot1: '#22262d',
+  soot2: '#383d46',
+  soot3: '#5b616b',
 
   // bunting and awnings: the papering-over
-  buntRed: '#8c2f34',
-  buntRedHi: '#c04a48',
-  buntCream: '#e6dcc0',
-  buntBlue: '#26415f',
-  buntBlueHi: '#3c6a94',
+  buntRed: '#a8352f',
+  buntRedHi: '#d4574a',
+  buntCream: '#efe3c2',
+  buntBlue: '#2a4a6b',
+  buntBlueHi: '#4479a6',
 
   // river
-  riv0: '#101d26',
-  riv1: '#1c3644',
-  riv2: '#2f5b66',
-  rivGlint: '#7fb1ae',
+  riv0: '#132b33',
+  riv1: '#215261',
+  riv2: '#357e85',
+  rivGlint: '#8fd0c4',
+
+  // ground
+  grass0: '#28401f',
+  grass1: '#3d5f2a',
+  grass2: '#557f36',
+  grass3: '#7aa348',
+  dirt0: '#4a3823',
+  dirt1: '#6f5535',
+  dirt2: '#997c4d',
+  cobble0: '#4b4740',
+  cobble1: '#6f6a5f',
+  cobble2: '#8f8878',
 
   // vegetation
-  leaf0: '#1a2c1c',
-  leaf1: '#2f4a2a',
-  leaf2: '#4d6c34',
+  leaf0: '#1c2f18',
+  leaf1: '#33501f',
+  leaf2: '#4f7a2c',
+  leaf3: '#79a445',
 
   // light sources
   gas0: '#6b4a12',
-  gas1: '#d9a13c',
-  gas2: '#ffd98a',
+  gas1: '#e0a83f',
+  gas2: '#ffdd93',
   arc0: '#9fb8d6',
   arc1: '#e8f2ff',
-  litWindow: '#f2c46a',
-  litWindow2: '#ffe2a8',
+  litWindow: '#f6c96d',
+  litWindow2: '#ffe6ac',
+  darkWindow: '#20242e',
 
   // smoke
-  smoke0: '#23262b',
-  smoke1: '#3a3e45',
-  smoke2: '#565c66',
+  smoke0: '#262a30',
+  smoke1: '#3f444c',
+  smoke2: '#5c626d',
 
   // ink and paper: the UI plates
-  ink: '#08090c',
+  ink: '#1a1109',
   parch0: '#6b5c42',
   parch1: '#a8946c',
   parch2: '#d8c9a3',
@@ -110,7 +142,7 @@ export type PaletteKey = keyof typeof PAL;
  *  single line that sells gaslight: a computed night palette always looks like a
  *  filter, and lifting the emissives is what makes it look chosen. */
 export const EMISSIVE: readonly PaletteKey[] = [
-  'gas1', 'gas2', 'arc0', 'arc1', 'litWindow', 'litWindow2', 'gold',
+  'gas1', 'gas2', 'arc0', 'arc1', 'litWindow', 'litWindow2', 'gold', 'brass3',
 ];
 
 const EMISSIVE_SET = new Set<string>(EMISSIVE);
@@ -133,6 +165,10 @@ export const NIGHT_OVERRIDE: Partial<Record<PaletteKey, string>> = {
   stone2: '#4a5566',
   stone3: '#63708a',
   stone4: '#7e8ca6',
+  cream2: '#5d6379',
+  cream3: '#767d95',
+  tileRed1: '#3d2a34',
+  tileRed2: '#54394a',
   verd2: '#1f4a44',
   verd3: '#2f6d63',
   gold: '#ffe0a0',
@@ -147,7 +183,15 @@ export function hexToRgb(hex: string): [number, number, number] {
 }
 
 export function rgbToHex(r: number, g: number, b: number): string {
-  const c = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+  // NaN is coerced to 0 rather than allowed through. An unguarded NaN here emits
+  // "#NaNNaNNaN", which is not a parse error: assigning it to ctx.fillStyle is
+  // silently IGNORED, the previous fill is kept, and on a fresh canvas that is
+  // black. A third of the district rendered as black holes before this line
+  // existed, and nothing anywhere reported an error.
+  const c = (n: number) => {
+    const v = Number.isFinite(n) ? n : 0;
+    return Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  };
   return `#${c(r)}${c(g)}${c(b)}`;
 }
 

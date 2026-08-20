@@ -23,8 +23,8 @@ export interface AgentDraw {
 
 // Two colourways per silhouette, chosen by id. Enough that a crowd does not read
 // as one person repeated, cheap enough to cost nothing.
-const COATS = [PAL.soot1, PAL.wood1, PAL.buntBlue, PAL.brick0, PAL.verd1, PAL.stone0];
-const HATS = [PAL.soot0, PAL.brass0, PAL.stone1, PAL.buntRed, PAL.lead0, PAL.wood0];
+const COATS = [PAL.soot1, PAL.wood1, PAL.buntBlue, PAL.brick0, PAL.verd1, PAL.ochre0];
+const HATS = [PAL.soot0, PAL.brass0, PAL.stone1, PAL.buntRed, PAL.slate0, PAL.wood0];
 
 function coatOf(s: Soul): string {
   if (s.trade === 'constable') return PAL.buntBlue;

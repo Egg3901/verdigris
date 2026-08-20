@@ -46,7 +46,7 @@ export type TileCode = (typeof Tile)[keyof typeof Tile];
  *  4x4 landmark from sorting in front of a soul standing beside it. */
 export const WALKABLE: readonly TileCode[] = [
   Tile.Wharf, Tile.Embankment, Tile.Street, Tile.Alley, Tile.Rail,
-  Tile.Court, Tile.Square, Tile.Park, Tile.Bridge,
+  Tile.Court, Tile.Square, Tile.Bridge,
 ];
 
 export type BuildingKind =

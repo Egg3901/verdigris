@@ -210,9 +210,14 @@ export function subdividePlots(d: District, seed: number, blocks: Block[]): Plot
   for (const p of plots) {
     for (const k of p.cells) {
       d.plotId[k] = p.id;
-      if (tileAt(d, k % d.width, (k - (k % d.width)) / d.width) === Tile.Void) {
-        setTile(d, k % d.width, (k - (k % d.width)) / d.width, p.court ? Tile.Court : Tile.Plot);
-      }
+      // A plot is always Tile.Plot, court dwellings included. Only the court
+      // MOUTH is Tile.Court. Tiling a dwelling's footprint as walkable court put
+      // graph nodes inside buildings, and when the mouth was later paved over the
+      // node was left marooned: a connectivity failure with a three-stage
+      // causal chain behind it.
+      const px = k % d.width;
+      const py = (k - px) / d.width;
+      if (tileAt(d, px, py) === Tile.Void) setTile(d, px, py, Tile.Plot);
     }
   }
   for (let y = 0; y < d.height; y++) {
