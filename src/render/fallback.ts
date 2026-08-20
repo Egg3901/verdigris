@@ -7,6 +7,7 @@
 // contract are all built against these boxes, so when the real atlas lands it
 // drops in behind an unchanged blit() and the town changes in one commit.
 import { TILE_W, TILE_H, isoX, isoY } from './iso';
+import { fillPolyHard, lineHard } from './raster';
 
 export interface BoxColours {
   top: string;
@@ -26,10 +27,20 @@ export function isoDiamondPath(ctx: CanvasRenderingContext2D, cx: number, cy: nu
   ctx.closePath();
 }
 
+/** The ground diamond, scanline filled.
+ *
+ *  The comment on isoDiamondPath above has always said "never a polygon fill: the
+ *  shape has to be byte-identical every time or the ground shimmers", and then
+ *  this function did exactly that. Antialiased diamond edges left a semi
+ *  transparent seam between every pair of adjacent cells, which at magnification
+ *  read as a visible lattice of lozenges across every street. */
 export function drawIsoDiamond(ctx: CanvasRenderingContext2D, cx: number, cy: number, fill: string): void {
-  isoDiamondPath(ctx, cx, cy);
-  ctx.fillStyle = fill;
-  ctx.fill();
+  fillPolyHard(ctx, [
+    { x: cx, y: cy - TILE_H / 2 },
+    { x: cx + TILE_W / 2, y: cy },
+    { x: cx, y: cy + TILE_H / 2 },
+    { x: cx - TILE_W / 2, y: cy },
+  ], fill);
 }
 
 /** World-pixel bounds of a footprint extruded to hPx, relative to the diamond
@@ -70,47 +81,30 @@ export function drawIsoBox(
   const south = { x: baseX + isoX(sx, sy), y: baseY + isoY(sx, sy) + TILE_H / 2 };
 
   // Left face (west to south), lit.
-  ctx.fillStyle = c.left;
-  ctx.beginPath();
-  ctx.moveTo(west.x, west.y - hPx);
-  ctx.lineTo(west.x, west.y);
-  ctx.lineTo(south.x, south.y);
-  ctx.lineTo(south.x, south.y - hPx);
-  ctx.closePath();
-  ctx.fill();
+  fillPolyHard(ctx, [
+    { x: west.x, y: west.y - hPx }, { x: west.x, y: west.y },
+    { x: south.x, y: south.y }, { x: south.x, y: south.y - hPx },
+  ], c.left);
 
   // Right face (south to east), shaded.
-  ctx.fillStyle = c.right;
-  ctx.beginPath();
-  ctx.moveTo(south.x, south.y - hPx);
-  ctx.lineTo(south.x, south.y);
-  ctx.lineTo(east.x, east.y);
-  ctx.lineTo(east.x, east.y - hPx);
-  ctx.closePath();
-  ctx.fill();
+  fillPolyHard(ctx, [
+    { x: south.x, y: south.y - hPx }, { x: south.x, y: south.y },
+    { x: east.x, y: east.y }, { x: east.x, y: east.y - hPx },
+  ], c.right);
 
   // Top face. All four corners are lifted by hPx: lifting only three of them
   // turns every roof in the city into a dark chevron, which is exactly what it
   // looked like the first time this ran.
-  ctx.fillStyle = c.top;
-  ctx.beginPath();
-  ctx.moveTo(north.x, north.y - hPx);
-  ctx.lineTo(east.x, east.y - hPx);
-  ctx.lineTo(south.x, south.y - hPx);
-  ctx.lineTo(west.x, west.y - hPx);
-  ctx.closePath();
-  ctx.fill();
+  fillPolyHard(ctx, [
+    { x: north.x, y: north.y - hPx }, { x: east.x, y: east.y - hPx },
+    { x: south.x, y: south.y - hPx }, { x: west.x, y: west.y - hPx },
+  ], c.top);
 
   if (c.outline) {
     // Selective ink outline on the south and east silhouette only, away from the
     // light. A full outline makes an iso town read as a sheet of stickers.
-    ctx.strokeStyle = c.outline;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(west.x + 0.5, west.y - 0.5);
-    ctx.lineTo(south.x + 0.5, south.y - 0.5);
-    ctx.lineTo(east.x + 0.5, east.y - 0.5);
-    ctx.stroke();
+    lineHard(ctx, west, south, c.outline);
+    lineHard(ctx, south, east, c.outline);
   }
 }
 

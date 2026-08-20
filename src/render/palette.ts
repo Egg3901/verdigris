@@ -246,9 +246,23 @@ export function variantFor(minuteOfDay: number): Variant {
   return 'day';
 }
 
+/**
+ * Shade toward black or white, on a FIXED LADDER.
+ *
+ * The amount is snapped to twentieths before it is applied. Pixel art works from
+ * a bounded palette; letting every building compute its own continuous wash meant
+ * the frame carried 1,235 distinct colours even after the antialiasing was gone,
+ * and no two buildings of the same kind shared a single shade. Quantising the
+ * ladder keeps all the variety that was intended (a wash of -0.1 is still a wash
+ * of -0.1) while collapsing the accidental variety that was not.
+ */
+const SHADE_STEP = 0.05;
+
 export function shadeHex(hex: string, amount: number): string {
+  const snapped = Math.round(amount / SHADE_STEP) * SHADE_STEP;
+  if (snapped === 0) return hex;
   const [r, g, b] = hexToRgb(hex);
-  const t = amount < 0 ? 0 : 255;
-  const k = Math.abs(amount);
+  const t = snapped < 0 ? 0 : 255;
+  const k = Math.abs(snapped);
   return rgbToHex(r + (t - r) * k, g + (t - g) * k, b + (t - b) * k);
 }

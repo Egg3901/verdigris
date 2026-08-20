@@ -24,6 +24,7 @@ import { TILE_W, TILE_H, HEAD_ROOM, isoX, isoY, worldBounds, depthKey, LAYER_STR
 import { serviceAt } from '../sim/networks';
 import { drawIsoDiamond } from './fallback';
 import { drawHouse, houseBounds } from './house';
+import { hardenAlpha, ditherPolyHard } from './raster';
 import type { HouseSpec, HouseSkin, RoofShape } from './house';
 import { mix } from '../sim/rng';
 import { buildProps, textureCell } from './props';
@@ -129,7 +130,9 @@ function liftToFloor(hex: string, floor: number): string {
   const [r, g, b] = hexToRgb(hex);
   const lum = 0.299 * r + 0.587 * g + 0.114 * b;
   if (lum >= floor) return hex;
-  const k = floor / Math.max(1, lum);
+  // Snap the lift to the same ladder: an arbitrary rescale factor would put the
+  // result back off-palette, which is the thing this whole pass is about.
+  const k = Math.round((floor / Math.max(1, lum)) / 0.1) * 0.1;
   return rgbToHex(r * k, g * k, b * k);
 }
 
@@ -157,7 +160,8 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   const fam = FAMILY[b.kind] ?? DEFAULT_FAMILY;
   const def = DEFS[b.kind];
   const salt = mix(city.seed, 41, b.id);
-  const soot = Math.min(0.34, grime / 760);
+  // Soot on the same ladder as everything else, in five steps rather than 255.
+  const soot = Math.round(Math.min(0.34, grime / 760) / 0.06) * 0.06;
 
   const wallWash = pickFrom(WALL_WASH, salt);
   const roofWash = pickFrom(ROOF_WASH, salt, 3);
@@ -254,7 +258,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
         colour = shadeHex(colour, -Math.min(0.4, d.grime[k] / 700));
       }
       drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), gradeHex(colour, variant));
-      textureCell(gctx, city.seed, tx, ty, tile, originX, originY);
+      textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant);
     }
   }
 
@@ -266,30 +270,26 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   // is both correct occlusion and free, because lamps do not move and the ground
   // is already rebaked once per lighting variant.
   if (variant !== 'day') {
-    gctx.globalCompositeOperation = 'lighter';
     for (const bld of city.buildings) {
       if (bld.gasSeg < 0 || !serviceAt(city.networks.gas, bld.id)) continue;
       const lx = originX + isoX(bld.doorX, bld.doorY);
       const ly = originY + isoY(bld.doorX, bld.doorY);
-      // Hard-edged concentric diamonds, not a radial gradient. Smooth bloom over
-      // flat-shaded art is the classic tell.
+      // Concentric DITHERED diamonds, not alpha rings and certainly not a radial
+      // gradient. Density falls off instead of opacity, so every pixel in the
+      // pool is still a palette colour. A pool of blended half-alpha cream is the
+      // classic modern-lighting-over-pixel-art tell.
       const rings: [number, number, string][] = [
-        [2.6, 0.16, PAL.gas1], [1.7, 0.13, PAL.gas1], [1.0, 0.11, PAL.gas2],
+        [3.0, 3, PAL.gas0], [2.2, 6, PAL.gas1], [1.4, 10, PAL.gas1], [0.8, 15, PAL.gas2],
       ];
-      for (const [scale, alpha, colour] of rings) {
-        gctx.globalAlpha = alpha;
-        gctx.fillStyle = colour;
-        gctx.beginPath();
-        gctx.moveTo(lx, ly - (TILE_H / 2) * scale);
-        gctx.lineTo(lx + (TILE_W / 2) * scale, ly);
-        gctx.lineTo(lx, ly + (TILE_H / 2) * scale);
-        gctx.lineTo(lx - (TILE_W / 2) * scale, ly);
-        gctx.closePath();
-        gctx.fill();
+      for (const [scale, density, colour] of rings) {
+        ditherPolyHard(gctx, [
+          { x: lx, y: ly - (TILE_H / 2) * scale },
+          { x: lx + (TILE_W / 2) * scale, y: ly },
+          { x: lx, y: ly + (TILE_H / 2) * scale },
+          { x: lx - (TILE_W / 2) * scale, y: ly },
+        ], colour, density);
       }
     }
-    gctx.globalAlpha = 1;
-    gctx.globalCompositeOperation = 'source-over';
   }
 
   const statics: StaticSprite[] = [];
@@ -332,6 +332,10 @@ export function flattenBuilding(
   const ay = -bounds.minY + pad;
 
   drawHouse(ctx, ax, ay, spec);
+  // Binary alpha, as the palette contract has always claimed. Partial alpha
+  // breaks the source-in silhouette stamp the ID buffer depends on, and halos the
+  // sprite against the ground.
+  hardenAlpha(ctx, sprite.width, sprite.height);
 
   const sx = b.ox + b.w - 1;
   const sy = b.oy + b.d - 1;

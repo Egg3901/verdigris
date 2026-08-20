@@ -15,6 +15,7 @@
 // Light comes from the west, upper left, always.
 import { TILE_W, TILE_H, isoX, isoY } from './iso';
 import { shadeHex } from './palette';
+import { fillPolyHard, ditherPolyHard, lineHard } from './raster';
 
 export type RoofShape = 'gable' | 'hip' | 'pyramid' | 'flat' | 'mansard';
 
@@ -82,13 +83,14 @@ function corners(ox: number, oy: number, w: number, d: number, lift: number) {
   };
 }
 
-function poly(ctx: CanvasRenderingContext2D, pts: Pt[], fill: string): void {
-  ctx.fillStyle = fill;
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.closePath();
-  ctx.fill();
+/** Every face goes through the hard rasteriser. ctx.fill() would antialias the
+ *  diagonals, which is the whole reason this looked like vector art. */
+function poly(ctx: CanvasRenderingContext2D, pts: Pt[], fill: string, texture = 0): void {
+  fillPolyHard(ctx, pts, fill);
+  // A light ordered dither of the shade colour into the lit colour. Pixel art
+  // shades by scattering existing colours rather than blending toward new ones,
+  // and this is where a flat face stops being flat.
+  if (texture > 0) ditherPolyHard(ctx, pts, shadeHex(fill, -0.14), texture);
 }
 
 const mid = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
@@ -103,8 +105,8 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   const eave = corners(ox, oy, w, d, wallH);
 
   // Walls. Only the +ty face (W to S) and the +tx face (S to E) are visible.
-  poly(ctx, [eave.W, ground.W, ground.S, eave.S], skin.wallLit);
-  poly(ctx, [eave.S, ground.S, ground.E, eave.E], skin.wallShade);
+  poly(ctx, [eave.W, ground.W, ground.S, eave.S], skin.wallLit, 2);
+  poly(ctx, [eave.S, ground.S, ground.E, eave.E], skin.wallShade, 3);
 
   drawWindows(ctx, ground, eave, spec);
 
@@ -114,24 +116,14 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   if (skin.trim) {
     // The cornice: one line where the wall meets the eave. This is the gilding,
     // and it is deliberately on the buildings whose fabric is worst.
-    ctx.strokeStyle = skin.trim;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(eave.W.x + 0.5, eave.W.y + 0.5);
-    ctx.lineTo(eave.S.x + 0.5, eave.S.y + 0.5);
-    ctx.lineTo(eave.E.x + 0.5, eave.E.y + 0.5);
-    ctx.stroke();
+    lineHard(ctx, eave.W, eave.S, skin.trim);
+    lineHard(ctx, eave.S, eave.E, skin.trim);
   }
 
   // Selective ink outline on the south and east silhouette only, away from the
   // light. A full outline makes an iso town read as a sheet of stickers.
-  ctx.strokeStyle = skin.outline;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(ground.W.x + 0.5, ground.W.y - 0.5);
-  ctx.lineTo(ground.S.x + 0.5, ground.S.y - 0.5);
-  ctx.lineTo(ground.E.x + 0.5, ground.E.y - 0.5);
-  ctx.stroke();
+  lineHard(ctx, ground.W, ground.S, skin.outline);
+  lineHard(ctx, ground.S, ground.E, skin.outline);
 }
 
 function drawRoof(
@@ -162,12 +154,8 @@ function drawRoof(
     poly(ctx, [E, S, apex], shadeHex(skin.roofShade, -0.12));
     poly(ctx, [W, N, apex], skin.roofLit);
     poly(ctx, [S, W, apex], skin.roofLit);
-    ctx.strokeStyle = skin.roofRidge;
-    ctx.beginPath();
-    ctx.moveTo(S.x + 0.5, S.y + 0.5);
-    ctx.lineTo(apex.x + 0.5, apex.y + 0.5);
-    ctx.lineTo(E.x + 0.5, E.y + 0.5);
-    ctx.stroke();
+    lineHard(ctx, S, apex, skin.roofRidge);
+    lineHard(ctx, apex, E, skin.roofRidge);
     return;
   }
 
@@ -182,14 +170,14 @@ function drawRoof(
     const h0 = { x: r0.x + (r1.x - r0.x) * pull, y: r0.y + (r1.y - r0.y) * pull };
     const h1 = { x: r1.x + (r0.x - r1.x) * pull, y: r1.y + (r0.y - r1.y) * pull };
     if (alongX) {
-      poly(ctx, [N, E, h1, h0], skin.roofShade);
+      poly(ctx, [N, E, h1, h0], skin.roofShade, 3);
       poly(ctx, [W, N, h0], skin.roofLit);
-      poly(ctx, [W, S, h1, h0], skin.roofLit);
+      poly(ctx, [W, S, h1, h0], skin.roofLit, 4);
       poly(ctx, [S, E, h1], shadeHex(skin.roofShade, -0.1));
     } else {
-      poly(ctx, [E, S, h1, h0], skin.roofShade);
+      poly(ctx, [E, S, h1, h0], skin.roofShade, 3);
       poly(ctx, [N, E, h0], shadeHex(skin.roofShade, 0.06));
-      poly(ctx, [W, S, h1, h0], skin.roofLit);
+      poly(ctx, [W, S, h1, h0], skin.roofLit, 4);
       poly(ctx, [W, N, h0], skin.roofLit);
     }
     ridgeLine(ctx, h0, h1, skin.roofRidge);
@@ -199,13 +187,13 @@ function drawRoof(
 
   // Gable. Far slope first, then the near one, then the near gable triangle.
   if (alongX) {
-    poly(ctx, [N, E, r1, r0], skin.roofShade);
-    poly(ctx, [W, S, r1, r0], skin.roofLit);
+    poly(ctx, [N, E, r1, r0], skin.roofShade, 3);
+    poly(ctx, [W, S, r1, r0], skin.roofLit, 4);
     poly(ctx, [S, E, r1], skin.gableShade);
     poly(ctx, [W, N, r0], skin.gableLit);
   } else {
-    poly(ctx, [E, S, r1, r0], skin.roofShade);
-    poly(ctx, [W, N, r0, r1], skin.roofLit);
+    poly(ctx, [E, S, r1, r0], skin.roofShade, 3);
+    poly(ctx, [W, N, r0, r1], skin.roofLit, 4);
     poly(ctx, [W, S, r1], skin.gableLit);
     poly(ctx, [N, E, r0], skin.gableShade);
   }
@@ -214,12 +202,7 @@ function drawRoof(
 }
 
 function ridgeLine(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, colour: string): void {
-  ctx.strokeStyle = colour;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(a.x + 0.5, a.y + 0.5);
-  ctx.lineTo(b.x + 0.5, b.y + 0.5);
-  ctx.stroke();
+  lineHard(ctx, a, b, colour);
 }
 
 /** Chimneys sit ON the ridge, which is the only place they read as chimneys and
@@ -268,11 +251,10 @@ function drawWindows(
         // Not every window in a building is lit, or the town reads as a grid of
         // fairy lights. Two in three, chosen by a stable hash of the pane.
         if (lit && ((x * 7 + y * 13 + r * 5) % 3 === 0)) continue;
-        ctx.globalAlpha = litFace ? 1 : 0.8;
+        ctx.fillStyle = litFace ? spec.skin.window : shadeHex(spec.skin.window, lit ? -0.2 : -0.12);
         ctx.fillRect(x - 1, y, 2, 3);
       }
     }
   }
-  ctx.globalAlpha = 1;
   void ground;
 }
