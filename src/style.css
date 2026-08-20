@@ -456,6 +456,27 @@ button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 #toast.loss { border-color: var(--loss); }
 #toast.gain { border-color: var(--verd1); }
 
+/* First run */
+#firstrun {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(190px * var(--px)), 90vw);
+  z-index: 9;
+  text-align: left;
+}
+#firstrun .name {
+  font-family: var(--font-instrument);
+  font-size: var(--fs-title);
+  color: var(--brass0);
+  letter-spacing: 0.2em;
+}
+#firstrun ul { list-style: none; margin: calc(4px * var(--px)) 0; padding: 0; font-size: var(--fs-small); }
+#firstrun li { margin-bottom: calc(3px * var(--px)); padding-left: calc(7px * var(--px)); position: relative; }
+#firstrun li::before { content: "\00B7"; position: absolute; left: 0; color: var(--brass-ink); }
+#firstrun button { margin-top: calc(3px * var(--px)); min-width: calc(40px * var(--px)); }
+
 /* Help sheet */
 #help {
   position: fixed;

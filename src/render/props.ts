@@ -7,7 +7,7 @@ import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_STRUCT } from './iso';
 import { PAL, shadeHex, gradeHex } from './palette';
 import type { Variant } from './palette';
 import { mix } from '../sim/rng';
-import { fillEllipseHard, ditherPolyHard, hardenAlpha, BAYER } from './raster';
+import { fillEllipseHard, ditherPolyHard, hardenAlpha, fillPolyHard, BAYER } from './raster';
 import { Tile } from '../sim/types';
 import type { District } from '../sim/district';
 import { cellKey, insideIsland } from '../sim/district';
@@ -25,7 +25,16 @@ const CANOPY = [PAL.leaf1, PAL.leaf2, PAL.leaf3, PAL.moss1, PAL.moss2];
 
 /** A lime tree, eighteen pixels tall. Three overlapping canopy blobs so the
  *  silhouette is lumpy rather than a circle. */
-function bakeTree(salt: number, variant: Variant): HTMLCanvasElement {
+type TreeShape = 'lime' | 'poplar' | 'scrub';
+
+/**
+ * Three silhouettes at three sizes.
+ *
+ * One four-blob shape at one size read as broccoli, and at zoom 1 a tree was the
+ * same size as a small house. Silhouette is what distinguishes vegetation at this
+ * scale, exactly as it is for roofs.
+ */
+function bakeTree(salt: number, shape: TreeShape, size: number, variant: Variant): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = 20;
   c.height = 26;
@@ -35,12 +44,19 @@ function bakeTree(salt: number, variant: Variant): HTMLCanvasElement {
   const shade = shadeHex(lit, -0.3);
   const dark = shadeHex(lit, -0.5);
 
+  const trunkH = shape === 'poplar' ? 5 : shape === 'scrub' ? 3 : 8;
   ctx.fillStyle = gradeHex(PAL.wood0, variant);
-  ctx.fillRect(9, 16, 2, 8);
+  ctx.fillRect(9, 24 - trunkH, shape === 'scrub' ? 1 : 2, trunkH);
 
-  const blobs: [number, number, number][] = [
-    [10, 12, 7], [7, 9, 5], [13, 10, 5], [10, 7, 5],
-  ];
+  const k = size;
+  const blobs: [number, number, number][] = shape === 'poplar'
+    // Tall and narrow: a Lombardy poplar, which is the shape that breaks a
+    // skyline of round canopies.
+    ? [[10, 16, 3.4 * k], [10, 12, 3.6 * k], [10, 8, 3.0 * k], [10, 5, 2.2 * k]]
+    : shape === 'scrub'
+      // Low and wide: hedge and bramble along a back yard.
+      ? [[8, 19, 4.2 * k], [13, 19, 3.6 * k], [10, 16, 3.4 * k]]
+      : [[10, 12, 7 * k], [7, 9, 5 * k], [13, 10, 5 * k], [10, 7, 5 * k]];
   // Scanline ellipses: ctx.ellipse + fill antialiases the rim, and a soft-edged
   // tree against a hard-edged town is the one thing that gives the trick away.
   for (const [bx, by, r] of blobs) fillEllipseHard(ctx, bx, by + 1, r, r * 0.8, dark);
@@ -59,6 +75,86 @@ function bakeTree(salt: number, variant: Variant): HTMLCanvasElement {
  * Deterministic from (seed, cell), never Math.random, so a district looks the
  * same every time it is loaded and the screenshot goldens hold.
  */
+/**
+ * The civic square's furniture: a fountain, a bandstand, market stalls.
+ *
+ * Measured across seeds, the square is the single largest uninterrupted area of
+ * flat colour in the frame. It is where the bunting goes, where the crowd
+ * gathers, and where a riot happens, and it was 49 cells of nothing.
+ */
+function bakeFountain(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 34; c.height = 30;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  // Basin: an iso diamond with a rim.
+  fillPolyHard(ctx, [{x:17,y:14},{x:33,y:22},{x:17,y:30},{x:1,y:22}], g(PAL.stone2));
+  fillPolyHard(ctx, [{x:17,y:16},{x:30,y:22},{x:17,y:28},{x:4,y:22}], g(PAL.riv1));
+  ditherPolyHard(ctx, [{x:17,y:16},{x:30,y:22},{x:17,y:28},{x:4,y:22}], g(PAL.rivGlint), 4);
+  // Plinth and a figure on top: the reason anybody looks at a fountain.
+  fillPolyHard(ctx, [{x:14,y:10},{x:20,y:10},{x:20,y:20},{x:14,y:20}], g(PAL.stone3));
+  fillPolyHard(ctx, [{x:18,y:10},{x:20,y:10},{x:20,y:20},{x:18,y:20}], g(PAL.stone1));
+  fillPolyHard(ctx, [{x:15,y:3},{x:19,y:3},{x:19,y:10},{x:15,y:10}], g(PAL.verd2));
+  fillPolyHard(ctx, [{x:16,y:0},{x:18,y:0},{x:18,y:3},{x:16,y:3}], g(PAL.verd3));
+  hardenAlpha(ctx, c.width, c.height);
+  return c;
+}
+
+function bakeStall(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 26; c.height = 24;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const cloth = [PAL.buntRed, PAL.buntBlue, PAL.verd1, PAL.ochre1][salt % 4];
+  // Trestle, then a canopy over it, then the poles.
+  fillPolyHard(ctx, [{x:13,y:12},{x:24,y:17},{x:13,y:22},{x:2,y:17}], g(PAL.wood1));
+  fillPolyHard(ctx, [{x:13,y:2},{x:25,y:8},{x:13,y:14},{x:1,y:8}], g(cloth));
+  ditherPolyHard(ctx, [{x:13,y:2},{x:25,y:8},{x:13,y:14},{x:1,y:8}], g(shadeHex(cloth, 0.25)), 7);
+  ctx.fillStyle = g(PAL.wood0);
+  ctx.fillRect(2, 8, 1, 9);
+  ctx.fillRect(24, 8, 1, 9);
+  hardenAlpha(ctx, c.width, c.height);
+  return c;
+}
+
+export function buildSquareProps(
+  district: District, seed: number, variant: Variant,
+  sqX: number, sqY: number, sqW: number,
+): Prop[] {
+  const out: Prop[] = [];
+  const cx = sqX + (sqW >> 1);
+  const cy = sqY + (sqW >> 1);
+  if (!insideIsland(district, cx, cy)) return out;
+
+  const fountain = bakeFountain(variant);
+  out.push({
+    sprite: fountain, ax: 17, ay: 28,
+    wx: isoX(cx, cy), wy: isoY(cx, cy),
+    depth: depthKey(cx, cy, LAYER_STRUCT),
+  });
+
+  // Stalls around the rim of the square, on the paving, never on the fountain.
+  const stalls = new Map<number, HTMLCanvasElement>();
+  for (let y = sqY; y < sqY + sqW; y++) {
+    for (let x = sqX; x < sqX + sqW; x++) {
+      if (Math.abs(x - cx) <= 1 && Math.abs(y - cy) <= 1) continue;
+      if (district.tile[cellKey(district, x, y)] !== Tile.Square) continue;
+      const roll = mix(seed, 71, x, y) % 100;
+      if (roll >= 16) continue;
+      const salt = mix(seed, 72, x, y);
+      const variantIdx = salt % 4;
+      let sprite = stalls.get(variantIdx);
+      if (!sprite) { sprite = bakeStall(variantIdx, variant); stalls.set(variantIdx, sprite); }
+      out.push({
+        sprite, ax: 13, ay: 22,
+        wx: isoX(x, y), wy: isoY(x, y),
+        depth: depthKey(x, y, LAYER_STRUCT),
+      });
+    }
+  }
+  return out;
+}
+
 export function buildProps(district: District, seed: number, variant: Variant): Prop[] {
   const cache = new Map<number, HTMLCanvasElement>();
   const out: Prop[] = [];
@@ -75,10 +171,16 @@ export function buildProps(district: District, seed: number, variant: Variant): 
       if (roll >= want) continue;
       const salt = mix(seed, 52, tx, ty);
       const canopy = salt % CANOPY.length;
-      let sprite = cache.get(canopy);
+      const shapes: TreeShape[] = ['lime', 'lime', 'poplar', 'scrub'];
+      const shape = shapes[(salt >>> 3) % shapes.length];
+      // Three size classes. A stand of identical trees is a wallpaper.
+      const sizeIdx = (salt >>> 6) % 3;
+      const size = [0.72, 0.88, 1.0][sizeIdx];
+      const key = canopy * 100 + shapes.indexOf(shape) * 10 + sizeIdx;
+      let sprite = cache.get(key);
       if (!sprite) {
-        sprite = bakeTree(canopy, variant);
-        cache.set(canopy, sprite);
+        sprite = bakeTree(canopy, shape, size, variant);
+        cache.set(key, sprite);
       }
       // Jitter inside the cell, so trees do not sit on a lattice.
       // Unsigned shifts: mix() is unsigned 32-bit and `>>` would go negative.

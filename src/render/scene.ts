@@ -24,10 +24,10 @@ import { TILE_W, TILE_H, HEAD_ROOM, isoX, isoY, worldBounds, depthKey, LAYER_STR
 import { serviceAt } from '../sim/networks';
 import { drawIsoDiamond } from './fallback';
 import { drawHouse, houseBounds } from './house';
-import { hardenAlpha, ditherPolyHard } from './raster';
+import { hardenAlpha, ditherPolyHard, lineHard } from './raster';
 import type { HouseSpec, HouseSkin, RoofShape } from './house';
 import { mix } from '../sim/rng';
-import { buildProps, textureCell } from './props';
+import { buildProps, buildSquareProps, textureCell } from './props';
 import type { Prop } from './props';
 
 export interface StaticSprite {
@@ -278,6 +278,27 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   const gctx = ctxOf(ground);
   const d = city.district;
 
+  // Distance from each water cell to the nearest bank, so the channel can be
+  // shaded across its width. A single flat value over 13% of the frame was the
+  // least worked surface in the game and read as a swimming pool.
+  const depth = new Int8Array(d.width * d.height);
+  for (let ty = 0; ty < d.height; ty++) {
+    for (let tx = 0; tx < d.width; tx++) {
+      const k = cellKey(d, tx, ty);
+      if (d.tile[k] !== Tile.Water) continue;
+      let best = 4;
+      for (let r = 1; r <= 3 && best === 4; r++) {
+        for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) {
+          const nx = tx + dx;
+          const ny = ty + dy;
+          if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height
+            || d.tile[cellKey(d, nx, ny)] !== Tile.Water) { best = r; break; }
+        }
+      }
+      depth[k] = best;
+    }
+  }
+
   // Ground diamonds, painter's order by tx + ty so overlapping half-tiles stack
   // the way the eye expects.
   for (let ty = 0; ty < d.height; ty++) {
@@ -287,6 +308,11 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       const tile = d.tile[k] as TileCode;
       if (tile === Tile.Void) continue;
       let colour = GROUND_COLOUR[tile] ?? PAL.soot2;
+      if (tile === Tile.Water) {
+        // Shallows at the bank, deep water in the channel.
+        const dep = depth[k];
+        colour = dep <= 1 ? PAL.riv2 : dep === 2 ? PAL.riv1 : shadeHex(PAL.riv1, -0.15);
+      }
       if (tile !== Tile.Water) {
         // Soot rises toward the factory quarter. A district that visibly gets
         // dirtier as you walk east IS the theme, rendered.
@@ -294,7 +320,61 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       }
       drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), gradeHex(colour, variant));
       textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant);
+
+      // Dither the step between depth bands. A hard step made the channel read as
+      // a set of tiled patches rather than as water getting deeper.
+      if (tile === Tile.Water && depth[k] === 2) {
+        const bx = originX + isoX(tx, ty);
+        const by = originY + isoY(tx, ty);
+        ditherPolyHard(gctx, [
+          { x: bx, y: by - TILE_H / 2 }, { x: bx + TILE_W / 2, y: by },
+          { x: bx, y: by + TILE_H / 2 }, { x: bx - TILE_W / 2, y: by },
+        ], gradeHex(PAL.riv2, variant), 6);
+      }
+
+      // A quay lip where land meets water: one bright pixel row on the land side
+      // of the boundary. Without it the river is a hole cut in the map.
+      if (tile !== Tile.Water) {
+        for (const [dx, dy] of [[1, 0], [0, 1]]) {
+          const nx = tx + dx;
+          const ny = ty + dy;
+          if (nx >= d.width || ny >= d.height) continue;
+          if (d.tile[cellKey(d, nx, ny)] !== Tile.Water) continue;
+          const ex = originX + isoX(tx, ty);
+          const ey = originY + isoY(tx, ty);
+          const lip = gradeHex(tile === Tile.Wharf ? PAL.wood2 : PAL.stone2, variant);
+          if (dx === 1) lineHard(gctx, { x: ex, y: ey + TILE_H / 2 }, { x: ex + TILE_W / 2, y: ey }, lip);
+          else lineHard(gctx, { x: ex, y: ey + TILE_H / 2 }, { x: ex - TILE_W / 2, y: ey }, lip);
+        }
+      }
     }
+  }
+
+  // Contact shadows, baked into the ground under every footprint.
+  //
+  // Without one, every building in the district hovers: there is no cue that a
+  // wall meets the pavement, so the town reads as a set of objects arranged on a
+  // surface rather than as a town standing on one. One dithered diamond per cell,
+  // offset east and south away from the west light.
+  for (const bld of city.buildings) {
+    for (const k of bld.cells) {
+      const x = k % d.width;
+      const y = (k - x) / d.width;
+      const sx2 = originX + isoX(x, y) + 2;
+      const sy2 = originY + isoY(x, y) + 2;
+      ditherPolyHard(gctx, [
+        { x: sx2, y: sy2 - TILE_H / 2 },
+        { x: sx2 + TILE_W / 2, y: sy2 },
+        { x: sx2, y: sy2 + TILE_H / 2 },
+        { x: sx2 - TILE_W / 2, y: sy2 },
+      ], PAL.soot0, 7);
+    }
+  }
+  for (const pr of buildProps(d, city.seed, variant)) {
+    ditherPolyHard(gctx, [
+      { x: pr.wx + 1, y: pr.wy - 3 }, { x: pr.wx + 8, y: pr.wy + 1 },
+      { x: pr.wx + 1, y: pr.wy + 5 }, { x: pr.wx - 6, y: pr.wy + 1 },
+    ], PAL.soot0, 6);
   }
 
   // Lamp pools are baked INTO THE GROUND, not drawn per frame over everything.
@@ -341,7 +421,11 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   }
   statics.sort((p, q) => p.depth - q.depth);
 
-  return { variant, ground, props: buildProps(d, city.seed, variant), idBuffer, idCtx, statics, originX, originY };
+  const props = buildProps(d, city.seed, variant).concat(
+    buildSquareProps(d, city.seed, variant, city.streetPlan.squareX, city.streetPlan.squareY, city.streetPlan.squareW),
+  );
+  props.sort((a, b) => a.depth - b.depth);
+  return { variant, ground, props, idBuffer, idCtx, statics, originX, originY };
 }
 
 function depthOf(b: Building): number {

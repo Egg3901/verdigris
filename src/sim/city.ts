@@ -20,7 +20,7 @@ import { advanceSoul, isTravelling } from './souls';
 import type { Soul } from './souls';
 import { mix } from './rng';
 import { CAPS } from './types';
-import type { Activity, BuildingId, BuildingKind, ClaimKind, PressureKey, SoulId } from './types';
+import type { Activity, BuildingId, BuildingKind, ClaimKind, PressureKey, SoulId, Trade } from './types';
 import { newClaims, gossipSlice, convictionOf, decayBeliefsDaily, seedClaim, implant } from './claims';
 import type { ClaimState } from './claims';
 import { buildRelations, neighboursOf } from './relations';
@@ -37,6 +37,34 @@ export interface LogEvent {
   text: string;
   kind: 'loss' | 'gain' | 'info';
 }
+
+/**
+ * Trades whose work happens ON THE STREET.
+ *
+ * The errand system deliberately never pulls anyone off a shift, which is right,
+ * but it meant the district emptied during working hours: 12 souls outdoors at
+ * ten in the morning. The mistake was treating "working" as "indoors" for
+ * everyone. A constable on the beat, a lamplighter on his round, a conductor on
+ * the tram and a docker on the quay are all at work and all outside, and putting
+ * them where they belong fixes the emptiness with more truth rather than less.
+ */
+const OUTDOOR_TRADES = new Set<Trade>([
+  'constable', 'lamplighter', 'conductor', 'docker', 'lighterman',
+]);
+
+/**
+ * Trades that get sent OUT during a shift, on a delivery.
+ *
+ * Excluding everyone at work from the errand pass is correct for a mill hand and
+ * wrong for the district: measured at the reference tick of 10:41, ten souls out
+ * of two hundred were on the street. But an errand boy, a shop assistant with a
+ * parcel, a laundress with a basket and a printer with a proof are all at work
+ * AND all outside, several times a day. This is the population the streets were
+ * missing, and it is period-accurate rather than a fudge.
+ */
+const DELIVERY_TRADES = new Set<Trade>([
+  'child', 'shopkeeper', 'printer', 'laundress', 'seamstress', 'clerk', 'docker',
+]);
 
 /** Buildings a soul might head to by kind rather than by name. Resolved once per
  *  soul at startup: everyone has a local, and it is always the same local. */
@@ -256,7 +284,14 @@ function startErrands(city: City, tick: number): void {
   const mod = minuteOfDay(tick);
   if (mod < 390 || mod > 1290) return;
   const bucket = Math.floor(tick / 5);
-  const wanted = mod > 1080 || mod < 480 ? 4 : 7;
+  // Measured before this: a peak of 65 souls outdoors out of 200, and 16 at the
+  // reference tick of 10:41. Over an island of this size that is one person per
+  // seventeen thousand square pixels, and the biggest single reason the place
+  // looked like a model rather than a town.
+  // Concurrency is roughly wanted x (duration / 5), minus whoever is ineligible.
+  // Tuned by measurement against the whole day, not guessed: at 14 the median was
+  // 35 and the reference tick of 10:41 showed 16.
+  const wanted = mod > 1080 || mod < 480 ? 7 : 13;
   let sent = 0;
   const n = city.souls.length;
   if (!n) return;
@@ -264,18 +299,51 @@ function startErrands(city: City, tick: number): void {
   for (let i = 0; i < n && sent < wanted; i++) {
     const s = city.souls[(start + i * 37) % n];
     if (s.inId < 0 || s.returnAt >= 0 || s.overrideUntil > tick) continue;
-    if (s.activity === 'asleep' || s.activity === 'working' || s.activity === 'held') continue;
+    if (s.activity === 'asleep' || s.activity === 'held') continue;
     if (s.age < 8) continue;
+    if (s.activity === 'working') {
+      // A shift is not interrupted lightly: only delivery trades, and only about
+      // a third as often as somebody who is free.
+      if (!DELIVERY_TRADES.has(s.trade)) continue;
+      if ((mix(city.seed, 27, bucket, s.id) >>> 0) % 3 !== 0) continue;
+    }
     const kind = mix(city.seed, 25, bucket, s.id) % 3 === 0 ? 'pub' : 'shop';
     const fav = city.favourite[kind];
     const target = fav ? fav[s.id] : -1;
     if (target < 0 || target === s.inId) continue;
+    const onShift = s.activity === 'working';
     s.returnTo = s.inId;
-    s.returnAt = tick + 24 + (mix(city.seed, 25, s.id, bucket) % 26);
-    s.overrideUntil = s.returnAt + 100;
-    sendTo(city, s, target, 'errand', kind === 'pub' ? 'drinking' : 'shopping');
+    // A delivery is a there-and-back, not an afternoon off.
+    s.returnAt = tick + (onShift ? 14 : 30) + (mix(city.seed, 25, s.id, bucket) % (onShift ? 16 : 34));
+    // overrideUntil covers the errand ITSELF and nothing more.
+    //
+    // It used to run 100 minutes past the return, as a cooldown. But this flag
+    // also suppresses schedule blocks, so it was doing two jobs, and the second
+    // one was the real cap on street population: with a two-hour lockout only
+    // about seven souls per five-minute bucket could ever be eligible, however
+    // high the quota was set. Raising the quota from 14 to 24 moved the median
+    // from 35 to 38, which is what told me the quota was never the limit.
+    s.overrideUntil = s.returnAt + 5;
+    sendTo(city, s, target, 'errand', onShift ? 'errand' : kind === 'pub' ? 'drinking' : 'shopping');
     sent++;
   }
+}
+
+/** The next stop on a beat: somewhere near the workplace, never the same twice
+ *  running, so the walk covers ground instead of pacing one street. */
+function beatTarget(city: City, s: Soul, tick: number): BuildingId {
+  const home = city.buildings[s.workId];
+  if (!home) return -1;
+  const n = city.buildings.length;
+  const start = mix(city.seed, 26, s.id, Math.floor(tick / 30)) % n;
+  for (let i = 0; i < 48; i++) {
+    const b = city.buildings[(start + i * 13) % n];
+    if (!b || b.doorNode < 0) continue;
+    const dist = Math.abs(b.ox - home.ox) + Math.abs(b.oy - home.oy);
+    if (dist < 3 || dist > 16) continue;
+    return b.id;
+  }
+  return -1;
 }
 
 function travelVerbFor(a: Activity): Activity {
@@ -331,7 +399,8 @@ export function tickCity(city: City): void {
     s.returnAt = -1;
     const home = s.returnTo;
     s.returnTo = -1;
-    s.overrideUntil = tick + 90;
+    // Long enough to walk home without the schedule yanking them mid-street.
+    s.overrideUntil = tick + 30;
     sendTo(city, s, home, 'errand', 'visiting');
   }
 
@@ -346,6 +415,16 @@ export function tickCity(city: City): void {
     s.destBuilding = -1;
     s.destNode = -1;
     if (target >= 0) {
+      // A beat trade at work does not go inside: it arrives, and moves on. The
+      // effect is a soul permanently in transit around its workplace, which is
+      // what a beat IS.
+      if (s.arriveActivity === 'working' && OUTDOOR_TRADES.has(s.trade) && s.workId >= 0) {
+        const next = beatTarget(city, s, tick);
+        if (next >= 0 && next !== target) {
+          sendTo(city, s, next, 'working', 'working');
+          continue;
+        }
+      }
       s.inId = target;
       s.activity = s.arriveActivity;
       s.activitySince = tick;

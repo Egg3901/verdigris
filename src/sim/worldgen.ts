@@ -62,6 +62,7 @@ export function generateWorld(seedStr: string): World {
   const river = carveRiver(district, seed);
   layBanks(district, river);
   const streetPlan = layStreets(district, seed, river);
+  reserveRim(district, seed);
   const blocks = subdivideBlocks(district, seed);
   const plots = subdividePlots(district, seed, blocks);
   pruneUnreachablePaving(
@@ -100,17 +101,6 @@ export function generateWorld(seedStr: string): World {
       firmId: -1, householdIds: [], occupants: [],
       grudges: [], lastIncidentTick: -1, heat: 0, peeked: false,
     });
-  }
-
-  // The island fringe is grass, not a hole. Anything inside the diamond that no
-  // stage claimed becomes park, which is what gives the district a green edge
-  // instead of a hard cut against the void.
-  for (let y = 0; y < district.height; y++) {
-    for (let x = 0; x < district.width; x++) {
-      if (!insideIsland(district, x, y)) continue;
-      const k = cellKey(district, x, y);
-      if (district.tile[k] === Tile.Void) district.tile[k] = Tile.Park;
-    }
   }
 
   // Plots nobody built on are back gardens and waste ground, not holes.
@@ -206,6 +196,43 @@ export function generateWorld(seedStr: string): World {
     blocks, plots, buildings, streets, graph, networks, tram,
     souls, households, firms, doorNodes,
   };
+}
+
+/**
+ * A wooded rim around the island.
+ *
+ * There used to be a pass at the end of worldgen turning any leftover Void island
+ * cell into Park, and it produced ZERO park cells in every seed. Nothing is ever
+ * leftover: subdivideBlocks floods every Void cell into a block and subdividePlots
+ * assigns every block cell. So the green edge never existed, the district cut hard
+ * against the void, and props.ts never once took its "parks are 46% wooded"
+ * branch. The rim has to be claimed BEFORE the blocks are, not after.
+ */
+function reserveRim(d: District, seed: number): void {
+  const depth = 2;
+  const rim: number[] = [];
+  for (let y = 0; y < d.height; y++) {
+    for (let x = 0; x < d.width; x++) {
+      if (!insideIsland(d, x, y)) continue;
+      if (tileAt(d, x, y) !== Tile.Void) continue;
+      // Distance to the edge of the island, measured by looking outward.
+      let edge = false;
+      for (let r = 1; r <= depth && !edge; r++) {
+        for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, -r], [r, -r], [-r, r]]) {
+          if (!insideIsland(d, x + dx, y + dy)) { edge = true; break; }
+        }
+      }
+      if (edge) rim.push(cellKey(d, x, y));
+    }
+  }
+  // Ragged, not a uniform band: a perfectly even ring of trees reads as a hedge
+  // somebody planted rather than as the edge of a town running out of town.
+  for (const k of rim) {
+    const x = k % d.width;
+    const y = (k - x) / d.width;
+    if (mix(seed, 63, x, y) % 100 < 22) continue;
+    d.tile[k] = Tile.Park;
+  }
 }
 
 function markApron(d: District, x: number, y: number): void {

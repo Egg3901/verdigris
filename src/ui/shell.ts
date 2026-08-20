@@ -301,7 +301,50 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     if (!help.hidden) helpClose.focus();
   };
 
-  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help);
+  /*
+   * First run.
+   *
+   * There was no onboarding of any kind, and the only hint that the world was
+   * interactive at all was `cursor: crosshair` on the canvas. A stranger saw a
+   * small city, a clock, three grey buttons and a panel of eight refusals.
+   *
+   * Three sentences and a dismiss, shown once. Deliberately not a tutorial: the
+   * game is watching, and the only things a player has to be told are that the
+   * roofs are clickable, that the names inside are clickable, and that the
+   * budget exists.
+   */
+  const firstRun = el('div', 'plate');
+  firstRun.id = 'firstrun';
+  firstRun.setAttribute('role', 'dialog');
+  firstRun.setAttribute('aria-label', 'Welcome');
+  const seen = (() => {
+    try { return localStorage.getItem('verdigris.seen') === '1'; } catch { return false; }
+  })();
+  firstRun.hidden = seen;
+  firstRun.append(el('div', 'name', 'VERDIGRIS'));
+  const fr = el('p', 'prose');
+  fr.textContent = 'An 1890s district, watched from above. Two hundred people live here and '
+    + 'each of them has somewhere to be.';
+  firstRun.append(fr);
+  const list = el('ul');
+  for (const line of [
+    'Tap a roof to see who is inside it.',
+    'Tap a name in that list to follow that person through their day.',
+    'You get three interventions a day. You never build anything.',
+  ]) {
+    const li = el('li');
+    li.append(el('span', undefined, line));
+    list.append(li);
+  }
+  firstRun.append(list);
+  const frGo = el('button', 'brass', 'WATCH') as HTMLButtonElement;
+  frGo.addEventListener('click', () => {
+    firstRun.hidden = true;
+    try { localStorage.setItem('verdigris.seen', '1'); } catch { /* private mode */ }
+  });
+  firstRun.append(frGo);
+
+  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, firstRun);
 
   measureBar();
   const dayCtx = daybar.getContext('2d');
