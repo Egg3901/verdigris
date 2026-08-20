@@ -48,25 +48,31 @@ export function describeBuilding(city: City, id: number): string {
     .slice(0, MAX_SENSES)
     .map((x) => x.f.token);
 
-  const parts: string[] = [];
-  if (ranked.length) {
-    const list = joinList(ranked);
-    parts.push(list.charAt(0).toUpperCase() + list.slice(1));
+  // The sense line and the standing fact are two SENTENCES, not two items in one
+  // list. Feeding both through joinList produced "Raw cotton, dust, and soot on
+  // the sills and an argument about an unpaid account", which has two "and"s
+  // doing different jobs and reads as a run-on.
+  const senseTokens = ranked.slice();
+  // A single short token ("Dust.") is not a sentence anybody wants to read, so a
+  // thin line gets the building's own label to lean on. Every kind carries at
+  // least one identity fragment in the lexicon, so this is a floor, not a crutch.
+  if (senseTokens.length === 1 && senseTokens[0].length < 14) {
+    senseTokens.push(`not much else the ${DEFS[b.kind].label.toLowerCase()} will admit to`);
+  }
+
+  const sentences: string[] = [];
+  if (senseTokens.length) {
+    const list = joinList(senseTokens);
+    sentences.push(`${list.charAt(0).toUpperCase()}${list.slice(1)}.`);
   }
 
   const grudge = pickGrudge(city, b);
   if (grudge) {
     const years = yearsSince(grudge, city.tick);
-    parts.push(`an argument about ${grudge.topic} that has run for ${years} year${years === 1 ? '' : 's'}`);
+    sentences.push(`An argument about ${grudge.topic} has run here for ${years} year${years === 1 ? '' : 's'}.`);
   }
 
-  // A single short token ("Dust.") is not a sentence anybody wants to read, so a
-  // thin line gets the building's own label to lean on. Every kind carries at
-  // least one identity fragment in the lexicon, so this is a floor, not a crutch.
-  if (parts.length && ranked.length < 2 && ranked[0].length < 14) {
-    parts.push(`not much else the ${DEFS[b.kind].label.toLowerCase()} will admit to`);
-  }
-  let line = parts.length ? `${joinList(parts)}.` : `${DEFS[b.kind].label}, and not much else.`;
+  let line = sentences.length ? sentences.join(' ') : `${DEFS[b.kind].label}, and not much else.`;
 
   const live = liveClause(city, b);
   if (live) line += ` ${live}`;
@@ -109,7 +115,7 @@ export function insideList(city: City, id: number, limit = 8): { lines: InsideLi
     const s = city.souls[sid];
     lines.push({
       soulId: sid,
-      line: `${fullName(s)}, ${activityPhrase(s.activity, s.trade, s.fatigue, s.grievance, s.hunger)}`,
+      line: `${fullName(s)}, ${activityPhrase(s.activity, s.trade, s.fatigue, s.grievance, s.hunger, s.id)}`,
     });
   }
   return { lines, more: Math.max(0, b.occupants.length - lines.length) };
@@ -121,7 +127,7 @@ export function describeSoul(city: City, id: number): string {
   const home = city.buildings[s.homeId];
   const where = home ? addressOf(city, home) : 'nowhere fixed';
   const trade = s.trade === 'none' ? 'no trade left' : s.trade === 'child' ? 'still at school' : s.trade;
-  const doing = activityPhrase(s.activity, s.trade, s.fatigue, s.grievance, s.hunger);
+  const doing = activityPhrase(s.activity, s.trade, s.fatigue, s.grievance, s.hunger, s.id);
   return `${s.age}, ${trade}, of ${where}. Currently ${doing}.`;
 }
 

@@ -18,9 +18,11 @@ import {
 import type { Camera, ZoomStep } from './render/iso';
 import { mountShell } from './ui/shell';
 import type { Shell } from './ui/shell';
-import { verbForKey } from './ui/keys';
+import { verbForKey, NUDGE_VERBS } from './ui/keys';
 import type { Verb } from './ui/keys';
 import { soulPos } from './sim/souls';
+import { INTERVENTIONS, canApply, apply as applyNudge } from './sim/interventions';
+import type { InterventionKind, Target } from './sim/types';
 
 const params = new URLSearchParams(location.search);
 const SEED = params.get('seed') ?? 'verdigris';
@@ -42,8 +44,6 @@ let speedIndex = 1;
 let simMin = 0;
 let lastTickAt = 0;
 let follow = -1;
-let budget = 3;
-let lastBudgetDay = 0;
 let shell: Shell;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -69,7 +69,57 @@ function setZoom(step: ZoomStep, ax = viewW / 2, ay = viewH / 2): void {
   clampCamera(cam, viewW, viewH, shell.insets());
 }
 
+/**
+ * What a nudge is aimed at, given what is selected.
+ *
+ * Some interventions want a person, some want a building, and two are aimed at
+ * the district as a whole. Resolving that here rather than in the sim keeps
+ * interventions.ts free of UI state.
+ */
+function targetFor(kind: InterventionKind): Target | null {
+  const def = INTERVENTIONS[kind];
+  if (def.targets.includes('soul') && sel.soulId >= 0) return { kind: 'soul', id: sel.soulId };
+  if (def.targets.includes('building') && sel.buildingId >= 0) return { kind: 'building', id: sel.buildingId };
+  if (def.targets.includes('claim') && sel.soulId >= 0) return { kind: 'claim', id: sel.soulId };
+  if (def.targets.includes('street') && sel.buildingId >= 0) return { kind: 'street', id: sel.buildingId };
+  if (def.targets.includes('square')) return { kind: 'square', id: 0 };
+  if (def.targets.includes('line')) return { kind: 'line', id: 0 };
+  return null;
+}
+
+/** Why each nudge is or is not available right now, for the greyed-out menu. */
+function nudgeReasons(): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  for (const [verb, kindStr] of Object.entries(NUDGE_VERBS)) {
+    const kind = kindStr as InterventionKind;
+    const target = targetFor(kind);
+    if (!target) {
+      const wants = INTERVENTIONS[kind].targets;
+      out.set(verb, wants.includes('soul') ? 'Pick somebody first.' : 'Pick a building first.');
+      continue;
+    }
+    out.set(verb, canApply(city, kind, target));
+  }
+  return out;
+}
+
 function doVerb(verb: Verb): void {
+  const nudgeKind = NUDGE_VERBS[verb] as InterventionKind | undefined;
+  if (nudgeKind) {
+    const target = targetFor(nudgeKind);
+    if (!target) {
+      shell.say('Nothing selected to aim that at.');
+      return;
+    }
+    const why = canApply(city, nudgeKind, target);
+    if (why) {
+      shell.say(why);
+      return;
+    }
+    applyNudge(city, nudgeKind, target);
+    shell.say(city.log[city.log.length - 1]?.text ?? 'Done.');
+    return;
+  }
   switch (verb) {
     case 'zoomIn': setZoom(ZOOM_STEPS[Math.min(2, ZOOM_STEPS.indexOf(cam.zoom) + 1)]); break;
     case 'zoomOut': setZoom(ZOOM_STEPS[Math.max(0, ZOOM_STEPS.indexOf(cam.zoom) - 1)]); break;
@@ -229,11 +279,6 @@ function loop(now: number): void {
   // If the tab was backgrounded, do not spend the next minute catching up.
   if (city.tick < Math.floor(simMin) - MAX_TICKS_PER_FRAME) simMin = city.tick;
 
-  const day = Math.floor(city.tick / MIN_PER_DAY);
-  if (day !== lastBudgetDay) {
-    lastBudgetDay = day;
-    budget = 3;
-  }
 
   if (follow >= 0) {
     const s = city.souls[follow];
@@ -258,7 +303,8 @@ function loop(now: number): void {
   }
 
   drawFrame(ctx as CanvasRenderingContext2D, city, scene, cam, viewW, viewH, fracMin(), sel);
-  shell.update(city, sel, cam.zoom, speedIndex, budget);
+  shell.update(city, sel, cam.zoom, speedIndex, city.budgetLeft);
+  shell.nudgeReasons(nudgeReasons());
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);

@@ -87,31 +87,55 @@ const ACTIVITY_PHRASE: Partial<Record<Activity, string>> = {
   dead: 'dead',
 };
 
-const WORK_PHRASE: Partial<Record<Trade, string>> = {
-  clerk: 'copying a ledger he stopped believing in',
-  millhand: 'minding a machine that does not stop for him',
-  lighterman: 'working a barge off the quay',
-  engineer: 'inside a machine up to the elbows',
-  lamplighter: 'checking a mantle that has been failing for a week',
-  conductor: 'counting fares twice, to be sure',
-  constable: 'writing up something that will not be read',
-  printer: 'setting type back to front, correctly',
-  publican: 'pulling for a room that is not paying yet',
-  shopkeeper: 'rearranging a window nobody stops at',
-  seamstress: 'finishing a seam by the last of the light',
-  laundress: 'up to the elbows in somebody else\'s linen',
-  docker: 'shifting weight that was badly loaded',
-  nurse: 'doing what can be done',
-  curate: 'preparing a sermon about patience',
-  alderman: 'signing what is put in front of him',
-  child: 'reciting something learned by heart',
+// Pronoun-free by construction.
+//
+// These lines are attached to a named soul whose sex the sim knows, but writing
+// "minding a machine that does not stop for him" and then attaching it to Harriet
+// is worse than any amount of cleverness saves. Phrases that describe the WORK
+// rather than the worker never have to agree with anything.
+const WORK_PHRASE: Partial<Record<Trade, string[]>> = {
+  clerk: [
+    'copying a ledger nobody has believed in for years',
+    'adding a column that will not come out',
+    'filing something that will never be asked for',
+  ],
+  millhand: [
+    'minding a machine that does not stop for anyone',
+    'watching a belt that has been slipping since Tuesday',
+    'feeding the frame and counting the hours',
+    'listening for the sound the machine makes before it jams',
+  ],
+  lighterman: ['working a barge off the quay', 'making fast in a wind that is getting up'],
+  engineer: ['inside a machine up to the elbows', 'explaining to nobody why it will not run'],
+  lamplighter: ['checking a mantle that has been failing for a week', 'trimming wicks nobody thanks anyone for'],
+  conductor: ['counting the fares twice, to be sure', 'arguing with somebody about a ticket'],
+  constable: ['writing up something that will not be read', 'standing where standing is the job'],
+  printer: ['setting type back to front, correctly', 'washing ink out of the press and out of both hands'],
+  publican: ['pulling for a room that is not paying yet', 'watering something that was already watered'],
+  shopkeeper: ['rearranging a window nobody stops at', 'weighing out less than was asked for'],
+  seamstress: ['finishing a seam by the last of the light', 'turning a collar for the second time'],
+  laundress: ['up to the elbows in somebody else\'s linen', 'boiling a copper that has boiled since five'],
+  docker: ['shifting weight that was badly loaded', 'waiting to be picked, and not being picked'],
+  nurse: ['doing what can be done', 'writing down what the doctor will not'],
+  curate: ['preparing a sermon about patience', 'visiting a house that would rather not be visited'],
+  alderman: ['signing whatever is put in front of them', 'agreeing with the last person who spoke'],
+  child: ['reciting something learned by heart', 'copying the answer off the next desk'],
 };
 
-export function activityPhrase(activity: Activity, trade: Trade, fatigue: number, grievance: number, hunger: number): string {
+/**
+ * @param salt a stable per-soul number, so six mill hands in one room do not all
+ *   say the same sentence. Repetition inside a single INSIDE list is the fastest
+ *   way to make a generated district feel generated.
+ */
+export function activityPhrase(
+  activity: Activity, trade: Trade, fatigue: number, grievance: number, hunger: number, salt = 0,
+): string {
   if (activity === 'working') {
     if (fatigue > 820) return 'asleep over the work';
-    if (grievance > 720) return 'working, and saying exactly what he thinks of the new rota';
-    return WORK_PHRASE[trade] ?? 'at work';
+    if (grievance > 720) return 'working, and saying exactly what the new rota is worth';
+    const options = WORK_PHRASE[trade];
+    if (!options || !options.length) return 'at work';
+    return options[Math.abs(salt) % options.length];
   }
   if (activity === 'asleep' && hunger > 880) return 'asleep, and hungry with it';
   if (activity === 'drinking' && grievance > 700) return 'drinking, and getting louder about it';

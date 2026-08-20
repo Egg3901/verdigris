@@ -5,6 +5,8 @@ export type Verb =
   | 'panLeft' | 'panRight' | 'panUp' | 'panDown' | 'recentre'
   | 'zoomIn' | 'zoomOut' | 'zoom1' | 'zoom2' | 'zoom3'
   | 'follow' | 'peek' | 'hide' | 'dismiss'
+  | 'nudgeRumour' | 'nudgeGas' | 'nudgeTram' | 'nudgeTip' | 'nudgeStrike'
+  | 'nudgeStory' | 'nudgeQuarantine' | 'nudgeBunting'
   | 'pause' | 'slower' | 'faster'
   | 'scrubBack' | 'scrubOn' | 'help';
 
@@ -12,7 +14,7 @@ export interface Binding {
   verb: Verb;
   keys: string[];
   label: string;
-  group: 'camera' | 'time' | 'verbs' | 'meta';
+  group: 'camera' | 'time' | 'verbs' | 'nudges' | 'meta';
 }
 
 export const BINDINGS: readonly Binding[] = [
@@ -38,6 +40,15 @@ export const BINDINGS: readonly Binding[] = [
   { verb: 'hide', keys: ['h'], label: 'Hide this', group: 'verbs' },
   { verb: 'dismiss', keys: ['Escape'], label: 'Let it go', group: 'verbs' },
 
+  { verb: 'nudgeRumour', keys: ['q'], label: 'Start a rumour', group: 'nudges' },
+  { verb: 'nudgeGas', keys: ['g'], label: 'Cut a gas main', group: 'nudges' },
+  { verb: 'nudgeTram', keys: ['t'], label: 'Delay the tram', group: 'nudges' },
+  { verb: 'nudgeTip', keys: ['c'], label: 'Tip off the constabulary', group: 'nudges' },
+  { verb: 'nudgeStrike', keys: ['k'], label: 'Fund a strike', group: 'nudges' },
+  { verb: 'nudgeStory', keys: ['p'], label: 'Plant a story', group: 'nudges' },
+  { verb: 'nudgeQuarantine', keys: ['x'], label: 'Quarantine a street', group: 'nudges' },
+  { verb: 'nudgeBunting', keys: ['b'], label: 'Fund the bunting', group: 'nudges' },
+
   { verb: 'help', keys: ['?'], label: 'This list', group: 'meta' },
 ];
 
@@ -47,6 +58,19 @@ for (const b of BINDINGS) for (const k of b.keys) LOOKUP.set(k.toLowerCase(), b.
 export function verbForKey(key: string): Verb | null {
   return LOOKUP.get(key.toLowerCase()) ?? null;
 }
+
+/** The verb-to-intervention map. One table, so the menu, the keys and the
+ *  handler cannot drift apart. */
+export const NUDGE_VERBS: Record<string, string> = {
+  nudgeRumour: 'rumour',
+  nudgeGas: 'cutGas',
+  nudgeTram: 'delayTram',
+  nudgeTip: 'tipOff',
+  nudgeStrike: 'fundStrike',
+  nudgeStory: 'plantStory',
+  nudgeQuarantine: 'quarantine',
+  nudgeBunting: 'fundBunting',
+};
 
 export function keycapFor(verb: Verb): string {
   const b = BINDINGS.find((x) => x.verb === verb);

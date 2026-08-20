@@ -159,10 +159,21 @@ html, body {
 }
 .token.spent { background: transparent; opacity: 0.45; }
 
-/* Inspector */
+/* Inspector.
+   Anchored under the title plate rather than floating free: at --px 2 the card is
+   already 300px wide, and a floating card that size spends most of its life
+   covering the thing it describes. Capped in height and scrolled, because the
+   INSIDE list of a tenement is genuinely long and the panel must not run off the
+   bottom of the screen. */
 #inspector {
-  max-width: calc(150px * var(--px));
-  min-width: calc(110px * var(--px));
+  top: calc(84px * var(--px));
+  left: var(--gap);
+  width: calc(132px * var(--px));
+  max-height: calc(100vh - 94px * var(--px) - 40px * var(--px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: var(--fs-small);
+  line-height: 1.45;
 }
 #inspector .name {
   font-family: var(--font-instrument);
@@ -196,6 +207,8 @@ html, body {
   font: inherit;
   color: var(--ink);
   padding: calc(1px * var(--px)) 0;
+  text-indent: calc(-5px * var(--px));
+  padding-left: calc(5px * var(--px));
 }
 #inspector li button::before { content: "\00B7  "; color: var(--brass-ink); }
 #inspector li button:hover, #inspector li button:focus-visible {
@@ -270,6 +283,7 @@ button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 
 /* Verb menu */
 #verbs { top: var(--gap); right: var(--gap); display: flex; flex-direction: column; gap: calc(3px * var(--px)); background: none; border: none; box-shadow: none; outline: none; padding: 0; }
+#verbs button > span:first-child { flex: 1 1 auto; }
 #verbs button {
   all: unset;
   cursor: pointer;
@@ -291,16 +305,68 @@ button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
   color: var(--brass-ink);
   border: 1px solid var(--brass-ink);
   padding: 0 calc(2px * var(--px));
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-left: calc(6px * var(--px));
 }
 #verbs button[aria-disabled="true"] { color: #5a5342; letter-spacing: 0.2em; }
 #verbs button[aria-disabled="true"] .key { display: none; }
 #verbs button:focus-visible { outline: calc(1px * var(--px)) solid var(--gas2); outline-offset: calc(1px * var(--px)); }
 
+/* Nudge menu */
+#nudges {
+  top: calc(84px * var(--px));
+  right: var(--gap);
+  width: calc(126px * var(--px));
+  padding: calc(4px * var(--px));
+}
+#nudges .heading {
+  font-size: var(--fs-small);
+  letter-spacing: 0.2em;
+  color: var(--brass-ink);
+  margin-bottom: calc(2px * var(--px));
+}
+#nudges .nudgerow { margin-bottom: calc(2px * var(--px)); }
+#nudges button {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: calc(6px * var(--px));
+  width: 100%;
+  font-size: var(--fs-small);
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  padding: calc(1px * var(--px)) calc(2px * var(--px));
+  border-bottom: 1px solid rgba(107, 74, 18, 0.25);
+}
+#nudges button .key {
+  font-family: var(--font-instrument);
+  color: var(--brass-ink);
+  border: 1px solid var(--brass-ink);
+  padding: 0 calc(2px * var(--px));
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-left: calc(6px * var(--px));
+}
+#nudges button > span:first-child { flex: 1 1 auto; }
+#nudges button:hover:not([aria-disabled="true"]),
+#nudges button:focus-visible { background: var(--parch3); outline: 1px solid var(--verd1); }
+#nudges button[aria-disabled="true"] { color: #5a5342; letter-spacing: 0.12em; cursor: default; }
+#nudges button[aria-disabled="true"] .key { visibility: hidden; }
+#nudges .why {
+  font-size: var(--fs-small);
+  color: var(--brass-ink);
+  font-style: italic;
+  padding-left: calc(2px * var(--px));
+  line-height: 1.3;
+}
+
 /* Ticker */
 #ticker {
   position: absolute;
   right: var(--gap);
-  top: calc(90px * var(--px));
+  bottom: calc(48px * var(--px));
   width: calc(130px * var(--px));
   text-align: right;
   pointer-events: none;
@@ -312,9 +378,17 @@ button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 #ticker div.loss { color: #c98a86; }
 #ticker div.gain { color: var(--verd2); }
 
-@media (max-width: 720px) {
-  #inspector { left: var(--gap) !important; right: var(--gap); top: auto !important; bottom: calc(52px * var(--px)); max-width: none; }
+@media (max-width: 980px) {
+  #inspector {
+    left: var(--gap);
+    right: var(--gap);
+    top: auto;
+    bottom: calc(56px * var(--px));
+    width: auto;
+    max-height: calc(38vh);
+  }
   #ticker { display: none; }
+  #nudges { display: none; }
 }
 
 @media (pointer: coarse) {

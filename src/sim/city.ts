@@ -20,7 +20,17 @@ import { advanceSoul, isTravelling } from './souls';
 import type { Soul } from './souls';
 import { mix } from './rng';
 import { CAPS } from './types';
-import type { Activity, BuildingId, BuildingKind, PressureKey, SoulId } from './types';
+import type { Activity, BuildingId, BuildingKind, ClaimKind, PressureKey, SoulId } from './types';
+import { newClaims, gossipSlice, convictionOf, decayBeliefsDaily, seedClaim, implant } from './claims';
+import type { ClaimState } from './claims';
+import { buildRelations, neighboursOf } from './relations';
+import type { Relations } from './relations';
+import { newEvents, emit, witnessesOf } from './events';
+import type { EventState } from './events';
+import { checkIncidents, newIncidents } from './incidents';
+import type { IncidentState } from './incidents';
+import type { Nudge } from './interventions';
+import { DAILY_BUDGET } from './interventions';
 
 export interface LogEvent {
   tick: number;
@@ -42,6 +52,23 @@ export interface City extends World {
   favourite: Record<string, Int16Array>;
   buildingsByKind: Map<BuildingKind, BuildingId[]>;
   lampsLit: number;
+
+  claims: ClaimState;
+  relations: Relations;
+  events: EventState;
+  incidents: IncidentState;
+
+  /** The save format. Everything else is replayable from (seedStr, tick, nudges). */
+  nudges: Nudge[];
+  budgetLeft: number;
+  /** How many high-heat nudges have been traced back toward the player. */
+  traced: number;
+
+  tramDelayedUntil: number;
+  buntingUntil: number;
+  quarantined: Set<number>;
+  /** Falls permanently when a planted story is retracted. */
+  paperCredibility: number;
 }
 
 export function newCity(seedStr: string): City {
@@ -55,6 +82,17 @@ export function newCity(seedStr: string): City {
     favourite: {},
     buildingsByKind: new Map(),
     lampsLit: 0,
+    claims: newClaims(),
+    relations: buildRelations(world.seed, world.souls, world.households, world.firms),
+    events: newEvents(),
+    incidents: newIncidents(),
+    nudges: [],
+    budgetLeft: DAILY_BUDGET,
+    traced: 0,
+    tramDelayedUntil: -1,
+    buntingUntil: -1,
+    quarantined: new Set<number>(),
+    paperCredibility: 800,
   };
 
   for (const b of city.buildings) {
@@ -104,7 +142,28 @@ export function newCity(seedStr: string): City {
     s.progressMilli = 0;
   }
   rebuildOccupants(city);
+  seedPrehistoryClaims(city);
   return city;
+}
+
+/**
+ * Three or four true things nobody has acted on yet, held by a handful of people
+ * before tick 0.
+ *
+ * The district has to have a past for the present to read as a present. A player
+ * who follows somebody on day one and finds they already know something is the
+ * whole effect, and it costs four claims.
+ */
+function seedPrehistoryClaims(city: City): void {
+  const kinds: ClaimKind[] = ['affair', 'graft', 'debt', 'theft'];
+  for (let i = 0; i < kinds.length; i++) {
+    const subject = city.souls[(mix(city.seed, 88, i) >>> 0) % Math.max(1, city.souls.length)];
+    if (!subject) continue;
+    const id = seedClaim(city.claims, kinds[i], subject.id, -1, subject.homeId, 1, -1440 * 30 * (i + 1));
+    for (const other of neighboursOf(city.relations, subject.id).slice(0, 3)) {
+      implant(city.claims, city.souls[other], id, 420 + i * 40, subject.id, -1440);
+    }
+  }
 }
 
 export function newValidatedCity(seedStr: string): { city: City; errors: string[] } {
@@ -303,6 +362,10 @@ export function tickCity(city: City): void {
     tickNeeds(city, s);
   }
 
+  // 5. Gossip, sliced sixty ways so the cost is flat and the spread feels
+  //    continuous rather than arriving in an hourly lump.
+  gossipSlice(city.claims, city.souls, city.seed, tick, (s) => neighboursOf(city.relations, s.id));
+
   rebuildOccupants(city);
 
   if (mod % 60 === 0) tickHour(city);
@@ -352,12 +415,28 @@ function tickHour(city: City): void {
   // ordered actually happened, which is the entire thesis expressed as one branch.
   const rot = pressureOf(city.press, 'rot');
   const coin = pressureOf(city.press, 'coin');
+  // Fabric decays four times a day, not twenty-four. Hourly decay condemned every
+  // building in the district by day twenty, which is not a slow rot, it is a fire.
+  // Measured target: from about 650 at the start to about 400 after a month, with
+  // the worst buildings in real trouble and most merely shabby.
+  const decayHour = tick % 360 === 0;
   for (const b of city.buildings) {
-    const wet = !serviceAt(city.networks.drain, b.id) ? 2 : 0;
-    b.fabric = clamp(b.fabric - 1 - wet - Math.trunc(rot / 400));
-    const repaired = coin > 400 && rot < 500 && ((b.id + Math.trunc(tick / 60)) % 24 === 0);
-    if (repaired) b.fabric = clamp(b.fabric + 18);
-    if (b.facade > 0 && (b.id + Math.trunc(tick / 60)) % 31 === 0) b.facade = clamp(b.facade - 1);
+    const wet = !serviceAt(city.networks.drain, b.id) ? 1 : 0;
+    if (decayHour) b.fabric = clamp(b.fabric - 1 - wet - Math.trunc(rot / 300));
+    // A repair only happens if there is money AND the rot has not already
+    // eaten the order. This single branch is where 'the repair was ordered' turns
+    // into 'the repair never happened'.
+    // Repairs run on the SAME cadence as decay, or the arithmetic is off by the
+    // ratio between them: hourly repairs against six-hourly decay made fabric
+    // climb to the ceiling across the whole district by day thirty.
+    //
+    // Funded and honest, a building nets roughly minus four a day and the
+    // district holds. Once rot passes its threshold the repair branch stops
+    // firing entirely, and that is the moment "ordered" stops meaning "done".
+    const repaired = decayHour && coin > 400 && rot < 520
+      && ((b.id + Math.trunc(tick / 360)) % 5 === 0);
+    if (repaired) b.fabric = clamp(b.fabric + 6);
+    if (b.facade > 0 && (b.id + Math.trunc(tick / 60)) % 96 === 0) b.facade = clamp(b.facade - 1);
   }
 
   for (const f of city.firms) {
@@ -370,11 +449,124 @@ function tickHour(city: City): void {
     f.orders = clamp(f.orders + (f.output > 55 ? 3 : -4));
   }
 
+  recomputeBaselines(city);
+
+  // What the district believes feeds back into what it feels. Suspicion is the
+  // aggregate conviction in the accusatory kinds; mood pays for the rest.
+  const suspicious = Math.round(
+    (convictionOf(city.claims, city.souls, 'informer')
+      + convictionOf(city.claims, city.souls, 'sabotage')
+      + convictionOf(city.claims, city.souls, 'graft')) / 3,
+  );
+  const have = pressureOf(city.press, 'suspicion');
+  if (suspicious > have) {
+    applyPressure(city.press, 'suspicion', Math.trunc((suspicious - have) / 4), 'claim', 0, 'what people are saying', tick);
+  }
+  const grim = convictionOf(city.claims, city.souls, 'sickness') + convictionOf(city.claims, city.souls, 'collapse');
+  if (grim > 200) applyPressure(city.press, 'mood', -Math.trunc(grim / 60), 'claim', 0, 'what people are saying', tick);
+
+  // The tram runs badly while it is delayed, and the bunting keeps the mood up
+  // while it is up. Both are state, both expire, neither is a hidden timer.
+  if (city.tramDelayedUntil > tick) {
+    applyPressure(city.press, 'tram', -20, 'intervention', 0, 'the tram is still not right', tick);
+  }
+  if (city.buntingUntil > tick) {
+    applyPressure(city.press, 'mood', 8, 'intervention', 0, 'the flags are still up', tick);
+  }
+
+  checkIncidents(city, tick);
   decayPressuresHourly(city.press, tick);
+}
+
+/**
+ * The baselines are FUNCTIONS OF THE WORLD, not constants.
+ *
+ * This is the difference between a district and a diorama. With fixed baselines
+ * the hourly decay pulls every pressure back to where it started, nothing ever
+ * crosses an incident threshold, and three game-days pass with an empty log:
+ * measured, not guessed. Making the baseline the place the district WOULD settle
+ * given its current fabric, service and money means decay drags the city toward
+ * its actual condition, and the condition is what the player is changing.
+ *
+ * rot is the one that matters. It rises whenever the repair money is short, and
+ * it makes fabric decay faster, which makes sanitation worse, which lowers mood,
+ * which the facade spending then papers over. That loop is the whole thesis, and
+ * it does not exist unless the baselines move.
+ */
+function recomputeBaselines(city: City): void {
+  const p = city.press.pressures;
+  const b = city.buildings;
+  if (!b.length) return;
+
+  let fabric = 0;
+  let facade = 0;
+  for (const x of b) { fabric += x.fabric; facade += x.facade; }
+  fabric = Math.round(fabric / b.length);
+  facade = Math.round(facade / b.length);
+
+  const drainConnected = connectedCount(city.networks.drain);
+  const drainServed = servedCount(city.networks.drain);
+  const drainFrac = drainConnected ? drainServed / drainConnected : 1;
+
+  let running = 0;
+  let output = 0;
+  for (const f of city.firms) {
+    if (!isRunning(f, city.tick)) continue;
+    running++;
+    output += f.output;
+  }
+  const avgOutput = running ? output / running : 0;
+
+  // Sanitation follows the drains and the fabric they run through.
+  p.sanitation.baseline = clamp(Math.round(120 + drainFrac * 420 + fabric * 0.35));
+
+  // Wages follow what the firms are actually producing, and a struck or shut
+  // firm pays nobody.
+  const workingFrac = city.firms.length ? running / city.firms.length : 1;
+  p.wages.baseline = clamp(Math.round(180 + avgOutput * 3.4 + workingFrac * 240));
+
+  // The treasury is rates on a working district, minus what rot skims.
+  p.coin.baseline = clamp(Math.round(240 + workingFrac * 420 - p.rot.value * 0.35));
+
+  // ROT: unfunded repairs. When there is no money the repairs are ordered and not
+  // done, and the gap between what the buildings look like and what they are is
+  // exactly the measure of it.
+  const show = Math.max(0, facade - fabric);
+  p.rot.baseline = clamp(Math.round(180 + show * 0.9 + Math.max(0, 500 - p.coin.value) * 0.42));
+
+  // Mood is what living here is like: lit streets, paid wages, working drains,
+  // and whether the flags are up.
+  p.mood.baseline = clamp(Math.round(
+    120
+    + p.gas.value * 0.18
+    + p.wages.value * 0.30
+    + p.sanitation.value * 0.22
+    + (city.buntingUntil > city.tick ? 90 : 0)
+    - p.suspicion.value * 0.16,
+  ));
+
+  // The tram is only as good as its depot, and it stays bad while it is delayed.
+  const depot = city.buildingsByKind.get('tramdepot')?.[0];
+  const depotFabric = depot !== undefined ? city.buildings[depot].fabric : 600;
+  p.tram.baseline = clamp(Math.round(
+    (city.tramDelayedUntil > city.tick ? 120 : 380) + depotFabric * 0.45,
+  ));
+
+  // Suspicion settles where the constabulary and the rot leave it.
+  const constables = city.souls.filter((s) => s.trade === 'constable').length;
+  p.suspicion.baseline = clamp(Math.round(60 + p.rot.value * 0.30 + constables * 6));
+
+  // Gas is reported directly from the network above, so its baseline just follows
+  // the value rather than fighting it.
+  p.gas.baseline = p.gas.value;
 }
 
 function tickDay(city: City): void {
   const tick = city.tick;
+  city.budgetLeft = DAILY_BUDGET;
+  decayBeliefsDaily(city.claims, city.souls);
+  // Quarantines are lifted after a day: a cordon nobody maintains is not a cordon.
+  city.quarantined.clear();
 
   // Wages, then rent. In that order, because the point of a strike is that the
   // rent still falls due.
@@ -474,3 +666,4 @@ export function soulsOutdoors(city: City): number {
 }
 
 export { CAPS, MIN_PER_DAY };
+export { emit, witnessesOf };

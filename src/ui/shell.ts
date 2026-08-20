@@ -10,7 +10,7 @@ import { describeBuilding, describeSoul, insideList, boundFor, carrying } from '
 import { fullName } from '../sim/souls';
 import type { Selection } from '../render/frame';
 import type { ZoomStep } from '../render/iso';
-import { BINDINGS, keycapFor } from './keys';
+import { BINDINGS, keycapFor, NUDGE_VERBS } from './keys';
 import type { Verb } from './keys';
 import { PAL } from '../render/palette';
 
@@ -25,6 +25,7 @@ export interface ShellHooks {
 
 export interface Shell {
   update: (city: City, sel: Selection, zoom: ZoomStep, speedIndex: number, budget: number) => void;
+  nudgeReasons: (reasons: Map<string, string | null>) => void;
   insets: () => { top: number; right: number; bottom: number; left: number };
   say: (text: string) => void;
   destroy: () => void;
@@ -149,10 +150,36 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     verbs.append(b);
   }
 
+  // The nudge menu. Every entry stays visible whether or not it is available,
+  // because knowing that "quarantine a street" exists and is refused is more
+  // useful than not knowing it exists. The refusal text is the teaching.
+  const nudges = el('div', 'plate');
+  nudges.id = 'nudges';
+  const nudgeHead = el('div', 'heading', 'INTERVENE');
+  nudges.append(nudgeHead);
+  const nudgeList: { verb: Verb; node: HTMLButtonElement; why: HTMLElement }[] = [];
+  for (const verb of Object.keys(NUDGE_VERBS) as Verb[]) {
+    const binding = BINDINGS.find((b) => b.verb === verb);
+    const b = el('button') as HTMLButtonElement;
+    const label = el('span', undefined, (binding?.label ?? verb).toUpperCase());
+    const key = el('span', 'key', keycapFor(verb));
+    b.append(label, key);
+    b.setAttribute('aria-keyshortcuts', keycapFor(verb));
+    const why = el('div', 'why');
+    b.addEventListener('click', () => {
+      if (b.getAttribute('aria-disabled') === 'true') return;
+      hooks.onVerb(verb);
+    });
+    const row = el('div', 'nudgerow');
+    row.append(b, why);
+    nudges.append(row);
+    nudgeList.push({ verb, node: b, why });
+  }
+
   const ticker = el('div');
   ticker.id = 'ticker';
 
-  root.append(title, inspector, zoomPlate, scrub, verbs, ticker);
+  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker);
 
   const dayCtx = daybar.getContext('2d');
   let lastKey = '';
@@ -243,7 +270,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       insProse.textContent = describeBuilding(city, b.id);
       insHeading.textContent = 'INSIDE:';
       insList.textContent = '';
-      const { lines, more } = insideList(city, b.id);
+      const { lines, more } = insideList(city, b.id, 6);
       for (const line of lines) {
         const li = el('li');
         const btn = el('button', undefined, line.line) as HTMLButtonElement;
@@ -262,8 +289,19 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     inspector.hidden = true;
   }
 
+  const nudgeReasons: Shell['nudgeReasons'] = (reasons) => {
+    for (const { verb, node, why } of nudgeList) {
+      const reason = reasons.get(verb);
+      const ok = reason === null;
+      node.setAttribute('aria-disabled', String(!ok));
+      why.textContent = ok ? '' : (reason ?? '');
+      node.setAttribute('aria-describedby', '');
+    }
+  };
+
   return {
     update,
+    nudgeReasons,
     insets: () => {
       const t = title.getBoundingClientRect();
       const v = verbs.getBoundingClientRect();
