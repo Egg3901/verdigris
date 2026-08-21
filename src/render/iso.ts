@@ -14,7 +14,7 @@ export const TILE_W = 32;
 export const TILE_H = 16;
 
 /** Headroom above the grid for the mooring mast and the campanile. */
-export const HEAD_ROOM = 72;
+export const HEAD_ROOM = 120;
 export const FOOT_ROOM = 24;
 
 export type ZoomStep = 1 | 2 | 3;

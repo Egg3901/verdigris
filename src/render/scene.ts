@@ -25,9 +25,10 @@ import { serviceAt } from '../sim/networks';
 import { drawIsoDiamond } from './fallback';
 import { drawHouse, houseBounds } from './house';
 import { hardenAlpha, ditherPolyHard, lineHard } from './raster';
-import type { HouseSpec, HouseSkin, RoofShape } from './house';
+import type { HouseSpec, HouseSkin, RoofShape, Finial } from './house';
+import type { WallMaterial } from './detail';
 import { mix } from '../sim/rng';
-import { buildProps, buildSquareProps, textureCell } from './props';
+import { buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
 
 export interface StaticSprite {
@@ -83,50 +84,50 @@ interface Family {
   shop?: boolean;
   /** Dormers on the near slope, for the deeper roofs. */
   dormers?: number;
+  material: WallMaterial;
+  finial?: Finial;
+  finialH?: number;
+  cresting?: boolean;
 }
 
 const FAMILY: Partial<Record<string, Family>> = {
-  townhall: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, dormers: 2 },
-  exchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, shop: true },
-  bank: { roof: [PAL.verd1, PAL.verd0, PAL.verd2], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, shop: true },
-  postexchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone3, PAL.stone1], shape: 'hip', trim: PAL.brass2, shop: true },
-  glasshouse: { roof: [PAL.verd3, PAL.verd2, PAL.rivGlint], wall: [PAL.stone3, PAL.stone1], shape: 'gable', trim: PAL.verd3 },
-  chapel: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone3, PAL.stone1], shape: 'gable' },
-  school: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone2, PAL.stone1], shape: 'hip', dormers: 2 },
-  bathhouse: { roof: [PAL.verd1, PAL.verd0, PAL.verd2], wall: [PAL.stone3, PAL.stone1], shape: 'hip' },
-  dispensary: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream2, PAL.cream1], shape: 'gable', shop: true },
-  newspaper: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.cream1, PAL.cream0], shape: 'gable', shop: true },
-  constabulary: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone2, PAL.stone1], shape: 'gable' },
-  // Was a solid gold pyramid, which at zoom 1 was by far the loudest thing on the
-  // map and read as a circus tent. Gold is under half a percent of pixels by
-  // design; spending the entire budget on one roof wastes it.
-  mast: { roof: [PAL.verd2, PAL.verd1, PAL.gold], wall: [PAL.verd2, PAL.verd1], shape: 'pyramid', trim: PAL.gold },
+  townhall: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'dome', trim: PAL.gold, dormers: 1, material: 'ashlar', finial: 'dome', finialH: 10, cresting: true },
+  exchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, shop: true, material: 'ashlar', finial: 'cupola', finialH: 14, cresting: true },
+  bank: { roof: [PAL.verd1, PAL.verd0, PAL.verd2], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, shop: true, material: 'ashlar', cresting: true },
+  postexchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone3, PAL.stone1], shape: 'hip', trim: PAL.brass2, shop: true, material: 'ashlar', finial: 'cupola', finialH: 12 },
+  glasshouse: { roof: [PAL.verd3, PAL.verd2, PAL.rivGlint], wall: [PAL.stone3, PAL.stone1], shape: 'gable', trim: PAL.verd3, material: 'glazed' },
+  chapel: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone3, PAL.stone1], shape: 'gable', material: 'ashlar', finial: 'spire', finialH: 36, cresting: true },
+  school: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone2, PAL.stone1], shape: 'mansard', dormers: 2, material: 'brick', finial: 'cupola', finialH: 12 },
+  bathhouse: { roof: [PAL.verd1, PAL.verd0, PAL.verd2], wall: [PAL.stone3, PAL.stone1], shape: 'dome', material: 'ashlar', finial: 'dome', finialH: 8 },
+  dispensary: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream2, PAL.cream1], shape: 'gable', shop: true, material: 'stucco' },
+  newspaper: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.cream1, PAL.cream0], shape: 'gable', shop: true, material: 'brick' },
+  constabulary: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone2, PAL.stone1], shape: 'gable', material: 'ashlar' },
+  // Lattice, not a box. Gold lives on the cap, not the whole shaft.
+  mast: { roof: [PAL.verd2, PAL.verd1, PAL.gold], wall: [PAL.soot3, PAL.soot2], shape: 'flat', trim: PAL.gold, material: 'wood', finial: 'mast', finialH: 84 },
 
-  mill: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.brick1, PAL.brick0], shape: 'gable' },
-  foundry: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gable' },
-  gasworks: { roof: [PAL.soot2, PAL.soot1, PAL.soot3], wall: [PAL.brick1, PAL.brick0], shape: 'flat' },
-  tramdepot: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.brick1, PAL.brick0], shape: 'gable' },
-  pumphouse: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.brick1, PAL.brick0], shape: 'hip' },
-  workshop: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gable' },
-  // Same defect: thatch on timber was 14 luma apart.
-  warehouse: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.wood2, PAL.wood1], shape: 'gable' },
-  wharfshed: { roof: [PAL.thatch2, PAL.thatch1, PAL.thatch2], wall: [PAL.wood2, PAL.wood1], shape: 'gable' },
+  mill: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.brick1, PAL.brick0], shape: 'sawtooth', material: 'brick', finial: 'stack', finialH: 34 },
+  foundry: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'sawtooth', material: 'brick', finial: 'stack', finialH: 26 },
+  gasworks: { roof: [PAL.soot2, PAL.soot1, PAL.soot3], wall: [PAL.brick1, PAL.brick0], shape: 'flat', material: 'brick', finial: 'gasometer', finialH: 28 },
+  tramdepot: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.brick1, PAL.brick0], shape: 'sawtooth', material: 'brick' },
+  pumphouse: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.brick1, PAL.brick0], shape: 'hip', material: 'brick' },
+  workshop: { roof: [PAL.slate2, PAL.slate1, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gambrel', material: 'brick' },
+  warehouse: { roof: [PAL.soot3, PAL.soot2, PAL.slate2], wall: [PAL.wood2, PAL.wood1], shape: 'gambrel', material: 'wood' },
+  wharfshed: { roof: [PAL.thatch2, PAL.thatch1, PAL.thatch2], wall: [PAL.wood2, PAL.wood1], shape: 'gambrel', material: 'wood' },
 
-  pub: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.buntRed, PAL.brick1], shape: 'gable', trim: PAL.brass2, shop: true, dormers: 1 },
-  shop: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.cream2, PAL.cream1], shape: 'gable', trim: PAL.brass1, shop: true },
-  villa: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream3, PAL.cream1], shape: 'hip', trim: PAL.brass2, dormers: 2 },
-  terrace: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.cream2, PAL.cream1], shape: 'gable' },
-  tenement: { roof: [PAL.slate1, PAL.slate0, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gable', dormers: 2 },
-  // Was thatch1 on ochre1: 16 luma apart, so roof and wall were the same colour
-  // across 62 buildings. Lead slate against ochre is 60 apart and the row reads.
-  lodging: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.ochre1, PAL.ochre0], shape: 'gable', dormers: 1 },
-  courtdwelling: { roof: [PAL.soot3, PAL.soot2, PAL.soot3], wall: [PAL.brick1, PAL.brick0], shape: 'gable' },
+  pub: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.buntRed, PAL.brick1], shape: 'gable', trim: PAL.brass2, shop: true, dormers: 1, material: 'brick' },
+  shop: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.cream2, PAL.cream1], shape: 'gable', trim: PAL.brass1, shop: true, material: 'stucco' },
+  villa: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.cream3, PAL.cream1], shape: 'mansard', trim: PAL.brass2, dormers: 2, material: 'stucco', cresting: true },
+  terrace: { roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3], wall: [PAL.cream2, PAL.cream1], shape: 'gable', material: 'stucco' },
+  tenement: { roof: [PAL.slate1, PAL.slate0, PAL.slate2], wall: [PAL.brick2, PAL.brick1], shape: 'gable', dormers: 2, material: 'brick' },
+  lodging: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.ochre1, PAL.ochre0], shape: 'gambrel', dormers: 1, material: 'timber' },
+  courtdwelling: { roof: [PAL.soot3, PAL.soot2, PAL.soot3], wall: [PAL.brick1, PAL.brick0], shape: 'gable', material: 'brick' },
 };
 
 const DEFAULT_FAMILY: Family = {
   roof: [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3],
   wall: [PAL.cream2, PAL.cream1],
   shape: 'gable',
+  material: 'stucco',
 };
 
 /** Raise a colour until its luminance clears a floor, keeping its hue. */
@@ -179,8 +180,10 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   const fam = FAMILY[b.kind] ?? DEFAULT_FAMILY;
   const def = DEFS[b.kind];
   const salt = mix(city.seed, 41, b.id);
+  const polite = city.district.polite[cellKey(city.district, b.ox, b.oy)] === 1;
   // Soot on the same ladder as everything else, in five steps rather than 255.
-  const soot = Math.round(Math.min(0.34, grime / 760) / 0.06) * 0.06;
+  // The working bank carries more of it: that is the class geography, rendered.
+  const soot = Math.round(Math.min(polite ? 0.28 : 0.42, grime / 760 + (polite ? 0 : 0.08)) / 0.06) * 0.06;
 
   const wallWash = pickFrom(WALL_WASH, salt);
   const roofWash = pickFrom(ROOF_WASH, salt, 3);
@@ -197,17 +200,61 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   // A neglected building loses its highlights; a kept-up one keeps its trim.
   const tired = b.fabric < 420 ? -0.08 : 0;
 
+  let roof = fam.roof;
+  let wall = fam.wall;
+  let material = fam.material;
+  let shape = fam.shape;
+  // A one-tile-wide mill cannot carry sawteeth: they collapse into noise. Keep
+  // the stack, give the roof a gable that will actually silhouette.
+  if ((b.kind === 'mill' || b.kind === 'foundry' || b.kind === 'tramdepot') && Math.min(b.w, b.d) < 2) {
+    shape = 'gable';
+  }
+  // The polite bank keeps stucco, slate and ashlar. The working bank is timber,
+  // brick, terracotta, and patches. Same kinds, two cities.
+  if (!polite) {
+    if (b.kind === 'terrace') {
+      wall = [PAL.cream1, PAL.cream0];
+      roof = [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3];
+      material = 'timber';
+    } else if (b.kind === 'shop') {
+      wall = [PAL.ochre1, PAL.ochre0];
+      roof = [PAL.tileRed1, PAL.tileRed0, PAL.tileRed2];
+      material = 'timber';
+    } else if (b.kind === 'villa') {
+      material = 'stucco';
+      shape = 'gable';
+    } else if (b.kind === 'pub') {
+      material = 'brick';
+    }
+  } else {
+    if (b.kind === 'terrace') {
+      wall = [PAL.cream3, PAL.cream1];
+      roof = [PAL.slate2, PAL.slate1, PAL.arc0];
+      material = 'stucco';
+    } else if (b.kind === 'shop') {
+      wall = [PAL.cream3, PAL.cream1];
+      roof = [PAL.tileRed2, PAL.tileRed1, PAL.tileRed3];
+      material = 'stucco';
+    } else if (b.kind === 'villa') {
+      material = 'ashlar';
+    } else if (b.kind === 'lodging') {
+      material = 'stucco';
+      shape = 'mansard';
+    }
+  }
+
   const skin: HouseSkin = {
-    wallLit: wash(fam.wall[0], wallWash + tired),
-    wallShade: wash(fam.wall[1], wallWash + tired - 0.06),
+    wallLit: wash(wall[0], wallWash + tired),
+    wallShade: wash(wall[1], wallWash + tired - 0.06),
     // Gable ends carry the same floor as the roof, for the same reason: they are
     // large and they face the camera.
-    gableLit: gradeHex(liftToFloor(shadeHex(shadeHex(fam.wall[0], wallWash + tired - 0.04), -soot), 58), variant),
-    gableShade: gradeHex(liftToFloor(shadeHex(shadeHex(fam.wall[1], wallWash + tired - 0.1), -soot), 48), variant),
-    roofLit: roofWashOf(fam.roof[0], roofWash),
-    roofShade: roofWashOf(fam.roof[1], roofWash),
-    roofRidge: roofWashOf(fam.roof[2], roofWash + 0.1),
-    trim: b.facade > 780 ? gradeHex(fam.trim ?? PAL.gold, variant, true) : undefined,
+    gableLit: gradeHex(liftToFloor(shadeHex(shadeHex(wall[0], wallWash + tired - 0.04), -soot), 58), variant),
+    gableShade: gradeHex(liftToFloor(shadeHex(shadeHex(wall[1], wallWash + tired - 0.1), -soot), 48), variant),
+    roofLit: roofWashOf(roof[0], roofWash),
+    roofShade: roofWashOf(roof[1], roofWash),
+    roofRidge: roofWashOf(roof[2], roofWash + 0.1),
+    trim: (polite ? b.facade > 720 : b.facade > 880)
+      ? gradeHex(fam.trim ?? PAL.gold, variant, true) : undefined,
     // Chimneys are brick or soot, never the wall colour, and they carry the same
     // grime the walls do.
     chimney: gradeHex(shadeHex(soot > 0.18 ? PAL.soot2 : PAL.brick1, -soot * 0.5), variant),
@@ -220,36 +267,51 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   };
 
   const storeys = def.storeys;
-  const wallH = Math.max(7, Math.round(storeys * 8 + 2));
+  const wallH = fam.finial === 'mast' ? 8
+    : Math.max(7, Math.round(storeys * 8 + 2));
   // A town seen from above is a field of ROOFS. At 0.3 of the wall height the
   // roofs were small hats on tall walls, and the tan wall hue dominated the
   // frame. Around 0.65 is where the silhouette starts carrying the image.
-  const roofH = fam.shape === 'flat' ? 3
-    : fam.shape === 'pyramid' ? Math.round(16 + storeys * 3)
-      : Math.max(8, Math.round(wallH * 0.65 + (salt % 3)));
+  const roofH = fam.finial === 'mast' ? 0
+    : shape === 'flat' ? 3
+      : shape === 'pyramid' ? Math.round(16 + storeys * 3)
+        : shape === 'dome' ? Math.max(12, Math.round(wallH * 0.55 + (salt % 3)))
+          : Math.max(8, Math.round(wallH * 0.65 + (salt % 3)));
 
   const AWNINGS = [PAL.buntRed, PAL.buntBlue, PAL.verd1, PAL.brick1, PAL.ochre0];
+  const dwelling = b.kind === 'terrace' || b.kind === 'tenement'
+    || b.kind === 'courtdwelling' || b.kind === 'lodging';
+  const finial: Finial = fam.finial ?? 'none';
 
   return {
     w: b.w, d: b.d, wallH, roofH,
-    shape: fam.shape,
+    shape,
     salt: salt >>> 11,
     shopfront: fam.shop === true && b.w * b.d >= 1,
     sign: fam.shop === true,
     awning: gradeHex(pickFrom(AWNINGS, salt, 7), variant),
     // Dormers need a slope deep enough to sit one on.
-    dormers: fam.dormers && roofH >= 12 ? fam.dormers : 0,
+    dormers: fam.dormers && roofH >= 12 && shape !== 'sawtooth' ? fam.dormers : 0,
     // The rot, on the building rather than only in the prose. A building whose
-    // fabric has genuinely failed gets its windows boarded.
-    boarded: b.fabric < 260,
+    // fabric has genuinely failed gets its windows boarded. The working bank
+    // fails earlier.
+    boarded: b.fabric < (polite ? 260 : 340),
     // The flags the player paid for, on whatever fronts the square.
     bunting: city.buntingUntil > city.tick && nearSquare(city, b),
-    chimneys: fam.shape === 'flat' || fam.shape === 'pyramid' ? 0
-      : b.kind === 'mill' || b.kind === 'foundry' ? 2
+    chimneys: finial === 'mast' || shape === 'flat' || shape === 'pyramid' || shape === 'dome' ? 0
+      : b.kind === 'mill' || b.kind === 'foundry' ? 1
         : 1 + ((salt >>> 6) % 2),
     windowRows: Math.max(1, Math.min(3, storeys - 1)),
     skin,
     ridgeAlongX: b.w === b.d ? (salt & 1) === 1 : b.w > b.d,
+    material,
+    polite,
+    patched: !polite && dwelling && ((salt >>> 9) % 3 === 0),
+    washing: !polite && dwelling && ((salt >>> 11) % 2 === 0),
+    cresting: fam.cresting === true || (polite && b.kind === 'villa'),
+    railings: polite && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall'),
+    finial,
+    finialH: fam.finialH ?? 0,
   };
 }
 
@@ -316,10 +378,12 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       if (tile !== Tile.Water) {
         // Soot rises toward the factory quarter. A district that visibly gets
         // dirtier as you walk east IS the theme, rendered.
-        colour = shadeHex(colour, -Math.min(0.4, d.grime[k] / 700));
+        let dirt = Math.min(0.4, d.grime[k] / 700);
+        if (d.polite[k] === 0) dirt = Math.min(0.5, dirt + 0.08);
+        colour = shadeHex(colour, -dirt);
       }
       drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), gradeHex(colour, variant));
-      textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant);
+      textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant, d.polite[k] === 1);
 
       // Dither the step between depth bands. A hard step made the channel read as
       // a set of tiled patches rather than as water getting deeper.
@@ -343,8 +407,27 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
           const ex = originX + isoX(tx, ty);
           const ey = originY + isoY(tx, ty);
           const lip = gradeHex(tile === Tile.Wharf ? PAL.wood2 : PAL.stone2, variant);
-          if (dx === 1) lineHard(gctx, { x: ex, y: ey + TILE_H / 2 }, { x: ex + TILE_W / 2, y: ey }, lip);
-          else lineHard(gctx, { x: ex, y: ey + TILE_H / 2 }, { x: ex - TILE_W / 2, y: ey }, lip);
+          const a = dx === 1
+            ? { x: ex, y: ey + TILE_H / 2 }
+            : { x: ex, y: ey + TILE_H / 2 };
+          const b = dx === 1
+            ? { x: ex + TILE_W / 2, y: ey }
+            : { x: ex - TILE_W / 2, y: ey };
+          if (dx === 1) lineHard(gctx, a, b, lip);
+          else lineHard(gctx, a, b, lip);
+          // Balustrade on the polite bank, timber posts on the working one.
+          const rail = gradeHex(tile === Tile.Embankment ? PAL.stone1 : PAL.wood0, variant);
+          const n = Math.max(3, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / 3));
+          for (let i = 0; i <= n; i++) {
+            const t = i / n;
+            const x = Math.round(a.x + (b.x - a.x) * t);
+            const y = Math.round(a.y + (b.y - a.y) * t);
+            gctx.fillStyle = rail;
+            gctx.fillRect(x, y - (tile === Tile.Embankment ? 4 : 3), 1, tile === Tile.Embankment ? 4 : 3);
+          }
+          if (tile === Tile.Embankment) {
+            lineHard(gctx, { x: a.x, y: a.y - 4 }, { x: b.x, y: b.y - 4 }, rail);
+          }
         }
       }
     }
@@ -427,6 +510,12 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       { x: pr.wx + 1, y: pr.wy + 5 }, { x: pr.wx - 6, y: pr.wy + 1 },
     ], PAL.soot0, 6);
   }
+  for (const pr of buildStreetProps(d, city.seed, variant)) {
+    ditherPolyHard(gctx, [
+      { x: pr.wx - 2, y: pr.wy }, { x: pr.wx + 4, y: pr.wy + 2 },
+      { x: pr.wx - 2, y: pr.wy + 3 }, { x: pr.wx - 6, y: pr.wy + 2 },
+    ], PAL.soot0, 5);
+  }
 
   // Lamp pools are baked INTO THE GROUND, not drawn per frame over everything.
   //
@@ -474,6 +563,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
 
   const props = buildProps(d, city.seed, variant).concat(
     buildSquareProps(d, city.seed, variant, city.streetPlan.squareX, city.streetPlan.squareY, city.streetPlan.squareW),
+    buildStreetProps(d, city.seed, variant),
   );
   props.sort((a, b) => a.depth - b.depth);
   return { variant, ground, props, idBuffer, idCtx, statics, originX, originY };
@@ -493,7 +583,7 @@ export function flattenBuilding(
   const grime = city.district.grime[cellKey(city.district, b.ox, b.oy)];
   const spec = specFor(city, b, grime, variant);
   const bounds = houseBounds(spec);
-  const pad = 2;
+  const pad = 4;
   const w = bounds.maxX - bounds.minX + pad * 2;
   const ht = bounds.maxY - bounds.minY + pad * 2;
   const sprite = makeCanvas(w, ht);

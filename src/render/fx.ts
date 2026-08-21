@@ -104,7 +104,7 @@ export function drawSmoke(
 
     const puffs = industrial ? 7 : 3;
     const rise = industrial ? 4.5 : 2.6;
-    const top = wy - (b.storeys * 8 + 2) - (industrial ? 26 : 14);
+    const top = wy - (b.storeys * 8 + 2) - (industrial ? 48 : 14);
     for (let i = 0; i < puffs; i++) {
       // Age cycles, so puffs are continually born at the stack and die above it.
       const age = ((t * 0.06 + i / puffs) % 1);
