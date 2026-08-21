@@ -1,4 +1,4 @@
-// The eight stages, in order, plus the validator.
+// The generation stages, in order, plus the validator.
 //
 // The whole world is a pure function of one seed string. Nothing here reads the
 // clock, the DOM or Math.random, and every stage draws from its own RNG stream so
@@ -13,6 +13,8 @@ import { layStreets } from './gen/streets';
 import type { StreetPlan } from './gen/streets';
 import { subdivideBlocks } from './gen/blocks';
 import type { Block } from './gen/blocks';
+import { assignWards, wardBlockAdjacency } from './gen/wards';
+import type { Ward } from './gen/wards';
 import { subdividePlots, pruneUnreachablePaving } from './gen/plots';
 import type { Plot } from './gen/plots';
 import { assignBuildings } from './gen/assign';
@@ -41,6 +43,7 @@ export interface World {
   streetPlan: StreetPlan;
   squareName: string;
   blocks: Block[];
+  wards: Ward[];
   plots: Plot[];
   buildings: Building[];
   streets: Street[];
@@ -64,13 +67,14 @@ export function generateWorld(seedStr: string): World {
   const streetPlan = layStreets(district, seed, river);
   reserveRim(district, seed);
   const blocks = subdivideBlocks(district, seed);
+  const wards = assignWards(district, seed, blocks, streetPlan, river);
   const plots = subdividePlots(district, seed, blocks);
   pruneUnreachablePaving(
     district,
     streetPlan.squareX + (streetPlan.squareW >> 1),
     streetPlan.squareY + (streetPlan.squareW >> 1),
   );
-  const placements = assignBuildings(district, seed, plots, streetPlan, river);
+  const placements = assignBuildings(district, seed, plots, streetPlan, river, wards);
   const streets = nameStreets(district, seed);
   const squareName = nameSquare(seed);
 
@@ -193,7 +197,7 @@ export function generateWorld(seedStr: string): World {
 
   return {
     seedStr, seed, district, river, streetPlan, squareName,
-    blocks, plots, buildings, streets, graph, networks, tram,
+    blocks, wards, plots, buildings, streets, graph, networks, tram,
     souls, households, firms, doorNodes,
   };
 }
@@ -352,9 +356,45 @@ export function validateWorld(w: World): string[] {
   if (buildings.length > CAPS.buildings) errs.push(`building count ${buildings.length} over cap ${CAPS.buildings}`);
   if (souls.length > CAPS.souls) errs.push(`soul count ${souls.length} over cap ${CAPS.souls}`);
 
+  if (w.wards.length !== 6) errs.push(`ward count ${w.wards.length}, expected 6`);
+  for (const ward of w.wards) {
+    if (ward.blockIds.length < 3) errs.push(`ward ${ward.name} has only ${ward.blockIds.length} blocks`);
+  }
+  const wardAdjacency = wardBlockAdjacency(d, w.blocks);
+  for (const ward of w.wards) {
+    const wanted = new Set(ward.blockIds);
+    const reached = new Set<number>();
+    const queue = ward.blockIds.length ? [ward.blockIds[0]] : [];
+    if (queue.length) reached.add(queue[0]);
+    for (let head = 0; head < queue.length; head++) {
+      for (const other of wardAdjacency[queue[head]]) {
+        if (!wanted.has(other) || reached.has(other)) continue;
+        reached.add(other);
+        queue.push(other);
+      }
+    }
+    if (reached.size !== wanted.size) errs.push(`ward ${ward.name} has disconnected blocks`);
+  }
+  for (const block of w.blocks) {
+    if (block.wardId < 0 || block.wardId >= w.wards.length) errs.push(`block ${block.id} has invalid ward ${block.wardId}`);
+  }
+  for (const plot of w.plots) {
+    if (plot.wardId < 0 || plot.wardId >= w.wards.length) errs.push(`plot ${plot.id} has invalid ward ${plot.wardId}`);
+    if (w.blocks[plot.blockId]?.wardId !== plot.wardId) errs.push(`plot ${plot.id} disagrees with block ward`);
+  }
+  for (let y = 0; y < d.height; y++) {
+    for (let x = 0; x < d.width; x++) {
+      if (!insideIsland(d, x, y)) continue;
+      const k = cellKey(d, x, y);
+      if (d.tile[k] !== Tile.Water && (d.wardId[k] < 0 || d.wardId[k] >= w.wards.length)) {
+        errs.push(`land cell ${x},${y} has invalid ward ${d.wardId[k]}`);
+      }
+    }
+  }
   const seenCell = new Set<number>();
   for (const b of buildings) {
     if (b.doorNode < 0) errs.push(`building ${b.id} (${b.kind}) has no door node`);
+    if (w.plots[b.plotId]?.wardId === undefined) errs.push(`building ${b.id} has no ward`);
     if (!DEFS[b.kind].landmark && (b.w > 2 || b.d > 2)) {
       errs.push(`building ${b.id} (${b.kind}) is ${b.w}x${b.d}, non-landmarks cap at 2x2`);
     }

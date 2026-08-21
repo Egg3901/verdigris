@@ -57,11 +57,13 @@ Built and playing:
 - The deterministic core. The world is a pure function of
   `(seedStr, tickCount, nudges)`, so the save format is the nudge log and
   `hashWorld()` anchors every determinism test.
-- Eight-stage worldgen on a 64 by 64 grid: seeded coves and headlands, polite and
+- Worldgen on a 64 by 64 grid: seeded coves and headlands, polite and
   working banks, two or three crossings, a variable civic square, five to eight
-  edge gates, least-cost arterials, block subdivision, plot slicing, courts,
-  quota-scored assignment, gas and drain and post networks, tram, and a
-  prehistory of grudges that predate tick 0.
+  edge gates, least-cost arterials, block subdivision, six named wards, plot
+  slicing, courts, ward-aware assignment, gas and drain and post networks, tram,
+  and a prehistory of grudges that predate tick 0. Civic, garden, merchant,
+  works, courts, and quayside wards share identity across block grain, building
+  mix, materials, paving, vegetation, street furniture, and inspector text.
 - All-pairs next-hop street graph, usually 400 to 520 nodes. No runtime
   pathfinding. A 64-seed corpus guards density, connectivity, variation and caps.
 - Schedules with jitter plus an ambient errand layer, so the district has people
@@ -83,7 +85,8 @@ Built and playing:
 - Isometric renderer: gable, hip, pyramid, flat, mansard, gambrel, sawtooth and
   dome roofs; chimneys, dormers, facade materials, window rhythm, vehicles,
   smoke, lit windows, trees, ground texture, flatten-per-building compositor,
-  per-object depth sort, pixel-exact ID-buffer picking and discrete zoom.
+  one depth merge for buildings, props, people, trams, and carts, pixel-exact
+  ID-buffer picking and discrete zoom.
 - The full UI shell, and a keyboard equivalent for every verb.
 
 Measured behaviour: undisturbed, the district settles at an average facade of 610

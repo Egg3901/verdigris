@@ -813,6 +813,13 @@ export function hashWorld(city: City): number {
     h = Math.imul(h, 16777619);
   };
   put(city.tick);
+  for (const ward of city.wards) {
+    put(ward.id);
+    put(ward.kind.length * 31 + ward.kind.charCodeAt(0));
+    put(Math.round(ward.anchorX * 10));
+    put(Math.round(ward.anchorY * 10));
+    for (const blockId of ward.blockIds) put(blockId);
+  }
   for (const k of Object.keys(city.press.pressures).sort()) {
     put(city.press.pressures[k as PressureKey].value);
   }

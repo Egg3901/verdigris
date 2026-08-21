@@ -20,8 +20,12 @@ const SCENES = [
   { name: 'lamps', seed: 'verdigris', tick: 1260, zoom: 1 },
   { name: 'dead-hour', seed: 'verdigris', tick: 180, zoom: 1 },
   { name: 'coppergate', seed: 'coppergate', tick: 641, zoom: 1 },
-  { name: 'working-ward', seed: 'verdigris', tick: 641, zoom: 2, lookAt: [18, 44] },
-  { name: 'garden-ward', seed: 'verdigris', tick: 641, zoom: 2, lookAt: [45, 18] },
+  { name: 'civic-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'civic' },
+  { name: 'garden-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'garden' },
+  { name: 'merchant-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'merchant' },
+  { name: 'works-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'works' },
+  { name: 'courts-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'courts' },
+  { name: 'quayside-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'quayside' },
   { name: 'works-scaffold', seed: 'verdigris', tick: 641, zoom: 3, works: true },
 ];
 
@@ -47,6 +51,15 @@ for (const scene of SCENES) {
         window.__verdigris.select('building', target.id);
         window.__verdigris.lookAt(target.ox, target.oy);
       }
+    }
+    if (s.ward) {
+      const city = window.__verdigris.city;
+      const ward = city.wards.find((item) => item.kind === s.ward);
+      const target = ward ? city.buildings
+        .filter((building) => city.plots[building.plotId].wardId === ward.id)
+        .sort((a, b) => ((a.ox - ward.anchorX) ** 2 + (a.oy - ward.anchorY) ** 2)
+          - ((b.ox - ward.anchorX) ** 2 + (b.oy - ward.anchorY) ** 2))[0] : null;
+      if (target) window.__verdigris.lookAt(target.ox, target.oy);
     }
     if (s.lookAt) window.__verdigris.lookAt(s.lookAt[0], s.lookAt[1]);
     window.__verdigris.zoom(s.zoom);

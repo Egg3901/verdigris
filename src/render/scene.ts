@@ -33,6 +33,7 @@ import { mix } from '../sim/rng';
 import { buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
 import { worksStageFor } from '../sim/works';
+import type { WardKind } from '../sim/gen/wards';
 
 export interface StaticSprite {
   buildingId: number;
@@ -219,6 +220,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   let wall = fam.wall;
   let material = fam.material;
   let shape = fam.shape;
+  const wardKind = city.wards[city.plots[b.plotId]?.wardId]?.kind;
   // A one-tile-wide mill cannot carry sawteeth: they collapse into noise. Keep
   // the stack, give the roof a gable that will actually silhouette.
   if ((b.kind === 'mill' || b.kind === 'foundry' || b.kind === 'tramdepot') && Math.min(b.w, b.d) < 2) {
@@ -255,6 +257,48 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     } else if (b.kind === 'lodging') {
       material = 'stucco';
       shape = 'mansard';
+    }
+  }
+
+  // Ward identity is broad architectural rhythm, not a new building type. The
+  // landmarks keep their authored silhouettes while ordinary addresses inherit
+  // the materials of the quarter around them.
+  if (!def.landmark) {
+    switch (wardKind) {
+      case 'civic':
+        wall = b.kind === 'pub' ? [PAL.brick2, PAL.brick1] : [PAL.stone3, PAL.stone1];
+        roof = [PAL.slate2, PAL.slate1, PAL.arc0];
+        material = b.kind === 'shop' || b.kind === 'lodging' ? 'stucco' : 'ashlar';
+        break;
+      case 'garden':
+        wall = [PAL.cream3, PAL.cream1];
+        roof = [PAL.slate2, PAL.slate1, PAL.verd1];
+        material = b.kind === 'terrace' || b.kind === 'villa' ? 'stucco' : material;
+        break;
+      case 'merchant':
+        wall = b.kind === 'pub' ? [PAL.buntRed, PAL.brick1] : [PAL.cream2, PAL.ochre0];
+        roof = [PAL.tileRed2, PAL.tileRed1, PAL.slate2];
+        material = b.kind === 'shop' ? 'stucco' : material;
+        break;
+      case 'works':
+        wall = [PAL.brick2, PAL.brick0];
+        roof = [PAL.soot3, PAL.slate1, PAL.slate2];
+        material = b.kind === 'terrace' ? 'timber' : 'brick';
+        break;
+      case 'courts':
+        wall = [PAL.brick1, PAL.brick0];
+        roof = [PAL.tileRed1, PAL.soot2, PAL.tileRed2];
+        material = b.kind === 'tenement' || b.kind === 'courtdwelling' ? 'brick' : 'timber';
+        if (b.kind === 'lodging' || b.kind === 'terrace') shape = 'gable';
+        break;
+      case 'quayside':
+        wall = [PAL.wood2, PAL.wood1];
+        roof = b.kind === 'warehouse' || b.kind === 'workshop'
+          ? [PAL.slate2, PAL.slate1, PAL.soot2]
+          : [PAL.thatch2, PAL.thatch1, PAL.tileRed1];
+        material = 'wood';
+        if (b.kind === 'lodging' || b.kind === 'terrace') shape = 'gambrel';
+        break;
     }
   }
 
@@ -329,10 +373,11 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     ridgeAlongX: plotOf(city, b) === 'x',
     material,
     polite,
-    patched: !polite && dwelling && ((salt >>> 9) % 3 === 0),
-    washing: !polite && dwelling && ((salt >>> 11) % 2 === 0),
-    cresting: fam.cresting === true || (polite && b.kind === 'villa'),
-    railings: polite && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall'),
+    patched: !polite && dwelling && ((salt >>> 9) % (wardKind === 'courts' ? 2 : 3) === 0),
+    washing: !polite && dwelling && ((salt >>> 11) % (wardKind === 'courts' ? 2 : 3) === 0),
+    cresting: fam.cresting === true || ((wardKind === 'garden' || polite) && b.kind === 'villa'),
+    railings: (polite || wardKind === 'garden' || wardKind === 'civic')
+      && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall' || b.kind === 'terrace'),
     worksStage: worksStageFor(city, b.id),
     drainState: !def.needsDrain ? 0 : serviceAt(city.networks.drain, b.id) ? 1 : 2,
     finial,
@@ -364,6 +409,11 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   const ground = makeCanvas(b.w, b.h);
   const gctx = ctxOf(ground);
   const d = city.district;
+  const naturalProps = buildProps(d, city.seed, variant, city.wards);
+  const streetProps = buildStreetProps(d, city.seed, variant, city.wards);
+  const squareProps = buildSquareProps(
+    d, city.seed, variant, city.streetPlan.squareX, city.streetPlan.squareY, city.streetPlan.squareW,
+  );
 
   // Distance from each water cell to the nearest bank, so the channel can be
   // shaded across its width. A single flat value over 13% of the frame was the
@@ -406,6 +456,12 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
         let dirt = Math.min(0.4, d.grime[k] / 700);
         if (d.polite[k] === 0) dirt = Math.min(0.5, dirt + 0.08);
         colour = shadeHex(colour, -dirt);
+        const wardKind = city.wards[d.wardId[k]]?.kind as WardKind | undefined;
+        if (tile === Tile.Street || tile === Tile.Alley || tile === Tile.Square || tile === Tile.Embankment || tile === Tile.Wharf) {
+          if (wardKind === 'civic' || wardKind === 'garden') colour = shadeHex(colour, 0.08);
+          if (wardKind === 'works' || wardKind === 'courts') colour = shadeHex(colour, -0.08);
+          if (wardKind === 'quayside' && tile !== Tile.Embankment) colour = shadeHex(PAL.dirt1, -dirt * 0.7);
+        }
       }
       drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), gradeHex(colour, variant));
       textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant, d.polite[k] === 1);
@@ -531,13 +587,13 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       ], PAL.soot0, 7);
     }
   }
-  for (const pr of buildProps(d, city.seed, variant)) {
+  for (const pr of naturalProps) {
     ditherPolyHard(gctx, [
       { x: pr.wx + 1, y: pr.wy - 3 }, { x: pr.wx + 8, y: pr.wy + 1 },
       { x: pr.wx + 1, y: pr.wy + 5 }, { x: pr.wx - 6, y: pr.wy + 1 },
     ], PAL.soot0, 6);
   }
-  for (const pr of buildStreetProps(d, city.seed, variant)) {
+  for (const pr of streetProps) {
     ditherPolyHard(gctx, [
       { x: pr.wx - 2, y: pr.wy }, { x: pr.wx + 4, y: pr.wy + 2 },
       { x: pr.wx - 2, y: pr.wy + 3 }, { x: pr.wx - 6, y: pr.wy + 2 },
@@ -596,10 +652,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   }
   statics.sort((p, q) => p.depth - q.depth);
 
-  const props = buildProps(d, city.seed, variant).concat(
-    buildSquareProps(d, city.seed, variant, city.streetPlan.squareX, city.streetPlan.squareY, city.streetPlan.squareW),
-    buildStreetProps(d, city.seed, variant),
-  );
+  const props = naturalProps.concat(squareProps, streetProps);
   props.sort((a, b) => a.depth - b.depth);
   return {
     cartRoutes: buildCartRoutes(city), variant, worksRevision: city.works.revision,

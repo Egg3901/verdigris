@@ -14,6 +14,7 @@ import type { Block } from './blocks';
 export interface Plot {
   id: number;
   blockId: number;
+  wardId: number;
   ox: number; oy: number; w: number; d: number;
   cells: number[];
   /** Direction index toward the street the plot fronts: 0 E, 1 W, 2 S, 3 N. */
@@ -110,7 +111,7 @@ export function subdividePlots(d: District, seed: number, blocks: Block[]): Plot
         }
       }
       plots.push({
-        id: plots.length, blockId: block.id,
+        id: plots.length, blockId: block.id, wardId: block.wardId,
         ox: px, oy: py, w, d: h, cells, dir,
         frontX: cx + DX[dir], frontY: cy + DY[dir],
         doorX: cx, doorY: cy,
@@ -195,7 +196,7 @@ export function subdividePlots(d: District, seed: number, blocks: Block[]): Plot
         const y = (c - x) / d.width;
         taken[c] = 1;
         plots.push({
-          id: plots.length, blockId: block.id,
+          id: plots.length, blockId: block.id, wardId: block.wardId,
           ox: x, oy: y, w: 1, d: 1, cells: [c], dir: mouthDir < 0 ? 3 : mouthDir,
           frontX: mx, frontY: my, doorX: x, doorY: y,
           frontage: 1, polite: false, court: true,

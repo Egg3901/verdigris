@@ -13,6 +13,8 @@ export interface District {
   nodeId: Int16Array;
   streetId: Int16Array;
   blockId: Int16Array;
+  /** Nearest named ward for every land cell. Water remains unassigned. */
+  wardId: Int16Array;
   /** 1 on the polite bank (embankment, balustrade, arc lamps), 0 on the working bank.
    *  One flag, and it does most of the class geography for free. */
   polite: Uint8Array;
@@ -33,6 +35,7 @@ export function newDistrict(seed = 0): District {
     nodeId: new Int16Array(n),
     streetId: new Int16Array(n),
     blockId: new Int16Array(n),
+    wardId: new Int16Array(n),
     polite: new Uint8Array(n),
     grime: new Uint8Array(n),
     land: new Uint8Array(n),
@@ -42,6 +45,7 @@ export function newDistrict(seed = 0): District {
   d.nodeId.fill(-1);
   d.streetId.fill(-1);
   d.blockId.fill(-1);
+  d.wardId.fill(-1);
   const cx = (GRID_W - 1) / 2;
   const cy = (GRID_H - 1) / 2;
   const r = ((GRID_W - 1) / 2) * ISLAND_R;

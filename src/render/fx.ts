@@ -6,39 +6,107 @@ import type { City } from '../sim/city';
 import { tramPos } from '../sim/city';
 import { serviceAt } from '../sim/networks';
 import { isRunning } from '../sim/firms';
-import { PAL, gradeHex, shadeHex, variantFor } from './palette';
+import { PAL, gradeHex, shadeHex } from './palette';
 import type { Variant } from './palette';
 import { minuteOfDay } from '../sim/clock';
-import { TILE_W, TILE_H, isoX, isoY } from './iso';
+import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_AGENT } from './iso';
 import { fillPolyHard } from './raster';
 import { mix } from '../sim/rng';
 import { stepToward } from '../sim/graph';
 import { Tile } from '../sim/types';
 import { cellKey } from '../sim/district';
 
+export interface VehicleDraw {
+  /** 0 tram, 1 cart. */
+  kind: 0 | 1;
+  /** Cart body family. Ignored by trams. */
+  cartKind: 0 | 1 | 2;
+  wx: number;
+  wy: number;
+  depth: number;
+  /** Tram body axis. Carts do not need an orientation at this resolution. */
+  along: boolean;
+}
+
 /**
- * The tram car.
+ * Fill a reusable, depth-sorted list of moving vehicles.
  *
- * Drawn as a box on the rails with a verdigris roof and lit windows after dark.
- * It is not depth sorted against the buildings: at this scale the line runs down
- * the middle of the street and a car is never behind a facade for long enough to
- * matter, and sorting it would mean threading it through the merge walk for one
- * sprite.
+ * Vehicles use the actor layer, after structures on their own ground row and
+ * before structures on a nearer row. This lets a tram disappear behind a roof
+ * without treating it as an atmospheric overlay.
  */
-export function drawTrams(ctx: CanvasRenderingContext2D, city: City, variant: Variant): number {
-  let calls = 0;
+export function collectVehicles(
+  city: City, routes: readonly CartRoute[], fracMin: number,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+  out: VehicleDraw[],
+): number {
+  let n = 0;
+  const add = (kind: VehicleDraw['kind'], cartKind: VehicleDraw['cartKind'], cx: number, cy: number, along: boolean) => {
+    const wx = isoX(cx, cy);
+    const wy = isoY(cx, cy);
+    // Include the tram pole and cart body above their ground point in the cull.
+    if (wx < tl.wx - 12 || wx > br.wx + 12 || wy < tl.wy - 24 || wy > br.wy + 4) return;
+    const slot = out[n] ?? (out[n] = { kind: 0, cartKind: 0, wx: 0, wy: 0, depth: 0, along: false });
+    slot.kind = kind;
+    slot.cartKind = cartKind;
+    slot.wx = wx;
+    slot.wy = wy;
+    slot.depth = depthKey(cx, cy, LAYER_AGENT);
+    slot.along = along;
+    n++;
+  };
+
   for (const car of city.trams) {
     const p = tramPos(city, car);
-    const wx = isoX(p.cx, p.cy);
-    const wy = isoY(p.cx, p.cy);
-    const x = Math.round(wx);
-    const y = Math.round(wy);
+    add(0, 0, p.cx, p.cy, Math.abs(p.dx) >= Math.abs(p.dy));
+  }
+
+  const t = city.tick + fracMin;
+  for (let i = 0; i < routes.length; i++) {
+    const r = routes[i];
+    if (r.nodes.length < 2) continue;
+    // Triangle wave: out along the route and back, forever, with a per-cart phase.
+    const phase = ((t + i * 37) % (r.span * 2)) / r.span;
+    const along = phase <= 1 ? phase : 2 - phase;
+    const pos = along * (r.nodes.length - 1);
+    const idx = Math.min(r.nodes.length - 2, Math.floor(pos));
+    const f = pos - idx;
+    const na = r.nodes[idx];
+    const nb = r.nodes[idx + 1];
+    const cx = city.graph.cx[na] + (city.graph.cx[nb] - city.graph.cx[na]) * f;
+    const cy = city.graph.cy[na] + (city.graph.cy[nb] - city.graph.cy[na]) * f;
+
+    // Never draw a cart standing in the river: the route is a node polyline and
+    // the corridor between two nodes bends, exactly as the tram rails do.
+    const tx = Math.round(cx);
+    const ty = Math.round(cy);
+    if (tx < 0 || ty < 0 || tx >= city.district.width || ty >= city.district.height) continue;
+    if (city.district.tile[cellKey(city.district, tx, ty)] === Tile.Water) continue;
+    add(1, r.kind, cx, cy, false);
+  }
+
+  // Vehicles move only a fraction of a cell per frame, so insertion sort keeps
+  // the nearly sorted list ordered without allocating.
+  for (let i = 0; i < n - 1; i++) {
+    const cur = out[i + 1];
+    let j = i;
+    while (j >= 0 && out[j].depth > cur.depth) {
+      out[j + 1] = out[j];
+      j--;
+    }
+    out[j + 1] = cur;
+  }
+  return n;
+}
+
+/** Draw one vehicle from the merged depth list. */
+export function drawVehicle(ctx: CanvasRenderingContext2D, vehicle: VehicleDraw, variant: Variant): number {
+  const x = Math.round(vehicle.wx);
+  const y = Math.round(vehicle.wy);
+  if (vehicle.kind === 0) {
     const body = gradeHex(PAL.buntRed, variant);
     const roof = gradeHex(PAL.verd2, variant);
-
-    // Body: a short iso box, oriented along the direction of travel.
-    const along = Math.abs(p.dx) >= Math.abs(p.dy);
-    const hw = along ? 9 : 7;
+    const hw = vehicle.along ? 9 : 7;
     fillPolyHard(ctx, [
       { x: x - hw, y: y - 4 }, { x, y: y - 8 },
       { x: x + hw, y: y - 4 }, { x, y },
@@ -49,15 +117,42 @@ export function drawTrams(ctx: CanvasRenderingContext2D, city: City, variant: Va
     ], roof);
     ctx.fillStyle = body;
     ctx.fillRect(x - hw + 1, y - 11, hw * 2 - 1, 7);
-    // Windows: lit after dark, which is what makes a tram read as a tram.
     ctx.fillStyle = variant === 'day' ? gradeHex(PAL.darkWindow, variant) : gradeHex(PAL.litWindow, variant, true);
     for (let i = 0; i < 3; i++) ctx.fillRect(x - hw + 3 + i * 5, y - 9, 3, 3);
-    // A trolley pole up to the wire.
     ctx.fillStyle = gradeHex(PAL.soot2, variant);
     ctx.fillRect(x, y - 19, 1, 5);
-    calls += 5;
+    return 5;
   }
-  return calls;
+
+  const cartKind = vehicle.cartKind;
+  const body = gradeHex(CART_BODY[cartKind], variant);
+  const dark = gradeHex(shadeHex(CART_BODY[cartKind], -0.2), variant);
+  ctx.fillStyle = gradeHex(PAL.soot0, variant);
+  ctx.fillRect(x - 5, y, 10, 1);
+
+  if (cartKind === 2) {
+    fillPolyHard(ctx, [
+      { x: x - 3, y: y - 3 }, { x: x + 3, y: y - 3 },
+      { x: x + 3, y: y - 6 }, { x: x - 3, y: y - 6 },
+    ], body);
+    return 2;
+  }
+
+  ctx.fillStyle = gradeHex(PAL.wood0, variant);
+  ctx.fillRect(x + 4, y - 7, 5, 4);
+  ctx.fillRect(x + 8, y - 9, 2, 3);
+  fillPolyHard(ctx, [
+    { x: x - 6, y: y - 2 }, { x: x + 3, y: y - 2 },
+    { x: x + 3, y: y - 7 }, { x: x - 6, y: y - 7 },
+  ], body);
+  fillPolyHard(ctx, [
+    { x: x - 6, y: y - 7 }, { x: x + 3, y: y - 7 },
+    { x: x + 2, y: y - 10 }, { x: x - 5, y: y - 10 },
+  ], gradeHex(cartKind === 0 ? PAL.thatch1 : PAL.soot3, variant));
+  ctx.fillStyle = dark;
+  ctx.fillRect(x - 5, y - 2, 2, 2);
+  ctx.fillRect(x + 1, y - 2, 2, 2);
+  return 5;
 }
 
 /**
@@ -133,7 +228,6 @@ export function drawSmoke(
       calls++;
     }
   }
-  void variantFor;
   return calls;
 }
 
@@ -191,76 +285,3 @@ export function buildCartRoutes(city: City, count = 0): CartRoute[] {
 }
 
 const CART_BODY = [PAL.wood1, PAL.brick1, PAL.soot2];
-
-export function drawCarts(
-  ctx: CanvasRenderingContext2D, city: City, routes: readonly CartRoute[],
-  fracMin: number, variant: Variant,
-  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
-): number {
-  const t = city.tick + fracMin;
-  let calls = 0;
-  for (let i = 0; i < routes.length; i++) {
-    const r = routes[i];
-    if (r.nodes.length < 2) continue;
-    // Triangle wave: out along the route and back, forever, with a per-cart phase.
-    const phase = ((t + i * 37) % (r.span * 2)) / r.span;
-    const along = phase <= 1 ? phase : 2 - phase;
-    const pos = along * (r.nodes.length - 1);
-    const idx = Math.min(r.nodes.length - 2, Math.floor(pos));
-    const f = pos - idx;
-    const na = r.nodes[idx];
-    const nb = r.nodes[idx + 1];
-    const cx = city.graph.cx[na] + (city.graph.cx[nb] - city.graph.cx[na]) * f;
-    const cy = city.graph.cy[na] + (city.graph.cy[nb] - city.graph.cy[na]) * f;
-
-    // Never draw a cart standing in the river: the route is a node polyline and
-    // the corridor between two nodes bends, exactly as the tram rails do.
-    const tx = Math.round(cx);
-    const ty = Math.round(cy);
-    if (tx < 0 || ty < 0 || tx >= city.district.width || ty >= city.district.height) continue;
-    if (city.district.tile[cellKey(city.district, tx, ty)] === Tile.Water) continue;
-
-    const wx = isoX(cx, cy);
-    const wy = isoY(cx, cy);
-    if (wx < tl.wx || wx > br.wx || wy < tl.wy || wy > br.wy) continue;
-
-    const x = Math.round(wx);
-    const y = Math.round(wy);
-    const body = gradeHex(CART_BODY[r.kind], variant);
-    const dark = gradeHex(shadeHex(CART_BODY[r.kind], -0.2), variant);
-
-    // A shadow, so it sits on the cobbles like everything else.
-    ctx.fillStyle = gradeHex(PAL.soot0, variant);
-    ctx.fillRect(x - 5, y, 10, 1);
-
-    if (r.kind === 2) {
-      // A hand barrow: no horse, one man's width.
-      fillPolyHard(ctx, [
-        { x: x - 3, y: y - 3 }, { x: x + 3, y: y - 3 },
-        { x: x + 3, y: y - 6 }, { x: x - 3, y: y - 6 },
-      ], body);
-      calls += 2;
-      continue;
-    }
-
-    // The horse, ahead of the cart and a shade darker.
-    ctx.fillStyle = gradeHex(PAL.wood0, variant);
-    ctx.fillRect(x + 4, y - 7, 5, 4);
-    ctx.fillRect(x + 8, y - 9, 2, 3);
-    // The bed and its load.
-    fillPolyHard(ctx, [
-      { x: x - 6, y: y - 2 }, { x: x + 3, y: y - 2 },
-      { x: x + 3, y: y - 7 }, { x: x - 6, y: y - 7 },
-    ], body);
-    fillPolyHard(ctx, [
-      { x: x - 6, y: y - 7 }, { x: x + 3, y: y - 7 },
-      { x: x + 2, y: y - 10 }, { x: x - 5, y: y - 10 },
-    ], gradeHex(r.kind === 0 ? PAL.thatch1 : PAL.soot3, variant));
-    // Wheels.
-    ctx.fillStyle = dark;
-    ctx.fillRect(x - 5, y - 2, 2, 2);
-    ctx.fillRect(x + 1, y - 2, 2, 2);
-    calls += 5;
-  }
-  return calls;
-}

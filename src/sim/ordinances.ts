@@ -681,7 +681,8 @@ export function gateOrdinanceTarget(city: City, s: Soul, target: BuildingId, act
   const slots = laws.slots;
 
   const child = slots[IDX.childLabour];
-  if (child.inForce && !child.captured && s.age < 16 && s.age >= 14 && activity === 'working' && mod >= child.param) {
+  if (child.inForce && !child.captured && s.age < 16 && s.workId >= 0
+    && target === s.workId && mod >= child.param) {
     if (willComply(city, s, IDX.childLabour)) {
       s.arriveActivity = 'visiting';
       child.enforced++;
@@ -913,8 +914,7 @@ export function tickOrdinancesHourly(city: City): void {
   const child = slots[IDX.childLabour];
   if (child.inForce && !child.captured && mod >= child.param) {
     for (const s of city.souls) {
-      if (s.age < 14 || s.age >= 16) continue;
-      if (s.activity !== 'working') continue;
+      if (s.age >= 16 || s.workId < 0 || s.inId !== s.workId) continue;
       if (willComply(city, s, IDX.childLabour)) {
         sendTo(city, s, s.homeId, 'commuting', 'visiting');
         s.overrideUntil = city.tick + 90;

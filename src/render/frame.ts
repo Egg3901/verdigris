@@ -18,7 +18,8 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { drawTrams, drawSmoke, drawCarts } from './fx';
+import { collectVehicles, drawSmoke, drawVehicle } from './fx';
+import type { VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
 import { lineHard } from './raster';
@@ -39,6 +40,7 @@ export interface FrameStats {
 const CALL_BUDGET = 1200;
 
 const agentPool: AgentDraw[] = [];
+const vehiclePool: VehicleDraw[] = [];
 
 export function drawFrame(
   ctx: CanvasRenderingContext2D, city: City, scene: Scene, cam: Camera,
@@ -63,21 +65,25 @@ export function drawFrame(
   stats.calls++;
 
   const agentCount = collectAgents(city, fracMin, agentPool);
+  const vehicleCount = collectVehicles(city, scene.cartRoutes, fracMin, tl, br, vehiclePool);
   stats.agents = agentCount;
 
-  // Merge-walk three pre-sorted lists: statics, props and the freshly sorted
-  // agents. All three share one depth key, so a soul walks behind a tree on the
-  // far side of the street and in front of one on the near side, for free.
+  // Merge-walk static and dynamic world objects. Vehicles share actor depth, so
+  // a carriage on a far street is hidden by a nearer facade instead of floating
+  // across it. Smoke is deliberately outside this pass because it rises above
+  // the roofs that emitted it.
   let ai = 0;
   let si = 0;
   let pi = 0;
+  let vi = 0;
   const statics = scene.statics;
   const props = scene.props;
-  while (si < statics.length || ai < agentCount || pi < props.length) {
+  while (si < statics.length || ai < agentCount || pi < props.length || vi < vehicleCount) {
     const sDepth = si < statics.length ? statics[si].depth : Infinity;
     const pDepth = pi < props.length ? props[pi].depth : Infinity;
     const aDepth = ai < agentCount ? agentPool[ai].depth : Infinity;
-    if (pDepth <= sDepth && pDepth <= aDepth) {
+    const vDepth = vi < vehicleCount ? vehiclePool[vi].depth : Infinity;
+    if (pDepth <= sDepth && pDepth <= aDepth && pDepth <= vDepth) {
       const p = props[pi++];
       const px = p.wx - p.ax;
       const py = p.wy - p.ay;
@@ -86,7 +92,7 @@ export function drawFrame(
       stats.calls++;
       continue;
     }
-    const useStatic = sDepth <= aDepth;
+    const useStatic = sDepth <= aDepth && sDepth <= vDepth;
     if (useStatic) {
       const s = statics[si++];
       const x = s.wx - s.ax;
@@ -95,6 +101,8 @@ export function drawFrame(
       ctx.drawImage(s.sprite, Math.round(x), Math.round(y));
       stats.calls++;
       stats.statics++;
+    } else if (vDepth <= aDepth) {
+      stats.calls += drawVehicle(ctx, vehiclePool[vi++], scene.variant);
     } else {
       const a = agentPool[ai++];
       if (a.wx > br.wx || a.wy > br.wy || a.wx < tl.wx || a.wy < tl.wy) continue;
@@ -103,11 +111,9 @@ export function drawFrame(
     }
   }
 
-  // Vehicles and smoke, above the structures: smoke is over the roofline by
-  // definition, and the tram runs down the middle of the street.
+  // Smoke is atmospheric: it rises above its source and therefore belongs above
+  // the depth-sorted street pass.
   const variant = variantFor(minuteOfDay(city.tick));
-  stats.calls += drawTrams(ctx, city, variant);
-  stats.calls += drawCarts(ctx, city, scene.cartRoutes, fracMin, variant, tl, br);
   stats.calls += drawSmoke(ctx, city, fracMin, variant, tl, br);
 
   // Selection belongs to the ground plane, not to a sprite's rectangular canvas

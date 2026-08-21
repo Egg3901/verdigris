@@ -466,13 +466,18 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   }
 
   function paintInspector(city: City, sel: Selection): void {
+    const wardOf = (buildingId: number): string => {
+      const b = city.buildings[buildingId];
+      const ward = b ? city.wards[city.plots[b.plotId]?.wardId] : undefined;
+      return ward?.name.toUpperCase() ?? '';
+    };
     if (sel.soulId >= 0) {
       const s = city.souls[sel.soulId];
       if (!s) { inspector.hidden = true; return; }
       inspector.hidden = false;
       insName.textContent = fullName(s).toUpperCase();
       const home = city.buildings[s.homeId];
-      insDistrict.textContent = home ? addressOf(city, home) : '';
+      insDistrict.textContent = home ? `${addressOf(city, home)} / ${wardOf(home.id)}` : '';
       insProse.textContent = describeSoul(city, s.id);
       insHeading.textContent = 'CARRYING:';
       insList.textContent = '';
@@ -489,7 +494,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       inspector.hidden = false;
       insName.textContent = b.name.toUpperCase();
       const street = city.streets[b.streetId];
-      insDistrict.textContent = (street ? street.name : city.squareName).toUpperCase();
+      insDistrict.textContent = `${(street ? street.name : city.squareName).toUpperCase()} / ${wardOf(b.id)}`;
       insProse.textContent = describeBuilding(city, b.id);
       insHeading.textContent = 'INSIDE:';
       insList.textContent = '';

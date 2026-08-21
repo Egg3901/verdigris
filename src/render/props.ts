@@ -10,6 +10,7 @@ import { mix } from '../sim/rng';
 import { fillEllipseHard, ditherPolyHard, hardenAlpha, fillPolyHard, lineHard, BAYER } from './raster';
 import { Tile } from '../sim/types';
 import type { District } from '../sim/district';
+import type { Ward } from '../sim/gen/wards';
 import { cellKey, insideIsland } from '../sim/district';
 
 export interface Prop {
@@ -155,7 +156,9 @@ export function buildSquareProps(
   return out;
 }
 
-export function buildProps(district: District, seed: number, variant: Variant): Prop[] {
+export function buildProps(
+  district: District, seed: number, variant: Variant, wards: readonly Ward[] = [],
+): Prop[] {
   const cache = new Map<number, HTMLCanvasElement>();
   const out: Prop[] = [];
   for (let ty = 0; ty < district.height; ty++) {
@@ -177,7 +180,9 @@ export function buildProps(district: District, seed: number, variant: Variant): 
       const roll = mix(seed, 51, tx, ty) % 100;
       // Parks are wooded, back yards are mostly not: a yard with a tree in every
       // one of them reads as an orchard, not as a town.
-      const want = t === Tile.Park ? 46 : 16;
+      const ward = wards[district.wardId[k]]?.kind;
+      const yardWant = ward === 'garden' ? 34 : ward === 'works' ? 8 : ward === 'courts' ? 10 : 16;
+      const want = t === Tile.Park ? 46 : yardWant;
       if (roll >= want) continue;
       const salt = mix(seed, 52, tx, ty);
       const canopy = salt % CANOPY.length;
@@ -322,12 +327,64 @@ function bakeCrane(variant: Variant): HTMLCanvasElement {
   return c;
 }
 
+function bakeBarrels(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 14; c.height = 11;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  ctx.fillStyle = g(PAL.wood1);
+  ctx.fillRect(2, 4, 5, 7);
+  ctx.fillRect(8, 2, 4, 9);
+  ctx.fillStyle = g(PAL.wood2);
+  ctx.fillRect(3, 4, 2, 7);
+  ctx.fillRect(9, 2, 1, 9);
+  ctx.fillStyle = g(PAL.soot2);
+  ctx.fillRect(2, 5, 5, 1);
+  ctx.fillRect(2, 9, 5, 1);
+  ctx.fillRect(8, 4, 4, 1);
+  ctx.fillRect(8, 9, 4, 1);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+function bakeCoal(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 9;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  fillPolyHard(ctx, [{ x: 1, y: 8 }, { x: 5, y: 3 }, { x: 10, y: 2 }, { x: 15, y: 8 }], g(PAL.soot1));
+  ctx.fillStyle = g(PAL.soot3);
+  ctx.fillRect(5, 4, 2, 2);
+  ctx.fillRect(10, 4, 2, 2);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+function bakeUrn(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 10; c.height = 13;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  ctx.fillStyle = g(PAL.leaf2);
+  ctx.fillRect(2, 1, 6, 4);
+  ctx.fillStyle = g(PAL.leaf3);
+  ctx.fillRect(4, 0, 3, 4);
+  ctx.fillStyle = g(PAL.stone2);
+  ctx.fillRect(3, 5, 4, 6);
+  ctx.fillStyle = g(PAL.stone3);
+  ctx.fillRect(4, 5, 2, 5);
+  ctx.fillStyle = g(PAL.stone1);
+  ctx.fillRect(2, 10, 6, 2);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
 /**
  * Street furniture: lamps, bollards, troughs, advertising columns, carts, and
  * a few wharf cranes. Sparse, hashed from the cell, never on a building.
  */
 export function buildStreetProps(
-  district: District, seed: number, variant: Variant,
+  district: District, seed: number, variant: Variant, wards: readonly Ward[] = [],
 ): Prop[] {
   const out: Prop[] = [];
   const lampGas = bakeLamp(variant, false);
@@ -338,6 +395,9 @@ export function buildStreetProps(
   const columns = [0, 1, 2, 3].map((s) => bakeColumn(s, variant));
   const carts = [0, 1, 2].map((s) => bakeCart(s, variant));
   const crane = bakeCrane(variant);
+  const barrels = bakeBarrels(variant);
+  const coal = bakeCoal(variant);
+  const urn = bakeUrn(variant);
 
   for (let ty = 0; ty < district.height; ty++) {
     for (let tx = 0; tx < district.width; tx++) {
@@ -346,6 +406,7 @@ export function buildStreetProps(
       if (district.buildingId[k] >= 0) continue;
       const t = district.tile[k];
       const polite = district.polite[k] === 1;
+      const ward = wards[district.wardId[k]]?.kind;
       const roll = mix(seed, 81, tx, ty) % 100;
       const jx = ((mix(seed, 82, tx, ty) >>> 5) % 7) - 3;
       const jy = ((mix(seed, 82, tx, ty) >>> 9) % 5) - 2;
@@ -359,7 +420,10 @@ export function buildStreetProps(
       };
 
       if (t === Tile.Street || t === Tile.Embankment || t === Tile.Bridge) {
-        if (roll < (t === Tile.Embankment ? 24 : 14)) {
+        const lampChance = t === Tile.Embankment ? 24
+          : ward === 'civic' || ward === 'merchant' ? 19
+            : ward === 'garden' ? 17 : ward === 'courts' ? 10 : 14;
+        if (roll < lampChance) {
           push(polite && t === Tile.Embankment ? lampArc : lampGas, 7, 25);
           continue;
         }
@@ -368,7 +432,8 @@ export function buildStreetProps(
         push(trough, 8, 9);
         continue;
       }
-      if ((t === Tile.Street || t === Tile.Square) && roll >= 13 && roll < 16) {
+      if ((t === Tile.Street || t === Tile.Square) && roll >= 13
+        && roll < (ward === 'civic' || ward === 'merchant' ? 19 : 16)) {
         push(columns[mix(seed, 83, tx, ty) % 4], 5, 19);
         continue;
       }
@@ -386,6 +451,19 @@ export function buildStreetProps(
       }
       if (t === Tile.Wharf && roll >= 6 && roll < 9) {
         push(crane, 5, 27);
+        continue;
+      }
+      if ((t === Tile.Street || t === Tile.Alley || t === Tile.Wharf)
+        && (ward === 'quayside' || ward === 'courts') && roll >= 32 && roll < 38) {
+        push(barrels, 7, 11);
+        continue;
+      }
+      if ((t === Tile.Street || t === Tile.Yard) && ward === 'works' && roll >= 34 && roll < 40) {
+        push(coal, 8, 9);
+        continue;
+      }
+      if ((t === Tile.Street || t === Tile.Embankment) && ward === 'garden' && roll >= 36 && roll < 40) {
+        push(urn, 5, 13);
       }
     }
   }

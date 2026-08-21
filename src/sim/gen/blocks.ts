@@ -9,6 +9,7 @@ import { Stream, mulberry32, mix, range } from '../rng';
 
 export interface Block {
   id: number;
+  wardId: number;
   cells: number[];
   x0: number; y0: number; x1: number; y1: number;
   polite: boolean;
@@ -140,7 +141,7 @@ export function subdivideBlocks(d: District, seed: number): Block[] {
     const civic = touchesSquare(d, cells);
     const grain = civic ? range(rng, 4, 5) : polite ? range(rng, 2, 3) : range(rng, 1, 2);
     const depth = civic ? 4 : polite ? 3 : range(rng, 2, 3);
-    blocks.push({ id, cells, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, polite, grain, depth });
+    blocks.push({ id, wardId: -1, cells, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, polite, grain, depth });
   }
   return blocks;
 }

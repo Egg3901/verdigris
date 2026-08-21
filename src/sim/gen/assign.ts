@@ -15,6 +15,7 @@ import type { Plot } from './plots';
 import { plotIsReachable } from './plots';
 import type { StreetPlan } from './streets';
 import type { RiverPlan } from './river';
+import type { Ward, WardKind } from './wards';
 
 export interface Placement {
   plot: Plot;
@@ -34,7 +35,21 @@ interface Ctx {
   distRiver: Float32Array;
   nearWharf: Uint8Array;
   nearSquare: Uint8Array;
+  wards: readonly Ward[];
 }
+
+const WARD_BONUS: Partial<Record<BuildingKind, Partial<Record<WardKind, number>>>> = {
+  townhall: { civic: 80 }, exchange: { civic: 55, merchant: 30 }, bank: { civic: 35, merchant: 55 },
+  postexchange: { civic: 45, merchant: 20 }, newspaper: { civic: 20, merchant: 25 },
+  constabulary: { civic: 30, courts: 18 }, chapel: { garden: 25, civic: 12 },
+  glasshouse: { garden: 70 }, villa: { garden: 52 }, school: { garden: 32, civic: 15 },
+  shop: { merchant: 42, civic: 12 }, pub: { merchant: 24, quayside: 22, courts: 12 },
+  lodging: { merchant: 16, courts: 35, quayside: 14 },
+  mill: { works: 65 }, foundry: { works: 65 }, workshop: { works: 45, quayside: 15 },
+  gasworks: { works: 55 }, tramdepot: { works: 42 }, pumphouse: { works: 24, quayside: 28 },
+  wharfshed: { quayside: 90 }, warehouse: { quayside: 62, works: 20 },
+  tenement: { courts: 40, works: 24 }, courtdwelling: { courts: 75 }, terrace: { courts: 18, works: 12 },
+};
 
 /** Footprint the plot can actually carry for this kind, respecting the 2x2 cap
  *  on non-landmarks and the frontage axis. */
@@ -66,35 +81,37 @@ function scoreOf(ctx: Ctx, plot: Plot, kind: BuildingKind): number {
   const front = plot.frontage;
   const wharf = ctx.nearWharf[k];
   const onSquare = ctx.nearSquare[k];
+  const wardKind = ctx.wards[plot.wardId]?.kind;
+  const wardBonus = wardKind ? WARD_BONUS[kind]?.[wardKind] ?? 0 : 0;
 
   switch (kind) {
-    case 'townhall': return onSquare * 120 + polite * 40 - ds * 3 + front * 8 + area * 4;
-    case 'exchange': return onSquare * 90 + polite * 30 - ds * 2.5 + front * 7 + area * 3;
-    case 'bank': return onSquare * 80 + polite * 35 - ds * 2.2 + front * 6;
-    case 'glasshouse': return polite * 45 - Math.abs(ds - 8) * 3 + area * 4;
-    case 'postexchange': return onSquare * 60 + polite * 25 - ds * 2 + front * 5;
-    case 'newspaper': return -Math.abs(ds - 5) * 3 + front * 5 + polite * 10;
-    case 'constabulary': return -Math.abs(ds - 6) * 3 + polite * 5 + front * 4;
-    case 'chapel': return polite * 20 - Math.abs(ds - 9) * 2 + area * 3;
-    case 'dispensary': return (1 - polite) * 30 - Math.abs(ds - 10) * 2;
-    case 'school': return -Math.abs(ds - 11) * 2 + area * 4;
-    case 'bathhouse': return (1 - polite) * 35 - Math.abs(ds - 9) * 2;
-    case 'mast': return polite * 30 - Math.abs(ds - 7) * 2.5 + area * 3;
-    case 'gasworks': return (1 - polite) * 70 + ds * 2.5 - dr * 1.5 + area * 3;
-    case 'pumphouse': return -dr * 4 + (1 - polite) * 20;
-    case 'tramdepot': return (1 - polite) * 40 + ds * 1.6 + area * 3;
-    case 'mill': return (1 - polite) * 90 + ds * 3 - dr * 2 + area * 5 + plot.ox * 1.2;
-    case 'foundry': return (1 - polite) * 80 + ds * 2.5 + area * 4 + plot.ox * 1.0;
-    case 'workshop': return (1 - polite) * 40 + ds * 1.2 + area * 2;
-    case 'wharfshed': return wharf * 140 - dr * 3;
-    case 'warehouse': return wharf * 60 + (1 - polite) * 25 - dr * 1.5;
-    case 'pub': return -Math.abs(ds - 8) * 1.2 + front * 3 + (1 - polite) * 12;
-    case 'shop': return -ds * 1.4 + front * 4 + polite * 8;
-    case 'villa': return polite * 60 + ds * 1.1 - wharf * 40 + area * 3;
-    case 'tenement': return (1 - polite) * 45 + area * 4 - onSquare * 30;
-    case 'terrace': return front <= 2 ? 20 + (1 - polite) * 10 : 0;
-    case 'lodging': return (1 - polite) * 25 + ds * 0.8;
-    case 'courtdwelling': return plot.court ? 200 : -1000;
+    case 'townhall': return wardBonus + onSquare * 120 + polite * 40 - ds * 3 + front * 8 + area * 4;
+    case 'exchange': return wardBonus + onSquare * 90 + polite * 30 - ds * 2.5 + front * 7 + area * 3;
+    case 'bank': return wardBonus + onSquare * 80 + polite * 35 - ds * 2.2 + front * 6;
+    case 'glasshouse': return wardBonus + polite * 45 - Math.abs(ds - 8) * 3 + area * 4;
+    case 'postexchange': return wardBonus + onSquare * 60 + polite * 25 - ds * 2 + front * 5;
+    case 'newspaper': return wardBonus - Math.abs(ds - 5) * 3 + front * 5 + polite * 10;
+    case 'constabulary': return wardBonus - Math.abs(ds - 6) * 3 + polite * 5 + front * 4;
+    case 'chapel': return wardBonus + polite * 20 - Math.abs(ds - 9) * 2 + area * 3;
+    case 'dispensary': return wardBonus + (1 - polite) * 30 - Math.abs(ds - 10) * 2;
+    case 'school': return wardBonus - Math.abs(ds - 11) * 2 + area * 4;
+    case 'bathhouse': return wardBonus + (1 - polite) * 35 - Math.abs(ds - 9) * 2;
+    case 'mast': return wardBonus + polite * 30 - Math.abs(ds - 7) * 2.5 + area * 3;
+    case 'gasworks': return wardBonus + (1 - polite) * 70 + ds * 2.5 - dr * 1.5 + area * 3;
+    case 'pumphouse': return wardBonus - dr * 4 + (1 - polite) * 20;
+    case 'tramdepot': return wardBonus + (1 - polite) * 40 + ds * 1.6 + area * 3;
+    case 'mill': return wardBonus + (1 - polite) * 90 + ds * 3 - dr * 2 + area * 5 + plot.ox * 1.2;
+    case 'foundry': return wardBonus + (1 - polite) * 80 + ds * 2.5 + area * 4 + plot.ox * 1.0;
+    case 'workshop': return wardBonus + (1 - polite) * 40 + ds * 1.2 + area * 2;
+    case 'wharfshed': return wardBonus + wharf * 140 - dr * 3;
+    case 'warehouse': return wardBonus + wharf * 60 + (1 - polite) * 25 - dr * 1.5;
+    case 'pub': return wardBonus - Math.abs(ds - 8) * 1.2 + front * 3 + (1 - polite) * 12;
+    case 'shop': return wardBonus - ds * 1.4 + front * 4 + polite * 8;
+    case 'villa': return wardBonus + polite * 60 + ds * 1.1 - wharf * 40 + area * 3;
+    case 'tenement': return wardBonus + (1 - polite) * 45 + area * 4 - onSquare * 30;
+    case 'terrace': return wardBonus + (front <= 2 ? 20 + (1 - polite) * 10 : 0);
+    case 'lodging': return wardBonus + (1 - polite) * 25 + ds * 0.8;
+    case 'courtdwelling': return plot.court ? 200 + wardBonus : -1000;
     default: return 0;
   }
 }
@@ -124,7 +141,7 @@ function bfsDist(d: District, sources: number[]): Float32Array {
 }
 
 export function assignBuildings(
-  d: District, seed: number, plots: Plot[], streets: StreetPlan, river: RiverPlan,
+  d: District, seed: number, plots: Plot[], streets: StreetPlan, river: RiverPlan, wards: readonly Ward[],
 ): Placement[] {
   const rng = mulberry32(mix(seed, Stream.GenAssign, 0));
 
@@ -142,7 +159,7 @@ export function assignBuildings(
     distSquare: bfsDist(d, squareCells.length ? squareCells : [cellKey(d, streets.squareX, streets.squareY)]),
     distRiver: bfsDist(d, riverCells),
     nearWharf: new Uint8Array(d.width * d.height),
-    nearSquare: new Uint8Array(d.width * d.height),
+    nearSquare: new Uint8Array(d.width * d.height), wards,
   };
   for (const p of plots) {
     const k = cellKey(d, p.ox, p.oy);
