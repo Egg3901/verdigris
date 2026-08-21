@@ -22,6 +22,7 @@ import { fullName } from './souls';
 import { addressOf } from './worldgen';
 import { mix } from './rng';
 import type { InterventionKind, Target } from './types';
+import { canFileWorks, fileWorks } from './works';
 
 export const DAILY_BUDGET = 3;
 
@@ -342,6 +343,21 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
       return 'The flags are up. The square has not looked better in years.';
     },
   },
+
+  fileWorks: {
+    kind: 'fileWorks',
+    label: 'File a works case',
+    blurb: 'Put one real defect into the register. The hall may send a crew, or only a plaque.',
+    heat: 10,
+    targets: ['building'],
+    can: (city, t) => canFileWorks(city, t.id),
+    apply: (city, t) => {
+      const order = fileWorks(city, t.id);
+      const b = city.buildings[t.id];
+      const route = order.pneumatic ? 'went by pneumatic post' : 'was carried to the hall by hand';
+      return `Works case ${order.id + 1} for ${b.name} ${route}. A number is not a repair.`;
+    },
+  },
 };
 
 function neighbourList(city: City, id: number): number[] {
@@ -366,7 +382,7 @@ export function apply(city: City, kind: InterventionKind, target: Target): boole
   const text = def.apply(city, target);
   applyPressure(city.press, 'suspicion', def.heat, 'intervention', target.id, def.label.toLowerCase(), city.tick);
   city.traced += def.heat > 55 ? 1 : 0;
-  pushLog(city, text, kind === 'fundBunting' ? 'gain' : 'loss');
+  pushLog(city, text, kind === 'fundBunting' || kind === 'fileWorks' ? 'gain' : 'loss');
   return true;
 }
 

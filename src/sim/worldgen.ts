@@ -53,11 +53,11 @@ export interface World {
   doorNodes: Int16Array;
 }
 
-const TARGET_SOULS = 200;
+const TARGET_SOULS = 340;
 
 export function generateWorld(seedStr: string): World {
   const seed = hashString(seedStr);
-  const district = newDistrict();
+  const district = newDistrict(seed);
 
   const river = carveRiver(district, seed);
   layBanks(district, river);
@@ -346,8 +346,8 @@ export function validateWorld(w: World): string[] {
   if (!isConnected(g)) {
     errs.push(`street graph is not one component (largest ${largestComponent(g)} of ${g.n})`);
   }
-  if (buildings.length < 150 || buildings.length > 210) {
-    errs.push(`building count ${buildings.length} outside [150, 210]`);
+  if (buildings.length < 260 || buildings.length > 360) {
+    errs.push(`building count ${buildings.length} outside [260, 360]`);
   }
   if (buildings.length > CAPS.buildings) errs.push(`building count ${buildings.length} over cap ${CAPS.buildings}`);
   if (souls.length > CAPS.souls) errs.push(`soul count ${souls.length} over cap ${CAPS.souls}`);

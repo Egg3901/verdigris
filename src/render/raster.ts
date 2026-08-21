@@ -1,4 +1,6 @@
 // Hard-edged rasterisation.
+import { quantizeWorldRgb } from './palette';
+import type { Variant } from './palette';
 //
 // THE PROBLEM THIS SOLVES. Canvas2D antialiases every path fill and every stroke,
 // and there is no flag to turn that off: imageSmoothingEnabled only governs image
@@ -171,13 +173,21 @@ export function ditherPolyHard(
  * depends on, as well as producing soft halos when a sprite is drawn over the
  * ground.
  */
-export function hardenAlpha(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+export function hardenAlpha(
+  ctx: CanvasRenderingContext2D, w: number, h: number, variant?: Variant,
+): void {
   if (w <= 0 || h <= 0) return;
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
   for (let i = 3; i < d.length; i += 4) {
     if (d[i] >= 128) {
       d[i] = 255;
+      if (variant) {
+        const [r, g, b] = quantizeWorldRgb(d[i - 3], d[i - 2], d[i - 1], variant);
+        d[i - 3] = r;
+        d[i - 2] = g;
+        d[i - 1] = b;
+      }
     } else {
       d[i] = 0;
       d[i - 3] = 0;

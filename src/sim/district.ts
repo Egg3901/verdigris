@@ -1,7 +1,8 @@
-// The tile grid. Flat typed arrays, row-major. No objects per cell: 2304 cells
-// times a handful of arrays is under 40 KB, and it keeps iteration order fixed.
+// The tile grid. Flat typed arrays, row-major. No objects per cell: 4096 cells
+// times a handful of arrays stays compact, and it keeps iteration order fixed.
 import { GRID_W, GRID_H, Tile, WALKABLE } from './types';
 import type { TileCode, BuildingId, PlotId, NodeId } from './types';
+import { fbm2, Stream } from './rng';
 
 export interface District {
   width: number;
@@ -17,9 +18,11 @@ export interface District {
   polite: Uint8Array;
   /** 0..255 soot, rising toward the factory quarter. The theme, rendered. */
   grime: Uint8Array;
+  /** Seeded coastline mask. The grid is storage; this is the actual island. */
+  land: Uint8Array;
 }
 
-export function newDistrict(): District {
+export function newDistrict(seed = 0): District {
   const n = GRID_W * GRID_H;
   const d: District = {
     width: GRID_W,
@@ -32,12 +35,28 @@ export function newDistrict(): District {
     blockId: new Int16Array(n),
     polite: new Uint8Array(n),
     grime: new Uint8Array(n),
+    land: new Uint8Array(n),
   };
   d.plotId.fill(-1);
   d.buildingId.fill(-1);
   d.nodeId.fill(-1);
   d.streetId.fill(-1);
   d.blockId.fill(-1);
+  const cx = (GRID_W - 1) / 2;
+  const cy = (GRID_H - 1) / 2;
+  const r = ((GRID_W - 1) / 2) * ISLAND_R;
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const dx = Math.abs(x - cx);
+      const dy = Math.abs(y - cy);
+      // Broad seeded noise cuts coves and pushes out headlands by up to two
+      // cells. Low frequency keeps the silhouette surveyed rather than ragged.
+      const coast = (fbm2(seed, Stream.Gen, x * 0.075, y * 0.075, 3) - 0.5) * 4.5;
+      if (Math.max(dx, dy) + 0.14 * Math.min(dx, dy) <= r + 1.2 + coast) {
+        d.land[y * GRID_W + x] = 1;
+      }
+    }
+  }
   return d;
 }
 
@@ -96,29 +115,20 @@ export function isWalkable(d: District, x: number, y: number): boolean {
  * what lands as a diamond on screen. Measured: 56% bounding-box fill, and the
  * silhouette the reference actually has.
  *
- * The 0.707 keeps the land area the same as before (about 1156 cells against
- * 1168), so no quota or density rebalancing is needed.
+ * The 0.707 keeps the projected silhouette diamond-like while leaving room for
+ * seeded coves and headlands at the edge of the storage grid.
  */
 const ISLAND_R = 0.707;
 
 export function insideIsland(d: District, x: number, y: number): boolean {
-  const cx = (d.width - 1) / 2;
-  const cy = (d.height - 1) / 2;
-  const r = ((d.width - 1) / 2) * ISLAND_R;
-  const dx = Math.abs(x - cx);
-  const dy = Math.abs(y - cy);
-  // A slight bow off the corners: a pure square reads as machined, this reads as
-  // surveyed. Applied to the larger axis so the diamond keeps its points.
-  return Math.max(dx, dy) + 0.14 * Math.min(dx, dy) <= r + 1.2;
+  return inBounds(d, x, y) && d.land[cellKey(d, x, y)] === 1;
 }
 
-/** Tile-space extent of the island. The renderer frames on this, not on the grid:
- *  the grid is 48x48 but the island only occupies the middle ~34, so bounding the
- *  camera by the grid leaves the district small and floating off-centre inside a
- *  frame of void. */
+/** Tile-space extent of the island. The renderer frames on this, not on the grid,
+ *  so coastline variation does not leave the district floating in a frame of void. */
 export function islandTileBounds(): { min: number; max: number } {
   const c = (GRID_W - 1) / 2;
-  const r = ((GRID_W - 1) / 2) * ISLAND_R + 1.2;
+  const r = ((GRID_W - 1) / 2) * ISLAND_R + 3.5;
   return { min: Math.floor(c - r), max: Math.ceil(c + r) };
 }
 

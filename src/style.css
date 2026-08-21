@@ -93,7 +93,7 @@ html, body {
   they collided: at 390px the verb menu sat on top of the clock and the scrubber
   made the zoom-in button physically unclickable. Nothing coordinated them, so
   every collision needed its own patch, and the last of those patches was
-  `#nudges { display: none }` below 981px, which deleted all eight interventions
+  `#nudges { display: none }` below 981px, which deleted all interventions
   from every phone.
 
   A grid rail cannot overlap itself. Panels are placed in named areas and the

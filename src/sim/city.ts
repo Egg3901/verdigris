@@ -40,6 +40,8 @@ import {
   newLaws, gateOrdinanceTarget, allowErrand, cartRetarget, cartExtraMinutes,
   onOrdinanceArrive, tickOrdinancesHourly, tickOrdinancesDaily,
 } from './ordinances';
+import { newWorks, tickWorksHourly } from './works';
+import type { WorksState } from './works';
 
 export interface LogEvent {
   tick: number;
@@ -66,7 +68,7 @@ const OUTDOOR_TRADES = new Set<Trade>([
  *
  * Excluding everyone at work from the errand pass is correct for a mill hand and
  * wrong for the district: measured at the reference tick of 10:41, ten souls out
- * of two hundred were on the street. But an errand boy, a shop assistant with a
+ * of the district were on the street. But an errand boy, a shop assistant with a
  * parcel, a laundress with a basket and a printer with a proof are all at work
  * AND all outside, several times a day. This is the population the streets were
  * missing, and it is period-accurate rather than a fudge.
@@ -99,6 +101,7 @@ export interface City extends World {
   nudges: Nudge[];
   budgetLeft: number;
   laws: LawState;
+  works: WorksState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -129,6 +132,7 @@ export function newCity(seedStr: string): City {
     nudges: [],
     budgetLeft: DAILY_BUDGET,
     laws: null as unknown as LawState,
+    works: newWorks(),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -310,7 +314,8 @@ function startErrands(city: City, tick: number): void {
   // Concurrency is roughly wanted x (duration / 5), minus whoever is ineligible.
   // Tuned by measurement against the whole day, not guessed: at 14 the median was
   // 35 and the reference tick of 10:41 showed 16.
-  const wanted = mod > 1080 || mod < 480 ? 7 : 13;
+  const scale = Math.max(1, city.souls.length / 200);
+  const wanted = Math.round((mod > 1080 || mod < 480 ? 7 : 13) * scale);
   let sent = 0;
   const n = city.souls.length;
   if (!n) return;
@@ -638,6 +643,8 @@ function tickHour(city: City): void {
     applyPressure(city.press, 'mood', 8, 'intervention', 0, 'the flags are still up', tick);
   }
 
+  for (const update of tickWorksHourly(city)) pushLog(city, update.text, update.kind);
+
   tickOrdinancesHourly(city);
   checkIncidents(city, tick);
   decayPressuresHourly(city.press, tick);
@@ -832,6 +839,17 @@ export function hashWorld(city: City): number {
     put(b.fabric);
     put(b.facade);
     put(b.occupants.length);
+  }
+  put(city.works.revision);
+  for (const order of city.works.orders) {
+    put(order.id);
+    put(order.buildingId);
+    put(order.kind === 'fabric' ? 1 : order.kind === 'drain' ? 2 : 3);
+    put(order.status === 'filed' ? 1 : order.status === 'working' ? 2
+      : order.status === 'completed' ? 3 : order.status === 'skimmed' ? 4 : 5);
+    put(order.startsAt);
+    put(order.dueAt);
+    put(order.resolvedAt);
   }
   put(city.laws.enforcement);
   put(city.laws.active);

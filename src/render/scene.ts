@@ -32,6 +32,7 @@ import type { WallMaterial } from './detail';
 import { mix } from '../sim/rng';
 import { buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
+import { worksStageFor } from '../sim/works';
 
 export interface StaticSprite {
   buildingId: number;
@@ -51,6 +52,7 @@ export interface Scene {
   /** Which lighting variant this scene was baked at. The compositor rebakes when
    *  it changes, which is a handful of times a day, never per frame. */
   variant: Variant;
+  worksRevision: number;
   ground: HTMLCanvasElement;
   props: Prop[];
   idBuffer: HTMLCanvasElement;
@@ -146,7 +148,7 @@ function liftToFloor(hex: string, floor: number): string {
 }
 
 // Five wall washes and four roof washes, picked per building. This is where the
-// variety comes from: without it two hundred buildings read as twelve buildings
+// variety comes from: without it hundreds of buildings read as twelve buildings
 // repeated, however good the geometry is.
 const WALL_WASH = [0, -0.1, 0.1, -0.05, 0.06];
 const ROOF_WASH = [0, -0.09, 0.08, -0.04];
@@ -178,6 +180,15 @@ function nearSquare(city: City, b: Building): boolean {
     }
   }
   return false;
+}
+
+/** Which way the building's frontage runs, from the plot it was cut from. */
+function plotOf(city: City, b: Building): 'x' | 'y' {
+  const p = city.plots[b.plotId];
+  if (!p) return b.w >= b.d ? 'x' : 'y';
+  // dir 2 and 3 are south and north, so the street runs east to west and the
+  // frontage with it.
+  return p.dir === 2 || p.dir === 3 ? 'x' : 'y';
 }
 
 function specFor(city: City, b: Building, grime: number, variant: Variant): HouseSpec {
@@ -307,13 +318,23 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
         : 1 + ((salt >>> 6) % 2),
     windowRows: Math.max(1, Math.min(3, storeys - 1)),
     skin,
-    ridgeAlongX: b.w === b.d ? (salt & 1) === 1 : b.w > b.d,
+    // The ridge runs along the FRONTAGE, not along the longer footprint axis.
+    //
+    // A terrace house on a one-by-two plot is deeper than it is wide, so the old
+    // rule ran its ridge back from the street, which points the gable END at the
+    // camera. A gable end is wall, so the building presented a big pale triangle
+    // where its roof should be and the roof itself was reduced to two thin strips
+    // either side. Terraces are built in a row with the ridge along the row; you
+    // see gable ends only where the row stops.
+    ridgeAlongX: plotOf(city, b) === 'x',
     material,
     polite,
     patched: !polite && dwelling && ((salt >>> 9) % 3 === 0),
     washing: !polite && dwelling && ((salt >>> 11) % 2 === 0),
     cresting: fam.cresting === true || (polite && b.kind === 'villa'),
     railings: polite && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall'),
+    worksStage: worksStageFor(city, b.id),
+    drainState: !def.needsDrain ? 0 : serviceAt(city.networks.drain, b.id) ? 1 : 2,
     finial,
     finialH: fam.finialH ?? 0,
   };
@@ -556,6 +577,11 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     }
   }
 
+  // Collapse all generated washes into the finite lighting palette once, at
+  // bake time. The frame now has art-directed colour ramps rather than hundreds
+  // of accidental near-duplicates.
+  hardenAlpha(gctx, ground.width, ground.height, variant);
+
   const statics: StaticSprite[] = [];
   const idBuffer = makeCanvas(b.w, b.h);
   const idCtx = ctxOf(idBuffer, true);
@@ -575,7 +601,10 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     buildStreetProps(d, city.seed, variant),
   );
   props.sort((a, b) => a.depth - b.depth);
-  return { cartRoutes: buildCartRoutes(city), variant, ground, props, idBuffer, idCtx, statics, originX, originY };
+  return {
+    cartRoutes: buildCartRoutes(city), variant, worksRevision: city.works.revision,
+    ground, props, idBuffer, idCtx, statics, originX, originY,
+  };
 }
 
 function depthOf(b: Building): number {
@@ -604,7 +633,7 @@ export function flattenBuilding(
   // Binary alpha, as the palette contract has always claimed. Partial alpha
   // breaks the source-in silhouette stamp the ID buffer depends on, and halos the
   // sprite against the ground.
-  hardenAlpha(ctx, sprite.width, sprite.height);
+  hardenAlpha(ctx, sprite.width, sprite.height, variant);
 
   const sx = b.ox + b.w - 1;
   const sy = b.oy + b.d - 1;

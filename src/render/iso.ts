@@ -55,7 +55,7 @@ export interface Bounds {
  *
  * Using the grid lets the player pan into empty void, and worse, the default
  * camera frames a box far larger than the district so the town sits small and
- * off-centre. The island occupies roughly the middle 34 of 48 tiles.
+ * off-centre. The bounds include the seeded coastline's maximum excursion.
  */
 export function worldBounds(): Bounds {
   const { min, max } = islandTileBounds();

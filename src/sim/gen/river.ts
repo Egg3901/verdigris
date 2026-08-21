@@ -1,4 +1,4 @@
-// Stage 1: the river, its banks, and two crossings.
+// Stage 1: the river, its banks, and two or three crossings.
 //
 // One bank is flagged polite (embankment, balustrade, arc lamps), the other
 // working (wharf, cranes, sheds). That single flag does most of the class
@@ -59,14 +59,17 @@ export function carveRiver(d: District, seed: number): RiverPlan {
     }
   }
 
-  // Two crossings, at the two narrowest columns that are far enough apart.
+  // Larger districts sometimes earn a third crossing. Count and position are
+  // seed-derived, so a new seed changes daily routes as well as scenery.
+  const wantedBridges = d.width >= 60 ? 2 + (mix(seed, Stream.GenRiver, 91) % 2) : 2;
   const cols: number[] = [];
   for (let x = 4; x < d.width - 4; x++) if (insideIsland(d, x, centre[x])) cols.push(x);
   cols.sort((a, b) => halfWidth[a] - halfWidth[b] || a - b);
   const bridges: RiverPlan['bridges'] = [];
   for (const x of cols) {
-    if (bridges.length >= 2) break;
-    if (bridges.some((b) => Math.abs(b.x - x) < 12)) continue;
+    if (bridges.length >= wantedBridges) break;
+    const separation = wantedBridges > 2 ? 10 : 12;
+    if (bridges.some((b) => Math.abs(b.x - x) < separation)) continue;
     const hw = halfWidth[x];
     bridges.push({ x, stone: bridges.length === 0, y0: centre[x] - hw - 1, y1: centre[x] + hw + 1 });
   }

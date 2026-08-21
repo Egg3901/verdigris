@@ -87,6 +87,10 @@ export interface HouseSpec {
   washing?: boolean;
   cresting?: boolean;
   railings?: boolean;
+  /** 1 survey notice, 2 scaffold and tarpaulin, 3 signed-off plaque. */
+  worksStage?: 0 | 1 | 2 | 3;
+  /** 0 no drain needed, 1 served, 2 disconnected or behind a broken main. */
+  drainState?: 0 | 1 | 2;
   finial: Finial;
   finialH: number;
 }
@@ -101,10 +105,10 @@ export function houseBounds(spec: HouseSpec) {
   const oy = isoY(sx, sy);
   const top = spec.wallH + spec.roofH + spec.finialH + (spec.chimneys > 0 ? 9 : 0);
   return {
-    minX: isoX(0, sy) - TILE_W / 2 - ox - 2,
-    maxX: isoX(sx, 0) + TILE_W / 2 - ox + 2,
+    minX: isoX(0, sy) - TILE_W / 2 - ox - 5,
+    maxX: isoX(sx, 0) + TILE_W / 2 - ox + 5,
     minY: isoY(0, 0) - TILE_H / 2 - top - oy,
-    maxY: isoY(sx, sy) + TILE_H / 2 - oy + 2,
+    maxY: isoY(sx, sy) + TILE_H / 2 - oy + 5,
   };
 }
 
@@ -164,6 +168,7 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   const roofQuad = drawRoof(ctx, eave, spec, alongX);
   drawFinial(ctx, ground, eave, spec, alongX);
   drawFacade(ctx, eave, spec);
+  if (spec.drainState) drawRainwaterGoods(ctx, eave, spec);
   if (roofQuad && spec.dormers) {
     const n = Math.min(3, spec.dormers);
     for (let i = 0; i < n; i++) {
@@ -175,6 +180,8 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   }
 
   if (spec.washing && lit.span >= 10) drawWashingLine(ctx, lit, wallH, spec.salt ?? 0);
+
+  if (spec.worksStage) drawWorks(ctx, eave, roofQuad, spec);
 
   if (skin.trim) {
     // The cornice: one line where the wall meets the eave. This is the gilding,
@@ -209,6 +216,118 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
     const drop = (p: Pt): Pt => ({ x: p.x, y: p.y + 1 });
     lineHard(ctx, drop(eave.W), drop(eave.S), skin.outline);
     lineHard(ctx, drop(eave.S), drop(eave.E), skin.outline);
+  }
+}
+
+/**
+ * Gutters and downpipes make the buried drain network legible on the facade.
+ * A served building has a continuous iron run with brackets and a shoe. A failed
+ * one has a missing lower section, a damp stain and a pavement puddle.
+ */
+function drawRainwaterGoods(
+  ctx: CanvasRenderingContext2D,
+  eave: { W: Pt; N: Pt; E: Pt; S: Pt },
+  spec: HouseSpec,
+): void {
+  const face = makeFace(eave.W, eave.S, true);
+  if (face.span < 7) return;
+  const iron = spec.polite ? PAL.soot2 : PAL.soot1;
+  const state = spec.drainState ?? 0;
+  const pipeT = 0.9;
+
+  lineHard(ctx, face.at(0.02, 1), face.at(0.98, 1), iron);
+  for (const t of [0.18, 0.5, 0.82]) {
+    const p = face.at(t, 1);
+    ctx.fillStyle = spec.skin.outline;
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 2);
+  }
+
+  if (state === 1) {
+    lineHard(ctx, face.at(pipeT, 1), face.at(pipeT, spec.wallH - 1), iron);
+    lineHard(ctx, face.at(pipeT, spec.wallH - 1), face.at(pipeT - 0.06, spec.wallH + 1), iron);
+    for (const h of [Math.round(spec.wallH * 0.34), Math.round(spec.wallH * 0.68)]) {
+      const p = face.at(pipeT, h);
+      ctx.fillStyle = spec.skin.outline;
+      ctx.fillRect(Math.round(p.x) - 1, Math.round(p.y), 3, 1);
+    }
+    return;
+  }
+
+  const breakAt = Math.max(5, Math.round(spec.wallH * 0.5));
+  lineHard(ctx, face.at(pipeT, 1), face.at(pipeT, breakAt), iron);
+  lineHard(ctx, face.at(pipeT - 0.06, breakAt + 3), face.at(pipeT - 0.06, spec.wallH * 0.72), iron);
+  const stain = [face.at(pipeT - 0.16, breakAt + 2), face.at(pipeT + 0.04, breakAt + 2),
+    face.at(pipeT + 0.02, spec.wallH), face.at(pipeT - 0.22, spec.wallH)];
+  ditherPolyHard(ctx, stain, PAL.riv1, 5);
+  const foot = face.at(pipeT - 0.08, spec.wallH + 2);
+  lineHard(ctx, { x: foot.x - 4, y: foot.y }, { x: foot.x + 3, y: foot.y }, PAL.riv1);
+  lineHard(ctx, { x: foot.x - 2, y: foot.y + 1 }, { x: foot.x + 1, y: foot.y + 1 }, PAL.riv2);
+}
+
+/**
+ * The works register, made physical.
+ *
+ * Stage one is only paper and blue chalk. Stage two is a proper timber scaffold
+ * and weather sheet. Stage three is the backfire: the scaffold has gone and the
+ * brass completion plaque is much more convincing than the work underneath it.
+ */
+function drawWorks(
+  ctx: CanvasRenderingContext2D,
+  eave: { W: Pt; N: Pt; E: Pt; S: Pt },
+  roof: Pt[] | null,
+  spec: HouseSpec,
+): void {
+  const stage = spec.worksStage ?? 0;
+  const face = makeFace(eave.W, eave.S, true);
+  if (face.span < 6) return;
+  const wood = PAL.wood2;
+  const chalk = PAL.buntBlueHi;
+  const paper = PAL.buntCream;
+  const notice = face.at(0.76, Math.max(4, spec.wallH - 10));
+
+  if (stage === 1) {
+    // A survey cross and a posted number. Small, but visible at every zoom.
+    const mark = face.at(0.62, Math.max(5, spec.wallH * 0.48));
+    lineHard(ctx, { x: mark.x - 2, y: mark.y - 2 }, { x: mark.x + 2, y: mark.y + 2 }, chalk);
+    lineHard(ctx, { x: mark.x + 2, y: mark.y - 2 }, { x: mark.x - 2, y: mark.y + 2 }, chalk);
+    ctx.fillStyle = paper;
+    ctx.fillRect(Math.round(notice.x) - 2, Math.round(notice.y) - 2, 4, 5);
+    ctx.fillStyle = PAL.brassInk;
+    ctx.fillRect(Math.round(notice.x) - 1, Math.round(notice.y), 2, 1);
+    return;
+  }
+
+  if (stage === 3) {
+    // The administrative object is finer than the thing it claims was repaired.
+    ctx.fillStyle = PAL.brass3;
+    ctx.fillRect(Math.round(notice.x) - 2, Math.round(notice.y), 5, 3);
+    ctx.fillStyle = PAL.gold;
+    ctx.fillRect(Math.round(notice.x) - 1, Math.round(notice.y), 3, 1);
+    lineHard(ctx, face.at(0.08, spec.wallH - 2), face.at(0.92, spec.wallH - 2), PAL.stone4);
+    return;
+  }
+
+  // Poles stand proud of the wall and platforms cross it at each storey.
+  const levels = Math.max(2, Math.min(4, spec.windowRows + 1));
+  for (const t of [0.03, 0.35, 0.67, 0.97]) {
+    lineHard(ctx, face.at(t, 1), face.at(t, spec.wallH + 3), wood);
+  }
+  for (let i = 1; i <= levels; i++) {
+    const h = Math.round((spec.wallH * i) / (levels + 1));
+    lineHard(ctx, face.at(0, h), face.at(1, h), PAL.wood2);
+    if (i < levels) lineHard(ctx, face.at(0.03, h), face.at(0.35, h + Math.max(4, spec.wallH / levels)), wood);
+  }
+  lineHard(ctx, face.at(0.03, spec.wallH + 2), face.at(0.97, 1), PAL.wood1);
+
+  // A blue weather sheet on the roof is the district-wide read of an active job.
+  if (roof) {
+    const a = lerp(roof[0], roof[1], 0.18);
+    const b = lerp(roof[0], roof[1], 0.58);
+    const c = lerp(roof[3], roof[2], 0.58);
+    const d = lerp(roof[3], roof[2], 0.18);
+    fillPolyHard(ctx, [a, b, c, d], PAL.buntBlueHi);
+    ditherPolyHard(ctx, [a, b, c, d], PAL.arc0, 6);
+    lineHard(ctx, a, b, PAL.wood1);
   }
 }
 
@@ -380,20 +499,30 @@ function drawRoof(
 
   // Gable. Far slope first, then the near one, then the near gable triangle.
   if (alongX) {
+    // The W-N gable faces away from the camera. It must be behind both slopes;
+    // drawing it later lets its wall colour cut through the roof silhouette.
+    poly(ctx, [W, N, r0], skin.gableLit);
     poly(ctx, [N, E, r1, r0], skin.roofShade, 3);
     poly(ctx, [W, S, r1, r0], skin.roofLit, 4);
     poly(ctx, [S, E, r1], skin.gableShade);
-    poly(ctx, [W, N, r0], skin.gableLit);
+    // Bargeboards. A gable end is WALL, and where it meets the roof there has to
+    // be a board, or the wall triangle bleeds into the slope and the roof loses
+    // its edge.
+    lineHard(ctx, S, r1, skin.roofRidge);
+    lineHard(ctx, E, r1, skin.roofRidge);
   } else {
+    // The N-E gable is the back face for this ridge orientation.
+    poly(ctx, [N, E, r0], skin.gableShade);
     poly(ctx, [E, S, r1, r0], skin.roofShade, 3);
     poly(ctx, [W, N, r0, r1], skin.roofLit, 4);
     poly(ctx, [W, S, r1], skin.gableLit);
-    poly(ctx, [N, E, r0], skin.gableShade);
+    lineHard(ctx, W, r1, skin.roofRidge);
+    lineHard(ctx, S, r1, skin.roofRidge);
   }
   ridgeLine(ctx, r0, r1, skin.roofRidge, spec);
   chimneys(ctx, r0, r1, spec);
   // Tile courses on the near slope. Four lines, and a roof stops being a plane.
-  const near: Pt[] = [W, S, r1, r0];
+  const near: Pt[] = alongX ? [W, S, r1, r0] : [W, N, r0, r1];
   drawCourses(ctx, near, shadeHex(skin.roofLit, -0.12), 4);
   return near;
 }
@@ -458,20 +587,22 @@ function drawGambrel(
     : { x: E.x + (r0.x - E.x) * k, y: E.y - breakH };
 
   if (alongX) {
+    // Back-facing broken gable first, for the same occlusion rule as a plain
+    // gable roof. Its stepped outline must never paint over either slope.
+    poly(ctx, [W, N, f0, r0, n0], skin.gableLit);
     poly(ctx, [N, E, f1, f0], skin.roofShade, 2);
     poly(ctx, [f0, f1, r1, r0], shadeHex(skin.roofShade, -0.06), 2);
     poly(ctx, [W, S, n1, n0], skin.roofLit, 3);
     poly(ctx, [n0, n1, r1, r0], shadeHex(skin.roofLit, 0.06), 3);
     // Broken gable silhouette, not a triangle.
     poly(ctx, [S, E, f1, r1, n1], skin.gableShade);
-    poly(ctx, [W, N, f0, r0, n0], skin.gableLit);
   } else {
+    poly(ctx, [N, E, f1, f0], skin.gableShade);
     poly(ctx, [E, S, n1, f1], skin.roofShade, 2);
     poly(ctx, [f1, n1, r1, r0], shadeHex(skin.roofShade, -0.06), 2);
     poly(ctx, [W, N, r0, n0], skin.roofLit, 3);
     poly(ctx, [n0, r0, r1, n1], shadeHex(skin.roofLit, 0.06), 3);
     poly(ctx, [W, S, n1, n0], skin.gableLit);
-    poly(ctx, [N, E, f1, f0], skin.gableShade);
   }
   ridgeLine(ctx, r0, r1, skin.roofRidge, spec);
   chimneys(ctx, r0, r1, spec);

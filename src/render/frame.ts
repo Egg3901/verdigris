@@ -8,11 +8,12 @@
 // The whole point of the flatten-per-building compositor is that b is one
 // drawImage per visible object from a small number of source canvases, so the
 // browser batches it. If this ever needs WebGL, the Renderer interface is where
-// it slots in, but at two hundred buildings on Canvas2D it does not.
+// it slots in, but at a few hundred buildings on Canvas2D it does not.
 import type { City } from '../sim/city';
-import { PAL } from './palette';
+import { PAL, gradeHex } from './palette';
 import type { Camera } from './iso';
 import { TILE_W, TILE_H, clampDpr, screenToWorld } from './iso';
+import { isoX, isoY } from './iso';
 import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
@@ -20,6 +21,9 @@ import { drawSoul } from './fallback';
 import { drawTrams, drawSmoke, drawCarts } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
+import { lineHard } from './raster';
+import { houseCorners } from './house';
+import { soulPos } from '../sim/souls';
 
 export interface Selection {
   buildingId: number;
@@ -91,22 +95,11 @@ export function drawFrame(
       ctx.drawImage(s.sprite, Math.round(x), Math.round(y));
       stats.calls++;
       stats.statics++;
-      if (s.buildingId === sel.buildingId) {
-        ctx.strokeStyle = PAL.gas2;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(Math.round(x) - 0.5, Math.round(y) - 0.5, s.sprite.width + 1, s.sprite.height + 1);
-        stats.calls++;
-      }
     } else {
       const a = agentPool[ai++];
       if (a.wx > br.wx || a.wy > br.wy || a.wx < tl.wx || a.wy < tl.wy) continue;
-      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId);
+      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId, scene.variant);
       stats.calls++;
-      if (a.soulId === sel.soulId) {
-        ctx.strokeStyle = PAL.gas2;
-        ctx.strokeRect(Math.round(a.wx) - 4.5, Math.round(a.wy) - 16.5, 9, 17);
-        stats.calls++;
-      }
     }
   }
 
@@ -116,6 +109,32 @@ export function drawFrame(
   stats.calls += drawTrams(ctx, city, variant);
   stats.calls += drawCarts(ctx, city, scene.cartRoutes, fracMin, variant, tl, br);
   stats.calls += drawSmoke(ctx, city, fracMin, variant, tl, br);
+
+  // Selection belongs to the ground plane, not to a sprite's rectangular canvas
+  // bounds. Four iso corner brackets read as an instrument sight and never expose
+  // the invisible padding around a flattened building.
+  const reticle = gradeHex(PAL.gas2, scene.variant, true);
+  if (sel.buildingId >= 0 && city.buildings[sel.buildingId]) {
+    const b = city.buildings[sel.buildingId];
+    const sx = b.ox + b.w - 1;
+    const sy = b.oy + b.d - 1;
+    const c = houseCorners(isoX(sx, sy), isoY(sx, sy), b.w, b.d, 0);
+    const edges = [[c.W, c.N], [c.N, c.E], [c.E, c.S], [c.S, c.W]] as const;
+    for (const [a, z] of edges) {
+      lineHard(ctx, a, { x: a.x + (z.x - a.x) * 0.22, y: a.y + (z.y - a.y) * 0.22 }, reticle);
+      lineHard(ctx, z, { x: z.x + (a.x - z.x) * 0.22, y: z.y + (a.y - z.y) * 0.22 }, reticle);
+    }
+    stats.calls += 8;
+  } else if (sel.soulId >= 0 && city.souls[sel.soulId]) {
+    const p = soulPos(city.graph, city.souls[sel.soulId], fracMin);
+    const x = isoX(p.cx, p.cy);
+    const y = isoY(p.cx, p.cy);
+    lineHard(ctx, { x: x - 5, y }, { x, y: y - 3 }, reticle);
+    lineHard(ctx, { x, y: y - 3 }, { x: x + 5, y }, reticle);
+    lineHard(ctx, { x: x + 5, y }, { x, y: y + 3 }, reticle);
+    lineHard(ctx, { x, y: y + 3 }, { x: x - 5, y }, reticle);
+    stats.calls += 4;
+  }
 
   if (import.meta.env.DEV && stats.calls > CALL_BUDGET) {
     console.warn(`draw-call budget breached: ${stats.calls} > ${CALL_BUDGET}`);

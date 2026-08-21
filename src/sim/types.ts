@@ -13,9 +13,10 @@ export type ClaimId = number;
 export type FirmId = number;
 export type HouseholdId = number;
 
-// The single grid. 48x48 cells at 6m, drawn at TILE_W 32 / TILE_H 16.
-export const GRID_W = 48;
-export const GRID_H = 48;
+// The single grid. 64x64 cells at 6m, drawn at TILE_W 32 / TILE_H 16.
+// The island mask keeps the playable district dense rather than filling the box.
+export const GRID_W = 64;
+export const GRID_H = 64;
 export const CELL_MM = 6000;
 
 /** Millicells per game-minute. 2500 = 15m/min, so crossing the district is ~20 minutes.
@@ -89,7 +90,7 @@ export type OrdinanceKind =
 
 export type InterventionKind =
   | 'rumour' | 'cutGas' | 'delayTram' | 'tipOff'
-  | 'fundStrike' | 'plantStory' | 'quarantine' | 'fundBunting';
+  | 'fundStrike' | 'plantStory' | 'quarantine' | 'fundBunting' | 'fileWorks';
 
 export type TargetKind = 'soul' | 'building' | 'street' | 'segment' | 'firm' | 'claim' | 'line' | 'square';
 
@@ -110,13 +111,13 @@ export type NodeKindCode = (typeof NodeKind)[keyof typeof NodeKind];
 
 /** Hard caps, asserted by validateWorld and by tests. They are the perf budget. */
 export const CAPS = {
-  souls: 256,
-  buildings: 224,
-  nodes: 512,
-  claims: 2048,
+  souls: 512,
+  buildings: 384,
+  nodes: 640,
+  claims: 4096,
   beliefsPerSoul: 8,
   eventRing: 4096,
   causeRing: 512,
-  routeCache: 256,
+  routeCache: 512,
   proseCache: 64,
 } as const;

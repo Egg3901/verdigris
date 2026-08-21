@@ -15,7 +15,7 @@ describe('schedules', () => {
         expect(indoors !== outdoors, `soul ${s.id} at minute ${m} is in ${s.inId} and at node ${s.atNode}`).toBe(true);
       }
     }
-  });
+  }, 10_000);
 
   it('never leaves a soul walking for more than an hour', () => {
     // A soul stuck in a travel activity is the symptom of an unreachable

@@ -50,7 +50,7 @@ export function drawTrams(ctx: CanvasRenderingContext2D, city: City, variant: Va
     ctx.fillStyle = body;
     ctx.fillRect(x - hw + 1, y - 11, hw * 2 - 1, 7);
     // Windows: lit after dark, which is what makes a tram read as a tram.
-    ctx.fillStyle = variant === 'day' ? gradeHex(PAL.darkWindow, variant) : PAL.litWindow;
+    ctx.fillStyle = variant === 'day' ? gradeHex(PAL.darkWindow, variant) : gradeHex(PAL.litWindow, variant, true);
     for (let i = 0; i < 3; i++) ctx.fillRect(x - hw + 3 + i * 5, y - 9, 3, 3);
     // A trolley pole up to the wire.
     ctx.fillStyle = gradeHex(PAL.soot2, variant);
@@ -82,11 +82,11 @@ export function drawSmoke(
   // between day and night. Grading the day palette into night gave dark blue
   // puffs over dark blue roofs: present, invisible, and only found by counting
   // pixels. Smoke reads against a sky, not in a colour scheme.
-  const shades = variant === 'day'
-    ? [PAL.smoke2, PAL.smoke1, PAL.smoke0]
-    // At night smoke is barely lit: only a little lighter than the roofs it
-    // passes over, or it shouts louder than the lit windows do.
-    : ['#4e5566', '#414757', '#363b48'];
+  const shades = [
+    gradeHex(PAL.smoke2, variant),
+    gradeHex(PAL.smoke1, variant),
+    gradeHex(PAL.smoke0, variant),
+  ];
 
   for (const b of city.buildings) {
     const industrial = b.kind === 'mill' || b.kind === 'foundry' || b.kind === 'gasworks';
@@ -156,11 +156,12 @@ export interface CartRoute {
   kind: 0 | 1 | 2;
 }
 
-export function buildCartRoutes(city: City, count = 9): CartRoute[] {
+export function buildCartRoutes(city: City, count = 0): CartRoute[] {
   const out: CartRoute[] = [];
   const g = city.graph;
   if (g.n < 4) return out;
-  for (let i = 0; i < count; i++) {
+  const wanted = count > 0 ? count : Math.max(9, Math.min(18, Math.round(city.buildings.length / 20)));
+  for (let i = 0; i < wanted; i++) {
     // Endpoints drawn from the seed, far enough apart to be a journey.
     let a = (mix(city.seed, 91, i) >>> 0) % g.n;
     let b = (mix(city.seed, 92, i) >>> 0) % g.n;
@@ -229,7 +230,7 @@ export function drawCarts(
     const dark = gradeHex(shadeHex(CART_BODY[r.kind], -0.2), variant);
 
     // A shadow, so it sits on the cobbles like everything else.
-    ctx.fillStyle = 'rgba(10,12,16,0.45)';
+    ctx.fillStyle = gradeHex(PAL.soot0, variant);
     ctx.fillRect(x - 5, y, 10, 1);
 
     if (r.kind === 2) {

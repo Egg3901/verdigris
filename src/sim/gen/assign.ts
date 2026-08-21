@@ -203,7 +203,8 @@ export function assignBuildings(
   // supply swings by 15% across seeds and the title plate promises a roof count.
   // Plots left over are not failures: they become the back gardens, drying yards
   // and waste ground that stop a district reading as wall-to-wall frontage.
-  const target = range(rng, 168, 196);
+  const areaScale = (d.width * d.height) / (48 * 48);
+  const target = range(rng, Math.round(168 * areaScale), Math.round(196 * areaScale));
   for (const p of plots) {
     if (out.length >= target) break;
     if (used[p.id] || !buildable[p.id]) continue;

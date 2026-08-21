@@ -8,7 +8,7 @@ import { newCity, tickCity, warp, hashWorld, soulsOutdoors } from './sim/city';
 import type { City } from './sim/city';
 import { MAX_TICKS_PER_FRAME, MIN_PER_DAY, SPEEDS, minuteOfDay } from './sim/clock';
 import { buildScene, refreshBuilding, debugSkin } from './render/scene';
-import { variantFor } from './render/palette';
+import { renderPalette, variantFor } from './render/palette';
 import type { Scene } from './render/scene';
 import { drawFrame } from './render/frame';
 import type { Selection } from './render/frame';
@@ -65,7 +65,7 @@ const sel: Selection = { buildingId: -1, soulId: -1 };
 // Speed 1 is one game-minute per real second, so a day takes twenty-four real
 // minutes and a soul's routine is invisible on the timescale anybody watches for.
 // Speed 2 is four minutes per second: a day in six, a commute in five seconds.
-let speedIndex = 2;
+let speedIndex = params.get('freeze') === '1' ? 0 : 2;
 let simMin = 0;
 let lastTickAt = 0;
 let follow = -1;
@@ -336,7 +336,7 @@ canvas.addEventListener('wheel', (ev) => {
  *
  * There was no keyboard path to select a building or a soul at all, so a
  * keyboard-only player could pan, zoom and change speed, and nothing else. Six of
- * the eight interventions need a target, as do PEEK and FOLLOW, so the game was
+ * the interventions need a target, as do PEEK and FOLLOW, so the game was
  * effectively unplayable without a pointer.
  *
  * Arrows move the selection to the nearest thing in that SCREEN direction, which
@@ -461,7 +461,8 @@ function loop(now: number): void {
   // frame: the whole point of baking is that the expensive pass is rare.
   const wantVariant = variantFor(minuteOfDay(city.tick));
   const buntingNow = city.buntingUntil > city.tick;
-  if (wantVariant !== scene.variant || buntingNow !== buntingShown) {
+  if (wantVariant !== scene.variant || buntingNow !== buntingShown
+    || scene.worksRevision !== city.works.revision) {
     buntingShown = buntingNow;
     scene = buildScene(city, wantVariant);
   }
@@ -488,6 +489,8 @@ interface QaHook {
   state: () => { tick: number; outdoors: number; buildings: number; souls: number };
   enact: (kind: string, param?: number) => boolean;
   repeal: (kind: string) => boolean;
+  nudge: (kind: string, target: Target) => boolean;
+  palette: () => readonly string[];
 }
 
 (window as unknown as { __verdigris: QaHook }).__verdigris = {
@@ -514,5 +517,6 @@ interface QaHook {
   }),
   enact: (kind, param) => enactOrdinance(city, kind as OrdinanceKind, param),
   repeal: (kind) => repealOrdinance(city, kind as OrdinanceKind),
+  nudge: (kind, target) => applyNudge(city, kind as InterventionKind, target),
+  palette: () => renderPalette(scene.variant),
 };
-

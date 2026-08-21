@@ -8,6 +8,8 @@
 // drops in behind an unchanged blit() and the town changes in one commit.
 import { TILE_W, TILE_H, isoX, isoY } from './iso';
 import { fillPolyHard, lineHard } from './raster';
+import { PAL, gradeHex, quantizeWorldColour, shadeHex } from './palette';
+import type { Variant } from './palette';
 
 export interface BoxColours {
   top: string;
@@ -121,12 +123,12 @@ export function drawIsoBox(
  * over a 4px body, legs in a constant dark rather than the coat colour, and a
  * contact shadow so they stand on the street instead of hovering over it.
  */
-const SKIN = ['#c9a07a', '#e0bb95', '#a5764f', '#8a5e3c'];
-const LEG = '#1a1712';
+const SKIN = [PAL.cream1, PAL.cream2, PAL.ochre1, PAL.wood2];
+const LEG = PAL.ink;
 
 export function drawSoul(
   ctx: CanvasRenderingContext2D, x: number, y: number,
-  coat: string, hat: string, step: number, salt = 0,
+  coat: string, hat: string, step: number, salt = 0, variant: Variant = 'day',
 ): void {
   const px = Math.round(x);
   const py = Math.round(y);
@@ -134,11 +136,11 @@ export function drawSoul(
 
   // Contact shadow first, at ground level, never bobbing. Without it every soul
   // in the district floats a pixel above the cobbles.
-  ctx.fillStyle = 'rgba(10,12,16,0.55)';
+  ctx.fillStyle = gradeHex(PAL.soot0, variant);
   ctx.fillRect(px - 2, py, 4, 1);
 
   // Legs. A constant dark, so a cream coat does not produce cream legs.
-  ctx.fillStyle = LEG;
+  ctx.fillStyle = gradeHex(LEG, variant);
   if (step === 0 || step === 2) {
     ctx.fillRect(px - 1, py - 3, 1, 3);
     ctx.fillRect(px, py - 3, 1, 3);
@@ -149,27 +151,19 @@ export function drawSoul(
   }
 
   // Body, two pixels narrower than the old block so there are shoulders.
-  ctx.fillStyle = coat;
+  const body = gradeHex(coat, variant);
+  ctx.fillStyle = body;
   ctx.fillRect(px - 2, py - 9 + bob, 4, 6);
   // A darker side, west light as everywhere else.
-  ctx.fillStyle = shadeDark(coat);
+  ctx.fillStyle = quantizeWorldColour(shadeHex(body, -0.15), variant);
   ctx.fillRect(px + 1, py - 9 + bob, 1, 6);
 
   // The head. One pixel of skin is all it takes, and it is the whole difference.
-  ctx.fillStyle = SKIN[salt % SKIN.length];
+  ctx.fillStyle = gradeHex(SKIN[salt % SKIN.length], variant);
   ctx.fillRect(px - 1, py - 11 + bob, 2, 2);
 
   // Crown narrower than the shoulders, with a brim the full width.
-  ctx.fillStyle = hat;
+  ctx.fillStyle = gradeHex(hat, variant);
   ctx.fillRect(px - 2, py - 12 + bob, 4, 1);
   ctx.fillRect(px - 1, py - 14 + bob, 2, 2);
-}
-
-function shadeDark(hex: string): string {
-  if (hex.length !== 7) return hex;
-  const v = parseInt(hex.slice(1), 16);
-  const r = Math.max(0, ((v >> 16) & 255) - 34);
-  const g = Math.max(0, ((v >> 8) & 255) - 34);
-  const b = Math.max(0, (v & 255) - 34);
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }

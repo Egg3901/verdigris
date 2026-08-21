@@ -1,12 +1,13 @@
 // The diegetic panels. HTML and CSS over the canvas, mounted once and diffed.
 //
 // The inspector is re-rendered at 4 Hz and only when its subject or key state
-// changes. Rebuilding innerHTML every sim tick with two hundred souls janks, and
+// changes. Rebuilding innerHTML every sim tick with hundreds of souls janks, and
 // it is the sort of thing that only shows up on the machine you are not testing on.
 import { formatClock, phaseLabel, phaseOf, SPEEDS, minuteOfDay, MIN_PER_DAY } from '../sim/clock';
 import type { City } from '../sim/city';
 import { addressOf } from '../sim/worldgen';
 import { describeBuilding, describeSoul, insideList, boundFor, carrying } from '../sim/prose';
+import { worksSummary } from '../sim/works';
 import { fullName } from '../sim/souls';
 import type { Selection } from '../render/frame';
 import type { ZoomStep } from '../render/iso';
@@ -333,7 +334,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   firstRun.hidden = seen;
   firstRun.append(el('div', 'name', 'VERDIGRIS'));
   const fr = el('p', 'prose');
-  fr.textContent = 'An 1890s district, watched from above. Two hundred people live here and '
+  fr.textContent = 'An 1890s district, watched from above. Hundreds of people live here and '
     + 'each of them has somewhere to be.';
   firstRun.append(fr);
   const list = el('ul');
@@ -509,7 +510,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
         li.append(el('span', undefined, ' ·  nobody, just now'));
         insList.append(li);
       }
-      insMore.textContent = more > 0 ? `…and ${more} more` : '';
+      const works = worksSummary(city, b.id);
+      insMore.textContent = [more > 0 ? `…and ${more} more` : '', works].filter(Boolean).join('\n');
       return;
     }
     inspector.hidden = true;

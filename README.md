@@ -42,8 +42,9 @@ Three contracts that nothing may violate:
 
 1. **Integer transform.** Zoom is 1, 2 or 3 and never fractional. Every atlas
    pixel lands on an exact N by N block of device pixels.
-2. **Palette.** Every non-transparent pixel is a member of `PAL`, alpha is 0 or
-   255. This is what makes the ID buffer exact.
+2. **Palette.** Every non-transparent pixel belongs to a finite render palette,
+   and alpha is 0 or 255. Lighting variants quantize into palette banks. This keeps the ID
+   buffer exact and prevents blended browser colours from creeping into the art.
 3. **No gradients on the world canvas.** Baked dithered sprites only. Smooth
    gradients live in the UI DOM layer.
 
@@ -56,11 +57,13 @@ Built and playing:
 - The deterministic core. The world is a pure function of
   `(seedStr, tickCount, nudges)`, so the save format is the nudge log and
   `hashWorld()` anchors every determinism test.
-- Eight-stage worldgen: river with polite and working banks, two crossings,
-  civic square, arterials as least-cost paths, block subdivision, plot slicing,
-  courts, quota-scored assignment, gas and drain and post networks, tram, and a
+- Eight-stage worldgen on a 64 by 64 grid: seeded coves and headlands, polite and
+  working banks, two or three crossings, a variable civic square, five to eight
+  edge gates, least-cost arterials, block subdivision, plot slicing, courts,
+  quota-scored assignment, gas and drain and post networks, tram, and a
   prehistory of grudges that predate tick 0.
-- All-pairs next-hop street graph, about 300 nodes. No runtime pathfinding.
+- All-pairs next-hop street graph, usually 400 to 520 nodes. No runtime
+  pathfinding. A 64-seed corpus guards density, connectivity, variation and caps.
 - Schedules with jitter plus an ambient errand layer, so the district has people
   in it whenever you look and not only at the two rushes.
 - Eight pressures with a cause ring, and baselines that are functions of world
@@ -69,12 +72,18 @@ Built and playing:
   a lineage you can walk back.
 - Six incidents with hysteresis and cooldowns, each carrying the cause chain that
   produced it.
-- The eight interventions, each with a second-order effect and a backfire that is
+- Nine interventions, each with a second-order effect and a backfire that is
   a documented state condition rather than a dice roll.
+- The Works Register: file a fabric, drain or gas case on a building. Pneumatic
+  post access changes lead time; coin, rot and workshop state decide whether it
+  is repaired, cosmetically skimmed or shelved. Survey marks, scaffold, blue
+  sheeting, completion plaques, gutters, broken pipes, damp and puddles put that
+  state directly on the building.
 - Predicate-gated prose that cannot assert anything the sim does not contain.
-- Isometric renderer: pitched roofs (gable, hip, pyramid, flat), chimneys, window
-  rhythm, trees, ground texture, flatten-per-building compositor, per-object depth
-  sort, pixel-exact ID-buffer picking, discrete zoom stepper.
+- Isometric renderer: gable, hip, pyramid, flat, mansard, gambrel, sawtooth and
+  dome roofs; chimneys, dormers, facade materials, window rhythm, vehicles,
+  smoke, lit windows, trees, ground texture, flatten-per-building compositor,
+  per-object depth sort, pixel-exact ID-buffer picking and discrete zoom.
 - The full UI shell, and a keyboard equivalent for every verb.
 
 Measured behaviour: undisturbed, the district settles at an average facade of 610
@@ -88,12 +97,9 @@ Not built:
   all built against those primitives, so an atlas drops in behind an unchanged
   `blit()`. `atlas.ts`'s contract is that a missing frame falls back to a
   primitive, so art can never blank the game.
-- Day and night grading, weather, and smoke. The lamp glow pass runs; the tint
-  does not.
+- Weather beyond soot, smoke and rainwater staining.
 - The 9-slice panel frames and the two pixel fonts. Panels use flat CSS borders
   and a system monospace stack.
-- The tram does not physically run yet. Delaying it is a real pressure with real
-  consequences, but there is no vehicle on the rails.
 
 Time is **forward only**. The sim is deterministic so a true rewind is a replay,
 and a replay of a day costs about 300ms; affordable, but it needs a snapshot ring

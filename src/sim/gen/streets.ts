@@ -96,10 +96,15 @@ function carve(d: District, cells: { x: number; y: number }[], width: number): v
 /** The largest clear square on the polite bank, biased toward the map centre. */
 function placeSquare(d: District, river: RiverPlan, seed: number): { x: number; y: number; w: number } {
   const rng = mulberry32(mix(seed, Stream.GenStreets, 7));
-  const w = range(rng, 6, 8);
+  const w = range(rng, 6, d.width >= 60 ? 9 : 8);
   let best = { x: -1, y: -1, w, score: -Infinity };
   const cx = (d.width - 1) / 2;
   const cy = (d.height - 1) / 2;
+  // Civic life need not occupy the geometric centre. The offset is bounded so
+  // the square remains a hub, but large enough to produce distinct wards.
+  const targetX = cx + range(rng, -Math.round(d.width * 0.12), Math.round(d.width * 0.12));
+  const targetY = cy + range(rng, -Math.round(d.height * 0.06), Math.round(d.height * 0.06));
+  const wantedRiverGap = range(rng, 5, d.width >= 60 ? 11 : 9);
   for (let y = 1; y < d.height - w; y++) {
     for (let x = 1; x < d.width - w; x++) {
       let ok = true;
@@ -110,9 +115,9 @@ function placeSquare(d: District, river: RiverPlan, seed: number): { x: number; 
         }
       }
       if (!ok) continue;
-      const dc = Math.abs(x + w / 2 - cx) + Math.abs(y + w / 2 - cy);
+      const dc = Math.abs(x + w / 2 - targetX) + Math.abs(y + w / 2 - targetY);
       const toRiver = Math.abs(y + w - river.centre[Math.min(d.width - 1, Math.round(x + w / 2))]);
-      const score = -dc * 1.0 - Math.abs(toRiver - 7) * 0.8;
+      const score = -dc - Math.abs(toRiver - wantedRiverGap) * 0.8;
       if (score > best.score) best = { x, y, w, score };
     }
   }
@@ -146,7 +151,7 @@ export function layStreets(d: District, seed: number, river: RiverPlan): StreetP
 
   // Edge gates: points on the island rim, spread around the compass.
   const gates: { x: number; y: number }[] = [];
-  const rimSteps = 8;
+  const rimSteps = d.width >= 60 ? 12 : 8;
   for (let i = 0; i < rimSteps; i++) {
     const t = i / rimSteps;
     // Walk the diamond rim by parameter, then pull inward to the first land cell.
@@ -169,7 +174,8 @@ export function layStreets(d: District, seed: number, river: RiverPlan): StreetP
     if (insideIsland(d, gx, gy) && tileAt(d, gx, gy) !== Tile.Water) gates.push({ x: gx, y: gy });
   }
   shuffle(rng, gates);
-  const chosen = gates.slice(0, Math.min(6, gates.length));
+  const gateCount = range(rng, d.width >= 60 ? 5 : 4, d.width >= 60 ? 8 : 6);
+  const chosen = gates.slice(0, Math.min(gateCount, gates.length));
 
   // Arterials: square to each gate, ONE cell wide.
   //

@@ -80,7 +80,7 @@ export function serviceAt(net: Net, building: BuildingId): boolean {
   if (start === undefined || start < 0) return false;
   let cur: number = start;
   let guard = 0;
-  while (cur !== net.root && cur >= 0 && guard++ < 600) {
+  while (cur !== net.root && cur >= 0 && guard++ < net.parent.length) {
     if (net.segBroken[cur]) return false;
     cur = net.parent[cur];
   }

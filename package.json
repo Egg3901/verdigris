@@ -11,6 +11,8 @@
     "preview": "vite preview",
     "bake": "python3 art/bake.py && python3 art/preview.py",
     "qa:capture": "node qa/capture.mjs",
+    "qa:render": "node qa/render-contract.mjs",
+    "qa:roof": "node qa/roof-occlusion.mjs",
     "qa:compare": "node qa/compare.mjs"
   },
   "devDependencies": {

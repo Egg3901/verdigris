@@ -65,7 +65,7 @@ function bakeTree(salt: number, shape: TreeShape, size: number, variant: Variant
   for (const [bx, by, r] of blobs) fillEllipseHard(ctx, bx - 1, by - 1, r - 2, r * 0.55, lit);
   // Break the canopy edge so it reads as leaves rather than as a blob.
   ditherPolyHard(ctx, [{x:2,y:2},{x:18,y:2},{x:18,y:17},{x:2,y:17}], shade, 3);
-  hardenAlpha(ctx, c.width, c.height);
+  hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
 
@@ -96,7 +96,7 @@ function bakeFountain(variant: Variant): HTMLCanvasElement {
   fillPolyHard(ctx, [{x:18,y:10},{x:20,y:10},{x:20,y:20},{x:18,y:20}], g(PAL.stone1));
   fillPolyHard(ctx, [{x:15,y:3},{x:19,y:3},{x:19,y:10},{x:15,y:10}], g(PAL.verd2));
   fillPolyHard(ctx, [{x:16,y:0},{x:18,y:0},{x:18,y:3},{x:16,y:3}], g(PAL.verd3));
-  hardenAlpha(ctx, c.width, c.height);
+  hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
 
@@ -113,7 +113,7 @@ function bakeStall(salt: number, variant: Variant): HTMLCanvasElement {
   ctx.fillStyle = g(PAL.wood0);
   ctx.fillRect(2, 8, 1, 9);
   ctx.fillRect(24, 8, 1, 9);
-  hardenAlpha(ctx, c.width, c.height);
+  hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
 
@@ -234,7 +234,7 @@ function bakeLamp(variant: Variant, arc: boolean): HTMLCanvasElement {
     ctx.fillStyle = arc ? PAL.arc0 : PAL.gas1;
     ctx.fillRect(3, 6, 2, 2);
   }
-  hardenAlpha(ctx, c.width, c.height);
+  hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
 
@@ -249,7 +249,7 @@ function bakeBollard(variant: Variant, stone: boolean): HTMLCanvasElement {
   ctx.fillRect(2, 2, 1, 6);
   ctx.fillStyle = g(stone ? PAL.stone1 : PAL.soot1);
   ctx.fillRect(1, 1, 4, 2);
-  hardenAlpha(ctx, c.width, c.height);
+  hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
 
@@ -261,7 +261,7 @@ function bakeTrough(variant: Variant): HTMLCanvasElement {
   fillPolyHard(ctx, [{x:8,y:4},{x:15,y:7},{x:8,y:10},{x:1,y:7}], g(PAL.stone2));
   fillPolyHard(ctx, [{x:8,y:5},{x:13,y:7},{x:8,y:9},{x:3,y:7}], g(PAL.riv1));
   ditherPolyHard(ctx, [{x:8,y:5},{x:13,y:7},{x:8,y:9},{x:3,y:7}], g(PAL.rivGlint), 3);
-  hardenAlpha(ctx, c.width, c.height);
+  hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
 
@@ -281,7 +281,7 @@ function bakeColumn(salt: number, variant: Variant): HTMLCanvasElement {
   ctx.fillRect(1, 3, 8, 2);
   ctx.fillRect(3, 1, 4, 3);
   ctx.fillRect(2, 18, 6, 1);
-  hardenAlpha(ctx, c.width, c.height);
+  hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
 
@@ -299,7 +299,7 @@ function bakeCart(salt: number, variant: Variant): HTMLCanvasElement {
   ctx.fillStyle = g(PAL.soot3);
   ctx.fillRect(4, 11, 1, 1);
   ctx.fillRect(13, 11, 1, 1);
-  hardenAlpha(ctx, c.width, c.height);
+  hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
 
@@ -318,7 +318,7 @@ function bakeCrane(variant: Variant): HTMLCanvasElement {
   ctx.fillRect(16, 4, 3, 2);
   ctx.fillStyle = g(PAL.soot1);
   ctx.fillRect(17, 6, 1, 8);
-  hardenAlpha(ctx, c.width, c.height);
+  hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
 

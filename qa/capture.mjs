@@ -16,23 +16,39 @@ const SCENES = [
   { name: 'morning', seed: 'verdigris', tick: 641, zoom: 1 },
   { name: 'morning-street', seed: 'verdigris', tick: 641, zoom: 2 },
   { name: 'night-street', seed: 'verdigris', tick: 1320, zoom: 2 },
-  // 1260 is inside lamp hour. The scene still reads as daylight because the
-  // night grading is M9 and not built yet; the glow pass is exercised, the tint
-  // is not.
+  // 1260 is inside lamp hour and exercises both grading and window glow.
   { name: 'lamps', seed: 'verdigris', tick: 1260, zoom: 1 },
   { name: 'dead-hour', seed: 'verdigris', tick: 180, zoom: 1 },
   { name: 'coppergate', seed: 'coppergate', tick: 641, zoom: 1 },
+  { name: 'working-ward', seed: 'verdigris', tick: 641, zoom: 2, lookAt: [18, 44] },
+  { name: 'garden-ward', seed: 'verdigris', tick: 641, zoom: 2, lookAt: [45, 18] },
+  { name: 'works-scaffold', seed: 'verdigris', tick: 641, zoom: 3, works: true },
 ];
 
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch();
 for (const scene of SCENES) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
-  await page.goto(`${BASE}?seed=${scene.seed}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}?seed=${scene.seed}&t=${scene.tick}&freeze=1`, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => Boolean(window.__verdigris));
   await page.evaluate((s) => {
     window.__verdigris.freeze();
-    window.__verdigris.warp(s.tick);
+    if (s.works) {
+      const city = window.__verdigris.city;
+      const target = city.buildings.filter((b) =>
+        b.kind === 'tenement' && b.fabric < 760 && b.drainSeg >= 0)
+        .sort((a, b) => ((a.ox - 32) ** 2 + (a.oy - 50) ** 2)
+          - ((b.ox - 32) ** 2 + (b.oy - 50) ** 2))[0];
+      if (target && window.__verdigris.nudge('fileWorks', { kind: 'building', id: target.id })) {
+        const order = city.works.orders[city.works.orders.length - 1];
+        const toStart = Math.max(0, order.startsAt - city.tick);
+        const nextHour = (60 - ((city.tick + toStart) % 60)) % 60;
+        window.__verdigris.warp(toStart + nextHour);
+        window.__verdigris.select('building', target.id);
+        window.__verdigris.lookAt(target.ox, target.oy);
+      }
+    }
+    if (s.lookAt) window.__verdigris.lookAt(s.lookAt[0], s.lookAt[1]);
     window.__verdigris.zoom(s.zoom);
   }, scene);
   await page.addStyleTag({ content: '#shell { visibility: hidden !important; }' });

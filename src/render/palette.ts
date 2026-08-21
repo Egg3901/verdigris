@@ -1,7 +1,7 @@
 // The palette contract.
 //
 // Every non-transparent pixel the game draws is a member of PAL, and alpha is
-// exactly 0 or 255. This is what makes two hundred buildings feel like one city,
+// exactly 0 or 255. This is what makes hundreds of buildings feel like one city,
 // and it is what makes the ID picking buffer exact: source-in stamping needs a
 // hard alpha edge or the silhouette bleeds.
 //
@@ -197,6 +197,10 @@ export function rgbToHex(r: number, g: number, b: number): string {
 
 /** Grade one palette entry into a lighting variant. Emissives are lifted, not dimmed. */
 export function gradeColour(key: PaletteKey, variant: Variant): string {
+  return gradeColourRaw(key, variant);
+}
+
+function gradeColourRaw(key: PaletteKey, variant: Variant): string {
   const override = variant === 'night' ? NIGHT_OVERRIDE[key] : undefined;
   if (override) return override;
   const grade = LIGHT[variant];
@@ -213,6 +217,70 @@ export function gradeColour(key: PaletteKey, variant: Variant): string {
   return rgbToHex(r * grade.mul[0] + grade.add[0], g * grade.mul[1] + grade.add[1], b * grade.mul[2] + grade.add[2]);
 }
 
+const PALETTE_KEYS = Object.keys(PAL) as PaletteKey[];
+const PALETTE_CACHE = new Map<Variant, readonly string[]>();
+const RGB_BANK_CACHE = new Map<Variant, readonly [number, number, number][]>();
+const QUANT_CACHE: Record<Variant, Map<number, readonly [number, number, number]>> = {
+  day: new Map(), dusk: new Map(), night: new Map(),
+};
+
+/**
+ * The finite set a rendered frame may contain.
+ *
+ * The source colours remain legal because emissives, selection ink and the void
+ * are intentionally not graded. The second bank is the art-directed light pass.
+ * This bounds dusk and night without pretending they use the exact day ramp.
+ */
+export function renderPalette(variant: Variant): readonly string[] {
+  const cached = PALETTE_CACHE.get(variant);
+  if (cached) return cached;
+  const colours = new Set<string>(Object.values(PAL));
+  for (const key of PALETTE_KEYS) colours.add(gradeColourRaw(key, variant));
+  const out = [...colours];
+  PALETTE_CACHE.set(variant, out);
+  return out;
+}
+
+function rgbBank(variant: Variant): readonly [number, number, number][] {
+  const cached = RGB_BANK_CACHE.get(variant);
+  if (cached) return cached;
+  const bank = renderPalette(variant).map(hexToRgb);
+  RGB_BANK_CACHE.set(variant, bank);
+  return bank;
+}
+
+/** Snap arbitrary wash/grade output to the nearest colour in the finite bank. */
+export function quantizeWorldColour(hex: string, variant: Variant): string {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return PAL.soot0;
+  const [r, g, b] = hexToRgb(hex);
+  const picked = quantizeWorldRgb(r, g, b, variant);
+  return rgbToHex(picked[0], picked[1], picked[2]);
+}
+
+/** RGB form for the canvas post-pass. Cached by the source 24-bit colour. */
+export function quantizeWorldRgb(
+  r: number, g: number, b: number, variant: Variant,
+): readonly [number, number, number] {
+  const cacheKey = (r << 16) | (g << 8) | b;
+  const known = QUANT_CACHE[variant].get(cacheKey);
+  if (known) return known;
+  const bank = rgbBank(variant);
+  let best = 0;
+  let bestDistance = Infinity;
+  for (let i = 0; i < bank.length; i++) {
+    const [pr, pg, pb] = bank[i];
+    // Green carries more perceived luminance, so missing it is more visible.
+    const dr = r - pr;
+    const dg = g - pg;
+    const db = b - pb;
+    const distance = dr * dr * 2 + dg * dg * 4 + db * db * 3;
+    if (distance < bestDistance) { bestDistance = distance; best = i; }
+  }
+  const picked = bank[best];
+  QUANT_CACHE[variant].set(cacheKey, picked);
+  return picked;
+}
+
 /**
  * Grade an arbitrary colour, not just a palette key.
  *
@@ -223,17 +291,20 @@ export function gradeColour(key: PaletteKey, variant: Variant): string {
  */
 export function gradeHex(hex: string, variant: Variant, emissive = false): string {
   const grade = LIGHT[variant];
-  if (!grade) return hex;
+  if (!grade) return quantizeWorldColour(hex, variant);
   let [r, g, b] = hexToRgb(hex);
   if (emissive) {
     const lift = variant === 'night' ? 1.18 : 1.08;
-    return rgbToHex(r * lift, g * lift, b * lift);
+    return quantizeWorldColour(rgbToHex(r * lift, g * lift, b * lift), variant);
   }
   const lum = 0.299 * r + 0.587 * g + 0.114 * b;
   r = r + (lum - r) * grade.desat;
   g = g + (lum - g) * grade.desat;
   b = b + (lum - b) * grade.desat;
-  return rgbToHex(r * grade.mul[0] + grade.add[0], g * grade.mul[1] + grade.add[1], b * grade.mul[2] + grade.add[2]);
+  return quantizeWorldColour(
+    rgbToHex(r * grade.mul[0] + grade.add[0], g * grade.mul[1] + grade.add[1], b * grade.mul[2] + grade.add[2]),
+    variant,
+  );
 }
 
 export type Variant = 'day' | 'dusk' | 'night';
