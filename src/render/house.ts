@@ -20,10 +20,18 @@ import { PAL } from './palette';
 import {
   makeFace, drawDoor, drawShopfront, drawSign, drawWindowGrid, drawBoarded,
   drawCourses, drawDormer, drawBunting,
+  drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
+  drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
+  drawRoofPatch, drawEaveRail,
 } from './detail';
-import type { DetailSkin } from './detail';
+import type { DetailSkin, WallMaterial } from './detail';
+import { drawFinial, drawMooringMast } from './landmarks';
+import type { Corners } from './landmarks';
 
-export type RoofShape = 'gable' | 'hip' | 'pyramid' | 'flat' | 'mansard';
+export type RoofShape =
+  | 'gable' | 'hip' | 'pyramid' | 'flat' | 'mansard' | 'gambrel' | 'sawtooth' | 'dome';
+
+export type Finial = 'none' | 'spire' | 'dome' | 'cupola' | 'stack' | 'mast' | 'gasometer';
 
 export interface HouseSkin {
   wallLit: string;
@@ -73,6 +81,14 @@ export interface HouseSpec {
   /** Ridge along the tx axis when true, otherwise along ty. Defaults to the
    *  longer footprint axis, which is what makes a terrace read as a row. */
   ridgeAlongX?: boolean;
+  material: WallMaterial;
+  polite: boolean;
+  patched?: boolean;
+  washing?: boolean;
+  cresting?: boolean;
+  railings?: boolean;
+  finial: Finial;
+  finialH: number;
 }
 
 interface Pt { x: number; y: number }
@@ -83,16 +99,16 @@ export function houseBounds(spec: HouseSpec) {
   const sy = spec.d - 1;
   const ox = isoX(sx, sy);
   const oy = isoY(sx, sy);
-  const top = spec.wallH + spec.roofH + (spec.chimneys > 0 ? 9 : 0);
+  const top = spec.wallH + spec.roofH + spec.finialH + (spec.chimneys > 0 ? 9 : 0);
   return {
-    minX: isoX(0, sy) - TILE_W / 2 - ox,
-    maxX: isoX(sx, 0) + TILE_W / 2 - ox,
+    minX: isoX(0, sy) - TILE_W / 2 - ox - 2,
+    maxX: isoX(sx, 0) + TILE_W / 2 - ox + 2,
     minY: isoY(0, 0) - TILE_H / 2 - top - oy,
-    maxY: isoY(sx, sy) + TILE_H / 2 - oy,
+    maxY: isoY(sx, sy) + TILE_H / 2 - oy + 2,
   };
 }
 
-function corners(ox: number, oy: number, w: number, d: number, lift: number) {
+export function houseCorners(ox: number, oy: number, w: number, d: number, lift: number): Corners {
   const sx = w - 1;
   const sy = d - 1;
   const bx = ox - isoX(sx, sy);
@@ -117,21 +133,36 @@ function poly(ctx: CanvasRenderingContext2D, pts: Pt[], fill: string, texture = 
 
 const mid = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 const up = (p: Pt, h: number): Pt => ({ x: p.x, y: p.y - h });
+const lerp = (a: Pt, b: Pt, t: number): Pt => ({
+  x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t,
+});
 
 /**
  * Draw a house. ox, oy is where the SOUTH corner tile's diamond centre sits.
  */
 export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number, spec: HouseSpec): void {
   const { w, d, wallH, skin } = spec;
-  const ground = corners(ox, oy, w, d, 0);
-  const eave = corners(ox, oy, w, d, wallH);
+  const ground = houseCorners(ox, oy, w, d, 0);
+  const eave = houseCorners(ox, oy, w, d, wallH);
 
-  // Walls. Only the +ty face (W to S) and the +tx face (S to E) are visible.
-  poly(ctx, [eave.W, ground.W, ground.S, eave.S], skin.wallLit, 2);
-  poly(ctx, [eave.S, ground.S, ground.E, eave.E], skin.wallShade, 3);
+  if (spec.finial === 'mast') {
+    drawMooringMast(ctx, ground, spec);
+    return;
+  }
+
+  const litPts: Pt[] = [eave.W, ground.W, ground.S, eave.S];
+  const shadePts: Pt[] = [eave.S, ground.S, ground.E, eave.E];
+  const mottle = spec.material === 'stucco' ? 4 : spec.material === 'brick' ? 1 : 2;
+  poly(ctx, litPts, skin.wallLit, mottle);
+  poly(ctx, shadePts, skin.wallShade, mottle + 1);
+
+  const lit = makeFace(eave.W, eave.S, true);
+  const shade = makeFace(eave.S, eave.E, false);
+  drawMaterials(ctx, lit, shade, litPts, shadePts, spec);
 
   const alongX = spec.ridgeAlongX ?? w >= d;
   const roofQuad = drawRoof(ctx, eave, spec, alongX);
+  drawFinial(ctx, ground, eave, spec, alongX);
   drawFacade(ctx, eave, spec);
   if (roofQuad && spec.dormers) {
     const n = Math.min(3, spec.dormers);
@@ -139,6 +170,11 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
       drawDormer(ctx, roofQuad, (i + 1) / (n + 1), detailSkin(spec), spec.skin.roofLit);
     }
   }
+  if (roofQuad && spec.patched) {
+    drawRoofPatch(ctx, roofQuad, shadeHex(skin.roofShade, -0.08));
+  }
+
+  if (spec.washing && lit.span >= 10) drawWashingLine(ctx, lit, wallH, spec.salt ?? 0);
 
   if (skin.trim) {
     // The cornice: one line where the wall meets the eave. This is the gilding,
@@ -146,11 +182,47 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
     lineHard(ctx, eave.W, eave.S, skin.trim);
     lineHard(ctx, eave.S, eave.E, skin.trim);
   }
+  if (spec.railings) {
+    drawEaveRail(ctx, eave.W, eave.S, spec.polite ? PAL.soot2 : PAL.soot1);
+  }
 
   // Selective ink outline on the south and east silhouette only, away from the
   // light. A full outline makes an iso town read as a sheet of stickers.
   lineHard(ctx, ground.W, ground.S, skin.outline);
   lineHard(ctx, ground.S, ground.E, skin.outline);
+}
+
+function drawMaterials(
+  ctx: CanvasRenderingContext2D, lit: ReturnType<typeof makeFace>, shade: ReturnType<typeof makeFace>,
+  litPts: Pt[], shadePts: Pt[], spec: HouseSpec,
+): void {
+  const { wallH, skin, material, salt } = spec;
+  const mortar = material === 'brick' ? skin.outline : shadeHex(skin.wallShade, -0.4);
+  const ds = detailSkin(spec);
+  for (const f of [lit, shade]) {
+    if (f.span < 6) continue;
+    switch (material) {
+      case 'brick':
+        drawBrickFace(ctx, f, wallH, mortar);
+        break;
+      case 'ashlar':
+        drawAshlarFace(ctx, f, wallH, mortar, shadeHex(skin.wallLit, 0.1));
+        break;
+      case 'timber':
+        drawTimberFace(ctx, f, wallH, ds.timber);
+        break;
+      case 'wood':
+        drawBoardFace(ctx, f, wallH, shadeHex(skin.wallShade, -0.16));
+        break;
+      case 'glazed':
+        drawGlazedFace(ctx, f, wallH, ds, PAL.soot2);
+        break;
+      default:
+        drawStuccoMottle(ctx, f.lit ? litPts : shadePts, shadeHex(skin.wallLit, f.lit ? 0.08 : -0.1), salt ?? 0);
+        break;
+    }
+    if (!spec.polite) drawSootStreaks(ctx, f, wallH, shadeHex(PAL.soot1, 0), salt ?? 0);
+  }
 }
 
 function detailSkin(spec: HouseSpec): DetailSkin {
@@ -182,14 +254,16 @@ function drawFacade(
 
   for (const f of [lit, shade]) {
     if (f.span < 8) continue;
-    drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true, salt + (f.lit ? 0 : 5));
+    if (spec.material !== 'glazed') {
+      drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true, salt + (f.lit ? 0 : 5));
+    }
     if (spec.boarded) drawBoarded(ctx, f, spec.wallH, skin);
   }
 
   // The shopfront and the door go on the lit face: the one the camera can see.
   if (spec.shopfront && lit.span >= 10) {
     drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed);
-  } else if (lit.span >= 8) {
+  } else if (lit.span >= 8 && spec.material !== 'glazed') {
     drawDoor(ctx, lit, 0.28 + ((salt % 5) / 12), spec.wallH, skin);
   }
   if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin);
@@ -229,12 +303,39 @@ function drawRoof(
     return null;
   }
 
+  if (spec.shape === 'dome') {
+    // A low hip as the surrounding roof, then the drum and dome sit on it.
+    const low = Math.max(5, Math.round(roofH * 0.4));
+    const pull = 0.28;
+    const r0 = up(alongX ? mid(W, N) : mid(N, E), low);
+    const r1 = up(alongX ? mid(S, E) : mid(W, S), low);
+    const h0 = { x: r0.x + (r1.x - r0.x) * pull, y: r0.y + (r1.y - r0.y) * pull };
+    const h1 = { x: r1.x + (r0.x - r1.x) * pull, y: r1.y + (r0.y - r1.y) * pull };
+    poly(ctx, [W, S, h1, h0], skin.roofLit, 3);
+    poly(ctx, [S, E, h1], shadeHex(skin.roofShade, -0.1));
+    poly(ctx, [N, E, h1, h0], skin.roofShade, 2);
+    ridgeLine(ctx, h0, h1, skin.roofRidge, spec);
+    return [W, S, h1, h0];
+  }
+
+  if (spec.shape === 'sawtooth') {
+    return drawSawtooth(ctx, W, N, E, S, spec, alongX);
+  }
+
+  if (spec.shape === 'gambrel') {
+    return drawGambrel(ctx, W, N, E, S, spec, alongX);
+  }
+
+  if (spec.shape === 'mansard') {
+    return drawMansard(ctx, W, N, E, S, spec, alongX);
+  }
+
   // Gable and hip both have a ridge. Along tx the ridge spans the W-N edge
   // midpoint to the S-E edge midpoint; along ty it is the other pair.
   const r0 = up(alongX ? mid(W, N) : mid(N, E), roofH);
   const r1 = up(alongX ? mid(S, E) : mid(W, S), roofH);
 
-  if (spec.shape === 'hip' || spec.shape === 'mansard') {
+  if (spec.shape === 'hip') {
     // Hip: the ridge is pulled in from both ends, so all four faces slope.
     const pull = 0.28;
     const h0 = { x: r0.x + (r1.x - r0.x) * pull, y: r0.y + (r1.y - r0.y) * pull };
@@ -250,7 +351,7 @@ function drawRoof(
       poly(ctx, [W, S, h1, h0], skin.roofLit, 4);
       poly(ctx, [W, N, h0], skin.roofLit);
     }
-    ridgeLine(ctx, h0, h1, skin.roofRidge);
+    ridgeLine(ctx, h0, h1, skin.roofRidge, spec);
     chimneys(ctx, h0, h1, spec);
     const nearHip: Pt[] = [W, S, h1, h0];
     drawCourses(ctx, nearHip, shadeHex(skin.roofLit, -0.1), 4);
@@ -269,7 +370,7 @@ function drawRoof(
     poly(ctx, [W, S, r1], skin.gableLit);
     poly(ctx, [N, E, r0], skin.gableShade);
   }
-  ridgeLine(ctx, r0, r1, skin.roofRidge);
+  ridgeLine(ctx, r0, r1, skin.roofRidge, spec);
   chimneys(ctx, r0, r1, spec);
   // Tile courses on the near slope. Four lines, and a roof stops being a plane.
   const near: Pt[] = [W, S, r1, r0];
@@ -277,8 +378,135 @@ function drawRoof(
   return near;
 }
 
-function ridgeLine(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, colour: string): void {
+function drawMansard(
+  ctx: CanvasRenderingContext2D, W: Pt, N: Pt, E: Pt, S: Pt,
+  spec: HouseSpec, alongX: boolean,
+): Pt[] {
+  const { roofH, skin } = spec;
+  const c = mid(mid(W, E), mid(N, S));
+  const inset = 0.32;
+  const deckH = Math.max(6, Math.round(roofH * 0.72));
+  const I = {
+    W: up(lerp(W, c, inset), deckH),
+    N: up(lerp(N, c, inset), deckH),
+    E: up(lerp(E, c, inset), deckH),
+    S: up(lerp(S, c, inset), deckH),
+  };
+  // Steep lower faces. Near first after far so the camera-facing slope wins.
+  poly(ctx, [N, E, I.E, I.N], skin.roofShade, 3);
+  poly(ctx, [S, E, I.E, I.S], shadeHex(skin.roofShade, -0.1));
+  poly(ctx, [W, N, I.N, I.W], skin.roofLit);
+  poly(ctx, [W, S, I.S, I.W], skin.roofLit, 4);
+  const near: Pt[] = [W, S, I.S, I.W];
+  drawCourses(ctx, near, shadeHex(skin.roofLit, -0.12), 5);
+
+  // Shallow deck: a small hip.
+  const remain = Math.max(3, roofH - deckH);
+  const r0 = up(alongX ? mid(I.W, I.N) : mid(I.N, I.E), remain);
+  const r1 = up(alongX ? mid(I.S, I.E) : mid(I.W, I.S), remain);
+  const pull = 0.22;
+  const h0 = lerp(r0, r1, pull);
+  const h1 = lerp(r1, r0, pull);
+  poly(ctx, [I.N, I.E, h1, h0], shadeHex(skin.roofShade, 0.04));
+  poly(ctx, [I.W, I.S, h1, h0], shadeHex(skin.roofLit, 0.06), 2);
+  ridgeLine(ctx, h0, h1, skin.roofRidge, spec);
+  chimneys(ctx, h0, h1, spec);
+  return near;
+}
+
+function drawGambrel(
+  ctx: CanvasRenderingContext2D, W: Pt, N: Pt, E: Pt, S: Pt,
+  spec: HouseSpec, alongX: boolean,
+): Pt[] {
+  const { roofH, skin } = spec;
+  const r0 = up(alongX ? mid(W, N) : mid(N, E), roofH);
+  const r1 = up(alongX ? mid(S, E) : mid(W, S), roofH);
+  const k = 0.38;
+  const breakH = roofH * 0.62;
+  // Break points sit higher than a linear slope, which is the whole gambrel read.
+  const n0 = alongX
+    ? { x: W.x + (r0.x - W.x) * k, y: W.y - breakH }
+    : { x: W.x + (r1.x - W.x) * k, y: W.y - breakH };
+  const n1 = alongX
+    ? { x: S.x + (r1.x - S.x) * k, y: S.y - breakH }
+    : { x: S.x + (r1.x - S.x) * k, y: S.y - breakH };
+  const f0 = alongX
+    ? { x: N.x + (r0.x - N.x) * k, y: N.y - breakH }
+    : { x: N.x + (r0.x - N.x) * k, y: N.y - breakH };
+  const f1 = alongX
+    ? { x: E.x + (r1.x - E.x) * k, y: E.y - breakH }
+    : { x: E.x + (r0.x - E.x) * k, y: E.y - breakH };
+
+  if (alongX) {
+    poly(ctx, [N, E, f1, f0], skin.roofShade, 2);
+    poly(ctx, [f0, f1, r1, r0], shadeHex(skin.roofShade, -0.06), 2);
+    poly(ctx, [W, S, n1, n0], skin.roofLit, 3);
+    poly(ctx, [n0, n1, r1, r0], shadeHex(skin.roofLit, 0.06), 3);
+    // Broken gable silhouette, not a triangle.
+    poly(ctx, [S, E, f1, r1, n1], skin.gableShade);
+    poly(ctx, [W, N, f0, r0, n0], skin.gableLit);
+  } else {
+    poly(ctx, [E, S, n1, f1], skin.roofShade, 2);
+    poly(ctx, [f1, n1, r1, r0], shadeHex(skin.roofShade, -0.06), 2);
+    poly(ctx, [W, N, r0, n0], skin.roofLit, 3);
+    poly(ctx, [n0, r0, r1, n1], shadeHex(skin.roofLit, 0.06), 3);
+    poly(ctx, [W, S, n1, n0], skin.gableLit);
+    poly(ctx, [N, E, f1, f0], skin.gableShade);
+  }
+  ridgeLine(ctx, r0, r1, skin.roofRidge, spec);
+  chimneys(ctx, r0, r1, spec);
+  const near: Pt[] = alongX ? [W, S, n1, n0] : [W, N, r0, n0];
+  drawCourses(ctx, near, shadeHex(skin.roofLit, -0.12), 3);
+  return near;
+}
+
+function drawSawtooth(
+  ctx: CanvasRenderingContext2D, W: Pt, N: Pt, E: Pt, S: Pt,
+  spec: HouseSpec, alongX: boolean,
+): Pt[] | null {
+  const { roofH, skin } = spec;
+  const long = alongX ? spec.w : spec.d;
+  const n = Math.max(2, Math.min(4, long - (long > 3 ? 1 : 0)));
+  let lastNear: Pt[] | null = null;
+  let lastRidge: [Pt, Pt] | null = null;
+  for (let i = 0; i < n; i++) {
+    const u0 = i / n;
+    const u1 = (i + 1) / n;
+    // Strips along the long axis. Peak sits near u0 so the steep glazed face
+    // is the one the camera catches.
+    const a0 = alongX ? lerp(W, S, u0) : lerp(W, N, u0);
+    const a1 = alongX ? lerp(W, S, u1) : lerp(W, N, u1);
+    const b0 = alongX ? lerp(N, E, u0) : lerp(S, E, u0);
+    const b1 = alongX ? lerp(N, E, u1) : lerp(S, E, u1);
+    const pk = 0.28;
+    const pA = up(lerp(a0, a1, pk), roofH);
+    const pB = up(lerp(b0, b1, pk), roofH);
+    // Glazed steep face.
+    const glass = spec.skin.windowLit ? PAL.rivGlint : shadeHex(PAL.darkWindow, 0.1);
+    poly(ctx, [a0, b0, pB, pA], glass, 2);
+    lineHard(ctx, a0, pA, PAL.soot2);
+    lineHard(ctx, b0, pB, PAL.soot2);
+    // Shallow tiled slope.
+    poly(ctx, [pA, pB, b1, a1], skin.roofLit, 3);
+    poly(ctx, [pB, b1, b0], skin.roofShade);
+    lastNear = [pA, a1, b1, pB];
+    lastRidge = [pA, pB];
+    drawCourses(ctx, [a1, pA, pB, b1], shadeHex(skin.roofLit, -0.12), 3);
+  }
+  if (lastRidge) {
+    ridgeLine(ctx, lastRidge[0], lastRidge[1], skin.roofRidge, spec);
+    chimneys(ctx, lastRidge[0], lastRidge[1], spec);
+  }
+  return lastNear;
+}
+
+function ridgeLine(
+  ctx: CanvasRenderingContext2D, a: Pt, b: Pt, colour: string, spec?: HouseSpec,
+): void {
   lineHard(ctx, a, b, colour);
+  if (spec?.cresting) {
+    drawRidgeCrest(ctx, a, b, spec.skin.trim ?? spec.skin.roofRidge, spec.polite);
+  }
 }
 
 /**

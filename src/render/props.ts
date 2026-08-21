@@ -7,7 +7,7 @@ import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_STRUCT } from './iso';
 import { PAL, shadeHex, gradeHex } from './palette';
 import type { Variant } from './palette';
 import { mix } from '../sim/rng';
-import { fillEllipseHard, ditherPolyHard, hardenAlpha, fillPolyHard, BAYER } from './raster';
+import { fillEllipseHard, ditherPolyHard, hardenAlpha, fillPolyHard, lineHard, BAYER } from './raster';
 import { Tile } from '../sim/types';
 import type { District } from '../sim/district';
 import { cellKey, insideIsland } from '../sim/district';
@@ -198,6 +198,185 @@ export function buildProps(district: District, seed: number, variant: Variant): 
   return out;
 }
 
+function bakeLamp(variant: Variant, arc: boolean): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 14; c.height = 26;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  ctx.imageSmoothingEnabled = false;
+  const g = (x: string) => gradeHex(x, variant);
+  const post = g(PAL.soot1);
+  ctx.fillStyle = post;
+  ctx.fillRect(6, 10, 2, 15);
+  ctx.fillRect(4, 24, 6, 2);
+  ctx.fillRect(2, 10, 6, 2);
+  const glass = variant === 'day' ? g(PAL.darkWindow) : (arc ? PAL.arc1 : PAL.gas2);
+  const frame = g(arc ? PAL.stone2 : PAL.brass2);
+  ctx.fillStyle = frame;
+  ctx.fillRect(1, 2, 7, 9);
+  ctx.fillStyle = glass;
+  ctx.fillRect(2, 3, 5, 7);
+  if (variant !== 'day') {
+    ctx.fillStyle = arc ? PAL.arc0 : PAL.gas1;
+    ctx.fillRect(3, 5, 3, 3);
+  }
+  hardenAlpha(ctx, c.width, c.height);
+  return c;
+}
+
+function bakeBollard(variant: Variant, stone: boolean): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 6; c.height = 8;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  ctx.fillStyle = g(stone ? PAL.stone2 : PAL.soot2);
+  ctx.fillRect(2, 2, 2, 6);
+  ctx.fillStyle = g(stone ? PAL.stone3 : PAL.soot3);
+  ctx.fillRect(2, 2, 1, 6);
+  ctx.fillStyle = g(stone ? PAL.stone1 : PAL.soot1);
+  ctx.fillRect(1, 1, 4, 2);
+  hardenAlpha(ctx, c.width, c.height);
+  return c;
+}
+
+function bakeTrough(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 10;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  fillPolyHard(ctx, [{x:8,y:4},{x:15,y:7},{x:8,y:10},{x:1,y:7}], g(PAL.stone2));
+  fillPolyHard(ctx, [{x:8,y:5},{x:13,y:7},{x:8,y:9},{x:3,y:7}], g(PAL.riv1));
+  ditherPolyHard(ctx, [{x:8,y:5},{x:13,y:7},{x:8,y:9},{x:3,y:7}], g(PAL.rivGlint), 3);
+  hardenAlpha(ctx, c.width, c.height);
+  return c;
+}
+
+function bakeColumn(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 10; c.height = 20;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const poster = [PAL.buntRed, PAL.buntBlue, PAL.ochre1, PAL.verd1][salt % 4];
+  ctx.fillStyle = g(PAL.soot2);
+  ctx.fillRect(2, 4, 6, 14);
+  ctx.fillStyle = g(poster);
+  ctx.fillRect(3, 6, 4, 6);
+  ctx.fillStyle = g(PAL.buntCream);
+  ctx.fillRect(3, 13, 4, 3);
+  ctx.fillStyle = g(PAL.soot1);
+  ctx.fillRect(1, 3, 8, 2);
+  ctx.fillRect(3, 1, 4, 3);
+  ctx.fillRect(2, 18, 6, 1);
+  hardenAlpha(ctx, c.width, c.height);
+  return c;
+}
+
+function bakeCart(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 18; c.height = 14;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const bed = [PAL.wood2, PAL.wood1, PAL.ochre0][salt % 3];
+  fillPolyHard(ctx, [{x:9,y:5},{x:17,y:8},{x:9,y:11},{x:1,y:8}], g(bed));
+  fillPolyHard(ctx, [{x:9,y:3},{x:17,y:6},{x:17,y:8},{x:9,y:5}], g(shadeHex(bed, 0.1)));
+  ctx.fillStyle = g(PAL.soot1);
+  ctx.fillRect(3, 10, 3, 3);
+  ctx.fillRect(12, 10, 3, 3);
+  ctx.fillStyle = g(PAL.soot3);
+  ctx.fillRect(4, 11, 1, 1);
+  ctx.fillRect(13, 11, 1, 1);
+  hardenAlpha(ctx, c.width, c.height);
+  return c;
+}
+
+function bakeCrane(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 22; c.height = 28;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const iron = g(PAL.soot2);
+  ctx.fillStyle = iron;
+  ctx.fillRect(4, 10, 2, 16);
+  ctx.fillRect(3, 25, 5, 2);
+  lineHard(ctx, { x: 5, y: 10 }, { x: 18, y: 4 }, iron);
+  lineHard(ctx, { x: 5, y: 12 }, { x: 18, y: 4 }, g(PAL.soot3));
+  ctx.fillStyle = g(PAL.wood1);
+  ctx.fillRect(16, 4, 3, 2);
+  ctx.fillStyle = g(PAL.soot1);
+  ctx.fillRect(17, 6, 1, 8);
+  hardenAlpha(ctx, c.width, c.height);
+  return c;
+}
+
+/**
+ * Street furniture: lamps, bollards, troughs, advertising columns, carts, and
+ * a few wharf cranes. Sparse, hashed from the cell, never on a building.
+ */
+export function buildStreetProps(
+  district: District, seed: number, variant: Variant,
+): Prop[] {
+  const out: Prop[] = [];
+  const lampGas = bakeLamp(variant, false);
+  const lampArc = bakeLamp(variant, true);
+  const bollardStone = bakeBollard(variant, true);
+  const bollardIron = bakeBollard(variant, false);
+  const trough = bakeTrough(variant);
+  const columns = [0, 1, 2, 3].map((s) => bakeColumn(s, variant));
+  const carts = [0, 1, 2].map((s) => bakeCart(s, variant));
+  const crane = bakeCrane(variant);
+
+  for (let ty = 0; ty < district.height; ty++) {
+    for (let tx = 0; tx < district.width; tx++) {
+      if (!insideIsland(district, tx, ty)) continue;
+      const k = cellKey(district, tx, ty);
+      if (district.buildingId[k] >= 0) continue;
+      const t = district.tile[k];
+      const polite = district.polite[k] === 1;
+      const roll = mix(seed, 81, tx, ty) % 100;
+      const jx = ((mix(seed, 82, tx, ty) >>> 5) % 7) - 3;
+      const jy = ((mix(seed, 82, tx, ty) >>> 9) % 5) - 2;
+      const push = (sprite: HTMLCanvasElement, ax: number, ay: number) => {
+        out.push({
+          sprite, ax, ay,
+          wx: isoX(tx, ty) + jx,
+          wy: isoY(tx, ty) + jy,
+          depth: depthKey(tx, ty, LAYER_STRUCT),
+        });
+      };
+
+      if (t === Tile.Street || t === Tile.Embankment || t === Tile.Bridge) {
+        if (roll < (t === Tile.Embankment ? 24 : 14)) {
+          push(polite && t === Tile.Embankment ? lampArc : lampGas, 7, 25);
+          continue;
+        }
+      }
+      if (t === Tile.Street && roll >= 10 && roll < 13) {
+        push(trough, 8, 9);
+        continue;
+      }
+      if ((t === Tile.Street || t === Tile.Square) && roll >= 13 && roll < 16) {
+        push(columns[mix(seed, 83, tx, ty) % 4], 5, 19);
+        continue;
+      }
+      if (t === Tile.Street && !polite && roll >= 16 && roll < 19) {
+        push(carts[mix(seed, 84, tx, ty) % 3], 9, 13);
+        continue;
+      }
+      if ((t === Tile.Embankment || t === Tile.Wharf) && roll >= 22 && roll < 32) {
+        push(t === Tile.Embankment ? bollardStone : bollardIron, 3, 8);
+        continue;
+      }
+      if (t === Tile.Wharf && roll < 6) {
+        push(carts[mix(seed, 84, tx, ty) % 3], 9, 13);
+        continue;
+      }
+      if (t === Tile.Wharf && roll >= 6 && roll < 9) {
+        push(crane, 5, 27);
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Ground texture, drawn into the ground bitmap after the flat diamonds.
  *
@@ -213,6 +392,7 @@ const GROUND: Record<number, string> = {
 export function textureCell(
   ctx: CanvasRenderingContext2D, seed: number,
   tx: number, ty: number, tile: number, ox: number, oy: number, variant: Variant,
+  polite = true,
 ): void {
   const cx = ox + isoX(tx, ty);
   const cy = oy + isoY(tx, ty);
@@ -258,9 +438,10 @@ export function textureCell(
     case Tile.Street:
     case Tile.Square:
     case Tile.Embankment:
-      course(g(shadeHex(GROUND[tile] ?? PAL.cobble1, -0.09)), 4);
+      course(g(shadeHex(GROUND[tile] ?? PAL.cobble1, polite ? -0.09 : -0.16)), polite ? 4 : 6);
       speck(5, g(shadeHex(PAL.cobble2, 0.04)));
       speck(4, g(shadeHex(PAL.cobble0, -0.04)));
+      if (!polite) speck(4, g(PAL.soot1));
       break;
     case Tile.Alley:
     case Tile.Court:

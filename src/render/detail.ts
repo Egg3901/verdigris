@@ -232,3 +232,231 @@ export function drawBunting(
       PAL.wood0);
   }
 }
+
+export type WallMaterial = 'stucco' | 'brick' | 'ashlar' | 'timber' | 'wood' | 'glazed';
+
+/**
+ * Brick courses on a wall face: mortar lines parallel to the eave, joints
+ * staggered every other course. This is what stops a brick wall reading as a
+ * flat terracotta slab.
+ */
+export function drawBrickFace(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, mortar: string,
+): void {
+  const course = 3;
+  const bricks = Math.max(2, Math.round(f.span / 4));
+  for (let h = 2; h < wallH - 1; h += course) {
+    lineHard(ctx, f.at(0.02, h), f.at(0.98, h), mortar);
+    const stagger = ((h / course) & 1) === 0 ? 0 : 0.5;
+    for (let i = 1; i < bricks; i++) {
+      const t = (i + stagger) / bricks;
+      if (t <= 0.04 || t >= 0.96) continue;
+      lineHard(ctx, f.at(t, h), f.at(t, Math.min(wallH - 1, h + course - 1)), mortar);
+    }
+  }
+}
+
+/**
+ * Ashlar: larger dressed blocks with a highlight on the top of each course, the
+ * civic and villa read.
+ */
+export function drawAshlarFace(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, mortar: string, hilite: string,
+): void {
+  const course = 4;
+  const blocks = Math.max(2, Math.round(f.span / 7));
+  for (let h = 2; h < wallH - 1; h += course) {
+    lineHard(ctx, f.at(0.02, h), f.at(0.98, h), mortar);
+    if (h > 2) lineHard(ctx, f.at(0.02, h + 1), f.at(0.98, h + 1), hilite);
+    const stagger = ((h / course) & 1) === 0 ? 0 : 0.5;
+    for (let i = 1; i < blocks; i++) {
+      const t = (i + stagger) / blocks;
+      if (t <= 0.04 || t >= 0.96) continue;
+      lineHard(ctx, f.at(t, h), f.at(t, Math.min(wallH - 1, h + course - 1)), mortar);
+    }
+  }
+}
+
+/**
+ * Timber framing: posts, a mid rail, and one diagonal brace per bay. The working
+ * bank's cheaper construction, made visible.
+ */
+export function drawTimberFace(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, timber: string,
+): void {
+  const bays = Math.max(2, Math.round(f.span / 10));
+  lineHard(ctx, f.at(0.02, wallH * 0.48), f.at(0.98, wallH * 0.48), timber);
+  lineHard(ctx, f.at(0.02, wallH * 0.48 + 1), f.at(0.98, wallH * 0.48 + 1), timber);
+  lineHard(ctx, f.at(0.04, 1), f.at(0.04, wallH - 1), timber);
+  lineHard(ctx, f.at(0.06, 1), f.at(0.06, wallH - 1), timber);
+  lineHard(ctx, f.at(0.96, 1), f.at(0.96, wallH - 1), timber);
+  lineHard(ctx, f.at(0.94, 1), f.at(0.94, wallH - 1), timber);
+  for (let i = 1; i < bays; i++) {
+    const t = i / bays;
+    lineHard(ctx, f.at(t, 1), f.at(t, wallH - 1), timber);
+    const t0 = (i - 1) / bays;
+    if ((i & 1) === 1) {
+      lineHard(ctx, f.at(t0 + 0.04, 2), f.at(t - 0.04, wallH * 0.48), timber);
+    } else {
+      lineHard(ctx, f.at(t0 + 0.04, wallH * 0.48), f.at(t - 0.04, wallH - 2), timber);
+    }
+  }
+}
+
+/** Vertical weatherboards on warehouses and sheds. */
+export function drawBoardFace(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, seam: string,
+): void {
+  const n = Math.max(3, Math.round(f.span / 3));
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    lineHard(ctx, f.at(t, 1), f.at(t, wallH - 1), seam);
+  }
+}
+
+/**
+ * Iron-and-glass: a stone plinth and a mullioned wall. The winter garden, and
+ * nothing else, because glass everywhere would flatten the town.
+ */
+export function drawGlazedFace(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, skin: DetailSkin, iron: string,
+): void {
+  faceQuad(ctx, f, 0.02, 0.98, wallH - 4, wallH, skin.wall);
+  faceQuad(ctx, f, 0.04, 0.96, 2, wallH - 4, skin.glassLit ? PAL.rivGlint : shadeHex(PAL.darkWindow, 0.08));
+  const cols = Math.max(3, Math.round(f.span / 6));
+  const rows = Math.max(2, Math.floor((wallH - 6) / 5));
+  for (let i = 0; i <= cols; i++) {
+    const t = 0.04 + (0.92 * i) / cols;
+    lineHard(ctx, f.at(t, 2), f.at(t, wallH - 4), iron);
+  }
+  for (let r = 0; r <= rows; r++) {
+    const h = 2 + ((wallH - 6) * r) / rows;
+    lineHard(ctx, f.at(0.04, h), f.at(0.96, h), iron);
+  }
+}
+
+/** Sparse stucco mottling: a second colour scattered, not blended. */
+export function drawStuccoMottle(
+  ctx: CanvasRenderingContext2D, pts: readonly Pt[], colour: string, salt: number,
+): void {
+  ditherPolyHard(ctx, pts, colour, 3 + (salt % 3));
+}
+
+/**
+ * Ridge cresting: a run of spikes along the ridge. Silhouette work, cheap, and
+ * the difference between a civic roof and a warehouse.
+ */
+export function drawRidgeCrest(
+  ctx: CanvasRenderingContext2D, a: Pt, b: Pt, colour: string, fancy: boolean,
+): void {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 4) return;
+  const step = fancy ? 3 : 5;
+  const n = Math.max(2, Math.floor(len / step));
+  ctx.fillStyle = colour;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const x = Math.round(a.x + dx * t);
+    const y = Math.round(a.y + dy * t);
+    ctx.fillRect(x, y - (fancy ? 3 : 2), 1, fancy ? 3 : 2);
+    if (fancy && i % 2 === 0) ctx.fillRect(x - 1, y - 2, 3, 1);
+  }
+}
+
+/**
+ * A washing line on the lit face: the working bank, hung out to dry. Three bits
+ * of cloth on a sagging string.
+ */
+export function drawWashingLine(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, salt: number,
+): void {
+  const top = Math.max(3, wallH - 12);
+  const cloth = [PAL.buntCream, PAL.buntBlue, PAL.plaster2, PAL.ochre2];
+  const n = 3 + (salt % 2);
+  lineHard(ctx, f.at(0.12, top), f.at(0.88, top + 2), PAL.wood0);
+  for (let i = 0; i < n; i++) {
+    const t = 0.2 + (0.6 * i) / Math.max(1, n - 1);
+    const p = f.at(t, top + Math.sin(t * Math.PI) * 2);
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    ctx.fillStyle = cloth[(i + salt) % cloth.length];
+    ctx.fillRect(x - 2, y + 1, 3, 5 + (i % 3));
+  }
+}
+
+/**
+ * Soot streaks down a wall from the eave. Working-bank weathering, not a wash
+ * of the whole face.
+ */
+export function drawSootStreaks(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, soot: string, salt: number,
+): void {
+  const n = 2 + (salt % 3);
+  for (let i = 0; i < n; i++) {
+    const t = 0.15 + ((i * 17 + salt) % 70) / 100;
+    lineHard(ctx, f.at(t, 1), f.at(t, Math.min(wallH - 2, 4 + ((salt + i) % 8))), soot);
+  }
+}
+
+/**
+ * A patched roof: one quadrant of a slope in a different colour, dithered in.
+ * The working bank's mended tiles.
+ */
+export function drawRoofPatch(
+  ctx: CanvasRenderingContext2D, quad: readonly Pt[], colour: string,
+): void {
+  if (quad.length < 4) return;
+  const a = {
+    x: quad[0].x + (quad[1].x - quad[0].x) * 0.15,
+    y: quad[0].y + (quad[1].y - quad[0].y) * 0.15,
+  };
+  const b = {
+    x: quad[0].x + (quad[1].x - quad[0].x) * 0.55,
+    y: quad[0].y + (quad[1].y - quad[0].y) * 0.55,
+  };
+  const c = {
+    x: quad[3].x + (quad[2].x - quad[3].x) * 0.55,
+    y: quad[3].y + (quad[2].y - quad[3].y) * 0.55,
+  };
+  const d = {
+    x: quad[3].x + (quad[2].x - quad[3].x) * 0.15,
+    y: quad[3].y + (quad[2].y - quad[3].y) * 0.15,
+  };
+  const patch = [
+    {
+      x: a.x + (d.x - a.x) * 0.2, y: a.y + (d.y - a.y) * 0.2,
+    },
+    {
+      x: b.x + (c.x - b.x) * 0.2, y: b.y + (c.y - b.y) * 0.2,
+    },
+    {
+      x: b.x + (c.x - b.x) * 0.55, y: b.y + (c.y - b.y) * 0.55,
+    },
+    {
+      x: a.x + (d.x - a.x) * 0.55, y: a.y + (d.y - a.y) * 0.55,
+    },
+  ];
+  fillPolyHard(ctx, patch, colour);
+  ditherPolyHard(ctx, patch, shadeHex(colour, -0.12), 6);
+}
+
+/** Iron railings along an eave, for polite villas and the bank. */
+export function drawEaveRail(
+  ctx: CanvasRenderingContext2D, a: Pt, b: Pt, colour: string,
+): void {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 6) return;
+  const n = Math.max(4, Math.floor(len / 3));
+  ctx.fillStyle = colour;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const x = Math.round(a.x + dx * t);
+    const y = Math.round(a.y + dy * t);
+    ctx.fillRect(x, y - 3, 1, 3);
+  }
+  lineHard(ctx, { x: a.x, y: a.y - 3 }, { x: b.x, y: b.y - 3 }, colour);
+}

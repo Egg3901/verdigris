@@ -390,6 +390,7 @@ interface QaHook {
   zoom: (step: ZoomStep) => void;
   select: (kind: 'building' | 'soul', id: number) => void;
   debugSkin: (id: number) => unknown;
+  lookAt: (tx: number, ty: number) => void;
   state: () => { tick: number; outdoors: number; buildings: number; souls: number };
 }
 
@@ -400,6 +401,10 @@ interface QaHook {
   freeze: () => { speedIndex = 0; },
   hash: () => hashWorld(city),
   zoom: (step) => setZoom(step),
+  lookAt: (tx, ty) => {
+    centreOn(cam, viewW, viewH, isoX(tx, ty), isoY(tx, ty));
+    clampCamera(cam, viewW, viewH, shell.insets());
+  },
   select: (kind, id) => {
     sel.buildingId = kind === 'building' ? id : -1;
     sel.soulId = kind === 'soul' ? id : -1;
