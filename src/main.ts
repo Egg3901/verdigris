@@ -14,7 +14,7 @@ import { drawFrame } from './render/frame';
 import type { Selection } from './render/frame';
 import { pickAt } from './render/pick';
 import {
-  clampCamera, clampDpr, defaultCamera, centreOn, isoX, isoY, worldBounds, zoomTo, ZOOM_STEPS,
+  clampCamera, clampDpr, defaultCamera, centreOn, isoX, isoY, screenToWorld, worldBounds, zoomTo, ZOOM_STEPS,
 } from './render/iso';
 import type { Camera, ZoomStep } from './render/iso';
 import { mountShell } from './ui/shell';
@@ -22,6 +22,7 @@ import type { Shell } from './ui/shell';
 import { verbForKey, NUDGE_VERBS } from './ui/keys';
 import type { Verb } from './ui/keys';
 import { soulPos } from './sim/souls';
+import { describeBuilding } from './sim/prose';
 import { INTERVENTIONS, canApply, apply as applyNudge } from './sim/interventions';
 import type { InterventionKind, Target } from './sim/types';
 
@@ -165,6 +166,8 @@ function doVerb(verb: Verb): void {
       if (follow >= 0) { follow = -1; shell.toast('No longer following.'); }
       else { sel.buildingId = -1; sel.soulId = -1; }
       break;
+    case 'selectNear':
+      break;
     case 'help':
       shell.toggleHelp();
       break;
@@ -301,8 +304,71 @@ canvas.addEventListener('wheel', (ev) => {
   }
 }, { passive: false });
 
+/**
+ * Keyboard selection of the world.
+ *
+ * There was no keyboard path to select a building or a soul at all, so a
+ * keyboard-only player could pan, zoom and change speed, and nothing else. Six of
+ * the eight interventions need a target, as do PEEK and FOLLOW, so the game was
+ * effectively unplayable without a pointer.
+ *
+ * Arrows move the selection to the nearest thing in that SCREEN direction, which
+ * is the only direction that means anything to someone looking at an isometric
+ * projection. A tab order over 350 objects would be hostile; this is a reticle
+ * you steer.
+ */
+function stepSelection(dx: number, dy: number): void {
+  const from = currentSelectionPoint();
+  let best = -1;
+  let bestScore = Infinity;
+  for (const b of city.buildings) {
+    const wx = isoX(b.ox + b.w - 1, b.oy + b.d - 1);
+    const wy = isoY(b.ox + b.w - 1, b.oy + b.d - 1);
+    if (b.id === sel.buildingId) continue;
+    const vx = wx - from.x;
+    const vy = wy - from.y;
+    // Must lie in the half-plane we are steering toward.
+    const along = vx * dx + vy * dy;
+    if (along <= 0) continue;
+    const across = Math.abs(vx * dy - vy * dx);
+    // Prefer close and on-axis: distance plus a heavy penalty for drifting.
+    const score = along + across * 3;
+    if (score < bestScore) { bestScore = score; best = b.id; }
+  }
+  if (best < 0) return;
+  sel.buildingId = best;
+  sel.soulId = -1;
+  const b = city.buildings[best];
+  centreOn(cam, viewW, viewH, isoX(b.ox, b.oy), isoY(b.ox, b.oy));
+  clampCamera(cam, viewW, viewH, shell.insets());
+  shell.say(`${b.name}. ${describeBuilding(city, b.id)}`);
+}
+
+function currentSelectionPoint(): { x: number; y: number } {
+  if (sel.buildingId >= 0) {
+    const b = city.buildings[sel.buildingId];
+    return { x: isoX(b.ox + b.w - 1, b.oy + b.d - 1), y: isoY(b.ox + b.w - 1, b.oy + b.d - 1) };
+  }
+  if (sel.soulId >= 0) {
+    const p = soulPos(city.graph, city.souls[sel.soulId], 0);
+    return { x: isoX(p.cx, p.cy), y: isoY(p.cx, p.cy) };
+  }
+  // Nothing selected: steer from the centre of the view.
+  const c = screenToWorld(cam, viewW / 2, viewH / 2);
+  return { x: c.wx, y: c.wy };
+}
+
 window.addEventListener('keydown', (ev) => {
   if (ev.target instanceof HTMLInputElement) return;
+
+  // Shift plus an arrow steers the world selection rather than the camera.
+  if (ev.shiftKey && ev.key.startsWith('Arrow')) {
+    const dirs: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    };
+    const d = dirs[ev.key];
+    if (d) { ev.preventDefault(); stepSelection(d[0], d[1]); return; }
+  }
   // Space and Enter belong to whatever is focused. The old guard only checked for
   // an input, so focusing PEEK IN THE ROOF and pressing Space paused the sim and
   // did not press the button, which breaks the most basic keyboard convention on

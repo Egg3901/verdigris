@@ -4,7 +4,7 @@
 export type Verb =
   | 'panLeft' | 'panRight' | 'panUp' | 'panDown' | 'recentre'
   | 'zoomIn' | 'zoomOut' | 'zoom1' | 'zoom2' | 'zoom3'
-  | 'follow' | 'peek' | 'hide' | 'dismiss'
+  | 'follow' | 'peek' | 'hide' | 'dismiss' | 'selectNear'
   | 'nudgeRumour' | 'nudgeGas' | 'nudgeTram' | 'nudgeTip' | 'nudgeStrike'
   | 'nudgeStory' | 'nudgeQuarantine' | 'nudgeBunting'
   | 'pause' | 'slower' | 'faster'
@@ -48,6 +48,8 @@ export const BINDINGS: readonly Binding[] = [
   { verb: 'nudgeStory', keys: ['p'], label: 'Plant a story', group: 'nudges' },
   { verb: 'nudgeQuarantine', keys: ['x'], label: 'Quarantine a street', group: 'nudges' },
   { verb: 'nudgeBunting', keys: ['b'], label: 'Fund the bunting', group: 'nudges' },
+
+  { verb: 'selectNear', keys: ['Shift + arrows'], label: 'Move the selection about the district', group: 'verbs' },
 
   { verb: 'help', keys: ['?'], label: 'This list', group: 'meta' },
 ];
