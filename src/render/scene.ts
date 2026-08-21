@@ -25,6 +25,8 @@ import { serviceAt } from '../sim/networks';
 import { drawIsoDiamond } from './fallback';
 import { drawHouse, houseBounds } from './house';
 import { hardenAlpha, ditherPolyHard, lineHard } from './raster';
+import { buildCartRoutes } from './fx';
+import type { CartRoute } from './fx';
 import type { HouseSpec, HouseSkin, RoofShape, Finial } from './house';
 import type { WallMaterial } from './detail';
 import { mix } from '../sim/rng';
@@ -44,6 +46,8 @@ export interface StaticSprite {
 }
 
 export interface Scene {
+  /** Cart routes, precomputed once from the seed. */
+  cartRoutes: CartRoute[];
   /** Which lighting variant this scene was baked at. The compositor rebakes when
    *  it changes, which is a handful of times a day, never per frame. */
   variant: Variant;
@@ -494,6 +498,8 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     for (const k of bld.cells) {
       const x = k % d.width;
       const y = (k - x) / d.width;
+      // Never bake a shadow onto open water.
+      if (d.tile[cellKey(d, x, y)] === Tile.Water) continue;
       const sx2 = originX + isoX(x, y) + 2;
       const sy2 = originY + isoY(x, y) + 2;
       ditherPolyHard(gctx, [
@@ -533,8 +539,11 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       // gradient. Density falls off instead of opacity, so every pixel in the
       // pool is still a palette colour. A pool of blended half-alpha cream is the
       // classic modern-lighting-over-pixel-art tell.
+      // Densities halved. At night, with a lamp at almost every door, the pools
+      // overlap and the dither adds up: on a phone the streets read as large
+      // orange checkerboard patches rather than as light on wet cobbles.
       const rings: [number, number, string][] = [
-        [3.0, 3, PAL.gas0], [2.2, 6, PAL.gas1], [1.4, 10, PAL.gas1], [0.8, 15, PAL.gas2],
+        [2.6, 2, PAL.gas0], [1.9, 3, PAL.gas1], [1.2, 5, PAL.gas1], [0.7, 8, PAL.gas2],
       ];
       for (const [scale, density, colour] of rings) {
         ditherPolyHard(gctx, [
@@ -566,7 +575,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     buildStreetProps(d, city.seed, variant),
   );
   props.sort((a, b) => a.depth - b.depth);
-  return { variant, ground, props, idBuffer, idCtx, statics, originX, originY };
+  return { cartRoutes: buildCartRoutes(city), variant, ground, props, idBuffer, idCtx, statics, originX, originY };
 }
 
 function depthOf(b: Building): number {

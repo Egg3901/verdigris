@@ -35,7 +35,26 @@ const shellRoot = document.getElementById('shell') as HTMLElement;
 const ctx = canvas.getContext('2d');
 if (!ctx) throw new Error('canvas 2d unavailable');
 
+/**
+ * The district opens mid-morning, not at one minute past midnight.
+ *
+ * newCity starts at tick 0 because the sim has to be a pure function of
+ * (seed, tick, nudges) and tick 0 is the only honest place to start it. But that
+ * is MIDNIGHT: every soul is asleep, the streets are empty, and at the default
+ * speed of one game-minute per second it took a player SIX REAL MINUTES of
+ * watching a dark empty town before the first person stepped outside.
+ *
+ * I never saw it because every screenshot I have taken of this game warped to
+ * 641 first. 641 is 10:41 in the morning, the hour on the reference the whole
+ * project is modelled on, and it is where the district should open.
+ */
+const OPENING_TICK = 641;
+
 const city: City = newCity(SEED);
+{
+  const at = Number(params.get('t'));
+  warp(city, Number.isFinite(at) && at > 0 ? at : OPENING_TICK);
+}
 let scene: Scene = buildScene(city);
 
 let viewW = window.innerWidth;
@@ -43,7 +62,10 @@ let viewH = window.innerHeight;
 let cam: Camera = defaultCamera(viewW, viewH);
 const sel: Selection = { buildingId: -1, soulId: -1 };
 
-let speedIndex = 1;
+// Speed 1 is one game-minute per real second, so a day takes twenty-four real
+// minutes and a soul's routine is invisible on the timescale anybody watches for.
+// Speed 2 is four minutes per second: a day in six, a commute in five seconds.
+let speedIndex = 2;
 let simMin = 0;
 let lastTickAt = 0;
 let follow = -1;
@@ -399,6 +421,7 @@ function fracMin(): number {
 }
 
 function loop(now: number): void {
+  if (simMin < city.tick) simMin = city.tick;
   const dt = lastTickAt ? Math.min(0.25, (now - lastTickAt) / 1000) : 0;
   lastTickAt = now;
 

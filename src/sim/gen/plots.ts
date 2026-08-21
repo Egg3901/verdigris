@@ -277,7 +277,15 @@ export function pruneUnreachablePaving(d: District, fromX: number, fromY: number
       const t = tileAt(d, x, y);
       const walkish = isStreety(d, x, y) || t === Tile.Square || t === Tile.Court;
       if (!walkish || seen[k]) continue;
-      setTile(d, x, y, Tile.Yard);
+      // A cut-off scrap of quay surrounded by water is not a yard, it is river.
+      // Turning it into Yard left seven cells of "back garden" standing in the
+      // middle of the channel, and since props scatter over Yard, the district
+      // grew trees in the water with contact shadows under them.
+      let water = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+        if (tileAt(d, x + dx, y + dy) === Tile.Water) water++;
+      }
+      setTile(d, x, y, water >= 3 ? Tile.Water : Tile.Yard);
       pruned++;
     }
   }

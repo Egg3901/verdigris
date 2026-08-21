@@ -366,49 +366,74 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, vestry.node, firstRun);
 
   measureBar();
+  let insetsAt = -1e9;
+  let insetsCache = { top: 0, right: 0, bottom: 0, left: 0 };
   const dayCtx = daybar.getContext('2d');
   let lastKey = '';
   let lastTickerLen = 0;
   let lastInspectorPaint = -1;
+  let prevBudget = -1;
+  let prevZoom = -1;
+  let prevSpeed = -1;
 
   const say = (text: string) => {
     if (a11y) a11y.textContent = text;
   };
 
+  // Every value the panels display, so the whole update can be skipped when none
+  // of it has changed.
+  //
+  // This ran unconditionally at 60Hz: about twenty DOM writes a frame, two of
+  // which (the budget tokens and the zoom pips) rebuilt their children from
+  // scratch, plus a canvas redraw of the day ribbon. On a phone that is a layout
+  // pass per frame competing with the world render, and it is the likeliest
+  // source of the stutter that has nothing to do with the simulation.
+  let prevKey = '';
   const update: Shell['update'] = (city, sel, zoom, speedIndex, budget) => {
     const phase = phaseOf(city.tick);
+    const key = `${city.tick}|${zoom}|${speedIndex}|${budget}|${city.buildings.length}|${city.souls.length}`;
+    if (key === prevKey) {
+      // Selection and the vestry can change without the clock moving.
+      paintIfChanged(city, sel);
+      vestry.update(city);
+      return;
+    }
+    prevKey = key;
+
     clock.textContent = `${formatClock(city.tick)} · ${phaseLabel(phase)}`;
     counts.textContent = `${city.buildings.length} ROOFS · ${city.souls.length} SOULS`;
     readout.textContent = `${formatClock(city.tick)} · ${phaseLabel(phase)}`;
 
-    budgetTokens.textContent = '';
-    for (let i = 0; i < DAILY_BUDGET; i++) {
-      budgetTokens.append(el('span', i < budget ? 'token' : 'token spent'));
+    if (budget !== prevBudget) {
+      prevBudget = budget;
+      budgetTokens.textContent = '';
+      for (let i = 0; i < DAILY_BUDGET; i++) {
+        budgetTokens.append(el('span', i < budget ? 'token' : 'token spent'));
+      }
+      budgetRow.setAttribute('aria-label', `${budget} of ${DAILY_BUDGET} interventions left today`);
     }
-    budgetRow.setAttribute('aria-label', `${budget} of ${DAILY_BUDGET} interventions left today`);
 
-    pips.textContent = '';
-    for (const step of [1, 2, 3]) {
-      pips.append(el('span', step <= zoom ? 'pip' : 'pip off'));
+    if (zoom !== prevZoom) {
+      prevZoom = zoom;
+      pips.textContent = '';
+      for (const step of [1, 2, 3]) {
+        pips.append(el('span', step <= zoom ? 'pip' : 'pip off'));
+      }
+      zoomOut.setAttribute('aria-disabled', String(zoom === 1));
+      zoomIn.setAttribute('aria-disabled', String(zoom === 3));
     }
-    zoomOut.setAttribute('aria-disabled', String(zoom === 1));
-    zoomIn.setAttribute('aria-disabled', String(zoom === 3));
 
-    for (let i = 0; i < speedButtons.length; i++) {
-      speedButtons[i].setAttribute('aria-pressed', String(i === speedIndex));
+    if (speedIndex !== prevSpeed) {
+      prevSpeed = speedIndex;
+      for (let i = 0; i < speedButtons.length; i++) {
+        speedButtons[i].setAttribute('aria-pressed', String(i === speedIndex));
+      }
     }
 
     drawDaybar(dayCtx, daybar, city);
     vestry.update(city);
 
-    // Inspector, diffed by key and throttled to 4 Hz.
-    const key = `${sel.buildingId}:${sel.soulId}`;
-    const now = performance.now();
-    if (key !== lastKey || now - lastInspectorPaint > 250) {
-      lastKey = key;
-      lastInspectorPaint = now;
-      paintInspector(city, sel);
-    }
+    paintIfChanged(city, sel);
 
     for (const { verb, node } of verbList) {
       const ok = verb === 'follow'
@@ -427,6 +452,17 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       }
     }
   };
+
+  /** Inspector, diffed by subject and throttled to 4 Hz. */
+  function paintIfChanged(city: City, sel: Selection): void {
+    const key = `${sel.buildingId}:${sel.soulId}`;
+    const now = performance.now();
+    if (key !== lastKey || now - lastInspectorPaint > 250) {
+      lastKey = key;
+      lastInspectorPaint = now;
+      paintInspector(city, sel);
+    }
+  }
 
   function paintInspector(city: City, sel: Selection): void {
     if (sel.soulId >= 0) {
@@ -510,17 +546,25 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     toast,
     toggleHelp,
     toggleVestry,
+    // Cached. This measured four panels with getBoundingClientRect, and it is
+    // called from every pointermove during a drag, so it forced a synchronous
+    // layout on every frame of every pan.
     insets: () => {
-      const t = title.getBoundingClientRect();
-      const v = verbs.getBoundingClientRect();
-      const s = scrub.getBoundingClientRect();
-      const z = zoomPlate.getBoundingClientRect();
-      return {
-        top: t.height + 12,
-        right: v.width + 12,
-        bottom: Math.max(s.height, z.height) + 12,
-        left: z.width + 12,
-      };
+      const now = performance.now();
+      if (now - insetsAt > 500) {
+        insetsAt = now;
+        const t = title.getBoundingClientRect();
+        const v = verbs.getBoundingClientRect();
+        const s = scrub.getBoundingClientRect();
+        const z = zoomPlate.getBoundingClientRect();
+        insetsCache = {
+          top: t.height + 12,
+          right: v.width + 12,
+          bottom: Math.max(s.height, z.height) + 12,
+          left: z.width + 12,
+        };
+      }
+      return insetsCache;
     },
     say,
     destroy: () => {

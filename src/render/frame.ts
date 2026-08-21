@@ -17,7 +17,7 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { drawTrams, drawSmoke } from './fx';
+import { drawTrams, drawSmoke, drawCarts } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
 
@@ -114,6 +114,7 @@ export function drawFrame(
   // definition, and the tram runs down the middle of the street.
   const variant = variantFor(minuteOfDay(city.tick));
   stats.calls += drawTrams(ctx, city, variant);
+  stats.calls += drawCarts(ctx, city, scene.cartRoutes, fracMin, variant, tl, br);
   stats.calls += drawSmoke(ctx, city, fracMin, variant, tl, br);
 
   if (import.meta.env.DEV && stats.calls > CALL_BUDGET) {

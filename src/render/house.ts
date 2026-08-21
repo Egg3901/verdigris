@@ -190,6 +190,19 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   // light. A full outline makes an iso town read as a sheet of stickers.
   lineHard(ctx, ground.W, ground.S, skin.outline);
   lineHard(ctx, ground.S, ground.E, skin.outline);
+
+  // AND a line where the roof meets the wall, on the same two near edges.
+  //
+  // Without it, a packed terrace at night is a field of dark wedges: the roofs
+  // are all the same value, they overlap by design because the plots are one
+  // cell apart, and nothing says where one building stops. The handful with a
+  // gilded cornice read perfectly and everything else read as mush, which is
+  // what gave the game away. This is that cornice line, in ink, for the
+  // buildings that cannot afford brass.
+  if (!skin.trim) {
+    lineHard(ctx, eave.W, eave.S, skin.outline);
+    lineHard(ctx, eave.S, eave.E, skin.outline);
+  }
 }
 
 function drawMaterials(

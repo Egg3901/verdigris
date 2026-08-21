@@ -164,6 +164,16 @@ export function buildProps(district: District, seed: number, variant: Variant): 
       const k = cellKey(district, tx, ty);
       const t = district.tile[k];
       if (t !== Tile.Park && t !== Tile.Yard) continue;
+      // Belt and braces: nothing is planted on a cell the water laps at from two
+      // sides, whatever the generator left behind.
+      let lapped = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = tx + dx;
+        const ny = ty + dy;
+        if (nx < 0 || ny < 0 || nx >= district.width || ny >= district.height) continue;
+        if (district.tile[cellKey(district, nx, ny)] === Tile.Water) lapped++;
+      }
+      if (lapped >= 2) continue;
       const roll = mix(seed, 51, tx, ty) % 100;
       // Parks are wooded, back yards are mostly not: a yard with a tree in every
       // one of them reads as an orchard, not as a town.

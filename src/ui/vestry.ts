@@ -158,9 +158,16 @@ export function mountVestry(hooks: VestryHooks): Vestry {
     });
   }
 
+  let prevKey = '';
   const update: Vestry['update'] = (city) => {
     lastCity = city;
     if (root.hidden) return;
+    // Ten rows of text, three attributes each, rewritten sixty times a second
+    // while the panel is open. Nothing on it changes faster than the game-hour.
+    const key = `${city.laws.enforcement}|${city.laws.lastSat}|${Math.floor(city.tick / 10)}|`
+      + city.laws.slots.map((o) => `${o.inForce}${o.param}${o.captured}${o.enforced}${o.breached}`).join(',');
+    if (key === prevKey) return;
+    prevKey = key;
 
     // Enforcement is the number that decides whether any of this means anything,
     // so it is the first thing on the page rather than buried per row.

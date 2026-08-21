@@ -129,8 +129,21 @@ export function clampCamera(cam: Camera, viewW: number, viewH: number, insets: I
   cam.oy = Math.min(maxOy, Math.max(minOy, cam.oy));
 }
 
+/**
+ * The backing store must be an INTEGER multiple of the CSS size, and that integer
+ * has to be the device's own ratio, or the browser resamples the whole picture.
+ *
+ * This was capped at 2 to save memory. On a phone reporting devicePixelRatio 3
+ * that means a 780px backing store stretched across 1170 device pixels: a 1.5x
+ * upscale of pixel art. Every second art pixel lands on two device pixels and
+ * every other on one, so diagonals step unevenly, one-pixel eave lines come out
+ * thicker in some places than others, and the whole district reads as janky.
+ * It is the same class of mistake as antialiasing, arriving one layer further out.
+ *
+ * Three costs about eleven megabytes on a modern phone, which is affordable.
+ */
 export function clampDpr(dpr: number): number {
-  return Math.max(1, Math.min(2, Math.round(dpr)));
+  return Math.max(1, Math.min(3, Math.round(dpr)));
 }
 
 /**
