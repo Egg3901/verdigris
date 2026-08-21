@@ -172,6 +172,9 @@ function doVerb(verb: Verb): void {
     case 'help':
       shell.toggleHelp();
       break;
+    case 'vestry':
+      shell.toggleVestry();
+      break;
   }
 }
 
@@ -197,6 +200,7 @@ function scrubToMinuteOfDay(target: number): void {
 }
 
 shell = mountShell(shellRoot, {
+  selectedBuilding: () => sel.buildingId,
   onSelectSoul: (id) => { sel.soulId = id; sel.buildingId = -1; },
   onDismiss: () => { sel.buildingId = -1; sel.soulId = -1; follow = -1; },
   onVerb: doVerb,

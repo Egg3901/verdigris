@@ -41,6 +41,32 @@ export interface OrdinanceDef {
   blurb: string;
   /** Integer parameter: a closing minute, a fee in farthings, a street id. */
   defaultParam: number;
+  /** What that integer MEANS, so the vestry can render a control for it rather
+   *  than a bare number. Descriptive metadata: the sim never reads it. */
+  param?: ParamSpec;
+}
+
+export interface ParamSpec {
+  /** hour: a minute of the day. fee: farthings. street: a street id, chosen by
+   *  clicking a building. none: the ordinance takes no setting. */
+  kind: 'hour' | 'fee' | 'street' | 'none';
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}
+
+const PARAM: Partial<Record<OrdinanceKind, ParamSpec>> = {
+  curfew: { kind: 'hour', label: 'From', min: 1020, max: 1380, step: 30 },
+  licensingHours: { kind: 'hour', label: 'Last orders', min: 1140, max: 1410, step: 30 },
+  childLabour: { kind: 'hour', label: 'Off by', min: 600, max: 1020, step: 60 },
+  dogTax: { kind: 'fee', label: 'Fee', min: 1, max: 16, step: 1 },
+  pewRents: { kind: 'fee', label: 'Rent', min: 2, max: 24, step: 2 },
+  cartBylaw: { kind: 'street', label: 'Street', min: -1, max: 999, step: 1 },
+};
+
+export function paramSpecOf(kind: OrdinanceKind): ParamSpec {
+  return PARAM[kind] ?? { kind: 'none', label: '', min: 0, max: 0, step: 0 };
 }
 
 export interface Ordinance {
@@ -292,19 +318,37 @@ export function willComply(city: City, s: Soul, idx: number): boolean {
   return roll < will;
 }
 
+/**
+ * How well the district is policed.
+ *
+ * This counted only constables on the street THIS MINUTE, so it returned 0 for
+ * every hour they were off shift, which is most of the day. Smoothing it then
+ * dragged the whole number toward zero and made every ordinance a dead letter:
+ * measured 1, then 169, then 18 over an afternoon.
+ *
+ * A law is enforced by an institution, not solely by whoever happens to be on a
+ * corner. The force exists around the clock and its size and honesty set the
+ * floor; who is actually out sets how much more than the floor you get. Rot
+ * still eats it, which is the point: a rotten parish cannot enforce anything
+ * however many constables it employs.
+ */
 function reportEnforcement(city: City): number {
   const rot = pressureOf(city.press, 'rot');
+  let force = 0;
   let beat = 0;
   let station = 0;
   for (const s of city.souls) {
     if (s.trade !== 'constable') continue;
+    force++;
     if (s.activity === 'asleep' || s.activity === 'held' || s.activity === 'dead') continue;
     if (s.activity === 'working') beat += 3;
     else if (s.inId < 0) beat += 2;
     else if (rot < 480) station += 1;
   }
-  const presence = beat * 160 + station * 40;
-  return clamp(presence - Math.trunc(rot * 0.4));
+  // The standing capacity of the force, whatever the hour.
+  const institution = force * 110;
+  const presence = beat * 70 + station * 30;
+  return clamp(institution + presence - Math.trunc(rot * 0.6));
 }
 
 function townhallId(city: City): BuildingId {
@@ -810,7 +854,22 @@ export function onOrdinanceArrive(city: City, s: Soul): void {
 
 export function tickOrdinancesHourly(city: City): void {
   const laws = city.laws;
-  laws.enforcement = reportEnforcement(city);
+  // Smoothed toward the instantaneous reading rather than snapped to it.
+  //
+  // Measured hour by hour over a day, the raw number ran 0, 549, 0, 0, 270, 551,
+  // 271, 552: it is computed from which constables happen to be mid-shift at the
+  // moment the hourly pass runs, so it flickers between "a dead letter" and
+  // "kept after a fashion" and back within an hour. That is noise to read and
+  // noise to play against. How well a district is policed is a level, and a level
+  // is what this now reports, while still being driven entirely by who is
+  // actually on the beat.
+  const want = reportEnforcement(city);
+  const have = laws.enforcement;
+  // Seed on the first pass rather than ramping from zero: a district is not
+  // unpoliced merely because the clock has just started.
+  laws.enforcement = laws.lastSat < 0 && have === 0 && want > 0
+    ? want
+    : have + Math.trunc((want - have) / 2);
   if (laws.active === 0) return;
   const mod = minuteOfDay(city.tick);
   const slots = laws.slots;

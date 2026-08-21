@@ -13,8 +13,12 @@ import type { ZoomStep } from '../render/iso';
 import { BINDINGS, keycapFor, NUDGE_VERBS } from './keys';
 import type { Verb } from './keys';
 import { PAL } from '../render/palette';
+import { mountVestry } from './vestry';
+import type { Vestry } from './vestry';
 
 export interface ShellHooks {
+  /** The selected building, for ordinances that need a street named. */
+  selectedBuilding: () => number;
   onSelectSoul: (id: number) => void;
   onDismiss: () => void;
   onVerb: (verb: Verb) => void;
@@ -32,6 +36,7 @@ export interface Shell {
    *  region, so a sighted player who pressed a key twice got nothing at all. */
   toast: (text: string, kind?: 'info' | 'loss' | 'gain') => void;
   toggleHelp: () => void;
+  toggleVestry: () => void;
   insets: () => { top: number; right: number; bottom: number; left: number };
   say: (text: string) => void;
   destroy: () => void;
@@ -166,6 +171,11 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   };
   const verbSheetBtn = mkSheet('verbs', 'LOOK');
   const nudgeSheetBtn = mkSheet('nudges', 'ACT');
+  const vestryBtn = el('button', 'brass', 'VESTRY') as HTMLButtonElement;
+  vestryBtn.setAttribute('aria-label', 'The vestry: pass and rescind ordinances');
+  vestryBtn.addEventListener('click', () => toggleVestry());
+  sheetbar.append(vestryBtn);
+
   const helpBtn = el('button', 'brass', '?') as HTMLButtonElement;
   helpBtn.setAttribute('aria-label', 'Keys and what this is');
   helpBtn.addEventListener('click', () => toggleHelp());
@@ -344,7 +354,16 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   });
   firstRun.append(frGo);
 
-  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, firstRun);
+  const vestry: Vestry = mountVestry({
+    say: (text, kind) => toast(text, kind),
+    selectedBuilding: hooks.selectedBuilding,
+  });
+  const toggleVestry = () => {
+    vestry.node.hidden = !vestry.node.hidden;
+    vestryBtn.setAttribute('aria-expanded', String(!vestry.node.hidden));
+  };
+
+  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, vestry.node, firstRun);
 
   measureBar();
   const dayCtx = daybar.getContext('2d');
@@ -380,6 +399,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     }
 
     drawDaybar(dayCtx, daybar, city);
+    vestry.update(city);
 
     // Inspector, diffed by key and throttled to 4 Hz.
     const key = `${sel.buildingId}:${sel.soulId}`;
@@ -489,6 +509,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     nudgeReasons,
     toast,
     toggleHelp,
+    toggleVestry,
     insets: () => {
       const t = title.getBoundingClientRect();
       const v = verbs.getBoundingClientRect();

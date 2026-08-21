@@ -7,6 +7,7 @@ export type Verb =
   | 'follow' | 'peek' | 'hide' | 'dismiss' | 'selectNear'
   | 'nudgeRumour' | 'nudgeGas' | 'nudgeTram' | 'nudgeTip' | 'nudgeStrike'
   | 'nudgeStory' | 'nudgeQuarantine' | 'nudgeBunting'
+  | 'vestry'
   | 'pause' | 'slower' | 'faster'
   | 'scrubBack' | 'scrubOn' | 'help';
 
@@ -51,6 +52,7 @@ export const BINDINGS: readonly Binding[] = [
 
   { verb: 'selectNear', keys: ['Shift + arrows'], label: 'Move the selection about the district', group: 'verbs' },
 
+  { verb: 'vestry', keys: ['v'], label: 'The vestry: pass an ordinance', group: 'meta' },
   { verb: 'help', keys: ['?'], label: 'This list', group: 'meta' },
 ];
 

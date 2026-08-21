@@ -347,6 +347,10 @@ button.brass {
 button.brass[aria-pressed="true"] { background: var(--brass2); }
 button.brass:focus-visible { outline: calc(1px * var(--px)) solid var(--verd2); outline-offset: 1px; }
 button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+/* `all: unset` resets display too, which silently defeats the hidden attribute:
+   ordinances that take no setting were still showing a plus and minus stepper
+   with nothing between them. */
+button.brass[hidden] { display: none; }
 
 /* Verb menu */
 #verbs { grid-area: topright; justify-self: end; display: flex; flex-direction: column; gap: calc(3px * var(--px)); background: none; border: none; box-shadow: none; outline: none; padding: 0; }
@@ -455,6 +459,76 @@ button.brass[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 #toast[data-show] { opacity: 1; }
 #toast.loss { border-color: var(--loss); }
 #toast.gain { border-color: var(--verd1); }
+
+/* The vestry */
+#vestry {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(230px * var(--px)), 94vw);
+  max-height: 86dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 8;
+  font-size: var(--fs-small);
+}
+#vestry .name {
+  font-family: var(--font-instrument);
+  font-size: var(--fs-title);
+  color: var(--brass0);
+  letter-spacing: 0.2em;
+}
+#vestry .vstatus {
+  color: var(--brass-ink);
+  font-style: italic;
+  margin-bottom: calc(4px * var(--px));
+}
+#vestry .close {
+  all: unset;
+  position: absolute;
+  top: calc(2px * var(--px));
+  right: calc(5px * var(--px));
+  cursor: pointer;
+  color: var(--brass-ink);
+}
+#vestry .vrow {
+  border-top: 1px solid rgba(107, 74, 18, 0.35);
+  padding: calc(3px * var(--px)) 0;
+}
+#vestry .vtitle { display: flex; justify-content: space-between; gap: calc(6px * var(--px)); }
+#vestry .vlabel { color: var(--brass0); letter-spacing: 0.1em; }
+#vestry .vstate {
+  color: var(--verd1);
+  letter-spacing: 0.1em;
+  flex: 0 0 auto;
+}
+#vestry .vrow[data-live="true"] { background: rgba(239, 228, 198, 0.5); }
+#vestry .vblurb { color: var(--ink); line-height: 1.35; margin: calc(1px * var(--px)) 0; }
+#vestry .vcontrols {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--px));
+  margin-top: calc(2px * var(--px));
+}
+#vestry .vparam {
+  font-family: var(--font-instrument);
+  color: var(--brass0);
+  min-width: calc(52px * var(--px));
+}
+#vestry .vwhy {
+  color: var(--brass-ink);
+  font-style: italic;
+  margin-top: calc(1px * var(--px));
+}
+#vestry .vwhy:empty { display: none; }
+#vestry .vfoot {
+  border-top: 1px solid var(--brass-ink);
+  margin-top: calc(3px * var(--px));
+  padding-top: calc(3px * var(--px));
+  color: var(--brass-ink);
+  font-style: italic;
+}
 
 /* First run */
 #firstrun {
