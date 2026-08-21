@@ -199,9 +199,16 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   // gilded cornice read perfectly and everything else read as mush, which is
   // what gave the game away. This is that cornice line, in ink, for the
   // buildings that cannot afford brass.
+  // One pixel BELOW the eave, on the wall.
+  //
+  // Drawn on the eave line itself it landed on the roof, because the roof
+  // overhangs its eave by a pixel and a half, so every building wore a stripe
+  // across the bottom of its slope. On the wall it is what it is meant to be:
+  // the shadow the overhang casts.
   if (!skin.trim) {
-    lineHard(ctx, eave.W, eave.S, skin.outline);
-    lineHard(ctx, eave.S, eave.E, skin.outline);
+    const drop = (p: Pt): Pt => ({ x: p.x, y: p.y + 1 });
+    lineHard(ctx, drop(eave.W), drop(eave.S), skin.outline);
+    lineHard(ctx, drop(eave.S), drop(eave.E), skin.outline);
   }
 }
 

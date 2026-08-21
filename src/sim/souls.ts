@@ -111,16 +111,39 @@ export function isWorkingAge(s: Soul): boolean {
  */
 export function soulPos(g: StreetGraph, s: Soul, fracMin: number): { cx: number; cy: number } {
   if (s.atNode < 0) return { cx: 0, cy: 0 };
-  const ax = g.cx[s.atNode];
-  const ay = g.cy[s.atNode];
-  if (s.toNode < 0) return { cx: ax, cy: ay };
-  const bx = g.cx[s.toNode];
-  const by = g.cy[s.toNode];
-  const cost = Math.max(1, edgeCostBetween(g, s.atNode, s.toNode));
-  const span = cost * 1000;
-  const along = Math.min(span, s.progressMilli + fracMin * WALK_MILLICELL_PER_MIN);
-  const t = span <= 0 ? 1 : along / span;
-  return { cx: ax + (bx - ax) * t, cy: ay + (by - ay) * t };
+  if (s.toNode < 0) return { cx: g.cx[s.atNode], cy: g.cy[s.atNode] };
+
+  // Walk the fraction of a minute FORWARD along the route, crossing nodes as
+  // needed, rather than clamping at the end of the current edge.
+  //
+  // Clamping was the visible half of the jumping bug: a soul that covers two and
+  // a half cells a minute crosses several one-cell edges within a single tick,
+  // and stopping the interpolation at the first junction pins it there until the
+  // sim catches up. This is a pure lookahead: it reads state and never writes it,
+  // so the sim stays a function of (seed, tick, nudges) and the renderer stays
+  // free to ask for any moment in between.
+  let from = s.atNode;
+  let to = s.toNode;
+  let prog = s.progressMilli + fracMin * WALK_MILLICELL_PER_MIN;
+  let guard = 0;
+  for (;;) {
+    const span = Math.max(1, edgeCostBetween(g, from, to)) * 1000;
+    if (prog < span || guard++ > 8) {
+      const t = Math.min(1, Math.max(0, prog / span));
+      return {
+        cx: g.cx[from] + (g.cx[to] - g.cx[from]) * t,
+        cy: g.cy[from] + (g.cy[to] - g.cy[from]) * t,
+      };
+    }
+    prog -= span;
+    from = to;
+    if (from === s.destNode) return { cx: g.cx[from], cy: g.cy[from] };
+    // Follows the next-hop matrix rather than a stored detour route. Detours are
+    // rare and last a few minutes; being a cell out during one is invisible.
+    const next = stepToward(g, from, s.destNode);
+    if (next < 0 || next === from) return { cx: g.cx[from], cy: g.cy[from] };
+    to = next;
+  }
 }
 
 /** Which of the 4 iso facings the sprite should use. */
@@ -147,10 +170,21 @@ export function advanceSoul(g: StreetGraph, s: Soul): boolean {
     s.progressMilli = 0;
   }
 
-  const cost = Math.max(1, edgeCostBetween(g, s.atNode, s.toNode));
+  // Consume the WHOLE minute, crossing as many nodes as the speed allows.
+  //
+  // This used to cross at most one node per tick and then return, leaving the
+  // remainder in progressMilli. A soul walks 2500 millicells a minute and a
+  // one-cell edge spans 1000, so after a single tick progressMilli was routinely
+  // larger than the edge it sat on. soulPos then clamped to the end of the edge,
+  // the soul was drawn standing at the next node for the entire minute, and at
+  // the next tick it jumped. That is the whole of "people jump around instead of
+  // moving smoothly", and it has been there since the first commit.
   s.progressMilli += WALK_MILLICELL_PER_MIN;
-  while (s.progressMilli >= cost * 1000) {
-    s.progressMilli -= cost * 1000;
+  let guard = 0;
+  for (;;) {
+    const span = Math.max(1, edgeCostBetween(g, s.atNode, s.toNode)) * 1000;
+    if (s.progressMilli < span || guard++ > 8) return false;
+    s.progressMilli -= span;
     s.atNode = s.toNode;
     if (s.routeIdx > 0 && s.routeIdx < s.route.length && s.route[s.routeIdx] === s.atNode) s.routeIdx++;
     if (s.atNode === s.destNode) {
@@ -163,9 +197,7 @@ export function advanceSoul(g: StreetGraph, s: Soul): boolean {
     const next = nextHopFor(g, s);
     if (next < 0) { s.toNode = -1; s.destNode = s.atNode; return true; }
     s.toNode = next;
-    return false;
   }
-  return false;
 }
 
 function nextHopFor(g: StreetGraph, s: Soul): NodeId {
