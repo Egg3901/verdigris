@@ -134,7 +134,18 @@ export function populate(seed: number, buildings: Building[], targetSouls: numbe
         let trade: Trade = 'none';
         let workId = -1;
         let firmId = -1;
-        if (age < 14) trade = 'child';
+        // Children on the working bank go to the mill, not to school.
+        //
+        // Every soul under fourteen was given trade 'child' and sent to the board
+        // school, without exception, which meant a child labour ordinance had
+        // literally nothing to bite on: measured, zero young souls at the mill in
+        // both the control and the regulated run. In an 1890s district on the
+        // wrong side of the river a half-timer of eleven or twelve was ordinary,
+        // and it is the fact that makes the law worth passing.
+        const poorHome = home.kind === 'courtdwelling' || home.kind === 'tenement'
+          || home.kind === 'lodging';
+        const halfTimer = age >= 11 && age < 14 && poorHome && chance(r, 520);
+        if (age < 14 && !halfTimer) trade = 'child';
         else if (age < 68 && slotAt < slots.length) {
           const s = slots[slotAt++];
           trade = s.trade;

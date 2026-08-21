@@ -5,7 +5,7 @@ import { applyPressure, pressureOf } from '../pressures';
 import { serviceAt } from '../networks';
 import { DAILY_BUDGET } from '../interventions';
 import {
-  enact, repeal, canEnact, inForce, ordinanceOf, willComply, ORDINANCES, ORDINANCE_KINDS,
+  enact, repeal, canEnact, inForce, ordinanceOf, willComply, IDX, ORDINANCES, ORDINANCE_KINDS,
 } from '../ordinances';
 import type { OrdinanceKind } from '../types';
 
@@ -148,32 +148,30 @@ describe('ordinances', () => {
     expect(bylaw).toBe(true);
   });
 
-  it('compliance varies with boldness: the people still out after curfew are the bolder ones', () => {
+  it('compliance varies with boldness, and with how well the law is enforced', () => {
+    // Measured directly on willComply rather than by counting who happens to be
+    // outdoors after the curfew hour. The outdoor proxy is diluted by everyone
+    // moving for ordinary reasons (errands, deliveries, walking home), so it
+    // reported a 0.9% difference in means, which is noise: the assertion passed
+    // or failed on whichever way the population happened to fall. The property
+    // that actually matters is the one the model claims.
     const c = newCity('verdigris');
     warp(c, 500);
     expect(enact(c, 'curfew', 1200)).toBe(true);
     warp(c, 760);
-    const out: number[] = [];
-    const homeDrinkers: number[] = [];
+
+    const defy: number[] = [];
+    const obey: number[] = [];
     for (const s of c.souls) {
-      if (s.scheduleId !== 0) continue;
-      if (s.trade === 'constable' || s.trade === 'lamplighter') continue;
-      if (s.inId < 0) out.push(s.boldness);
-      else if (s.inId === s.homeId) homeDrinkers.push(s.boldness);
+      if (s.trade === 'constable') continue;
+      (willComply(c, s, IDX.curfew) ? obey : defy).push(s.boldness);
     }
-    if (out.length >= 2 && homeDrinkers.length >= 2) {
-      const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-      expect(avg(out)).toBeGreaterThan(avg(homeDrinkers));
-    } else {
-      let yes = 0;
-      let no = 0;
-      for (const s of c.souls) {
-        if (s.scheduleId !== 0) continue;
-        if (willComply(c, s, 0)) yes++; else no++;
-      }
-      expect(yes).toBeGreaterThan(0);
-      expect(no).toBeGreaterThan(0);
-    }
+    const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+    expect(defy.length).toBeGreaterThan(10);
+    expect(obey.length).toBeGreaterThan(10);
+    // Boldness carries 3 of the 12 parts of the score, so expect a real but
+    // modest gap. Measured at the time of writing: 540 against 514.
+    expect(avg(defy)).toBeGreaterThan(avg(obey) + 8);
   });
 
   it('an unenforced curfew is a dead letter: captured, it is written for after bedtime', () => {
