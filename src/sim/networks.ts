@@ -107,6 +107,21 @@ export function repairSegment(net: Net, seg: NodeId): void {
   net.brokenSince[seg] = -1;
 }
 
+/** Subscribe a building to an existing tree. The pipe is already in the ground;
+ *  this is the parish finally putting the house on it. */
+export function connectBuilding(net: Net, building: BuildingId, doorNode: NodeId): void {
+  if (doorNode < 0 || doorNode >= net.depth.length) return;
+  if (net.depth[doorNode] < 0) return;
+  if (building < 0 || building >= net.buildingSeg.length) return;
+  net.buildingSeg[building] = doorNode;
+}
+
+/** Take a building off the tree without breaking the pipe for anyone else. */
+export function disconnectBuilding(net: Net, building: BuildingId): void {
+  if (building < 0 || building >= net.buildingSeg.length) return;
+  net.buildingSeg[building] = -1;
+}
+
 export function brokenSegments(net: Net): NodeId[] {
   const out: NodeId[] = [];
   for (let i = 0; i < net.segBroken.length; i++) if (net.segBroken[i]) out.push(i);

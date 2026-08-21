@@ -80,7 +80,12 @@ export const PRESSURE_KEYS: readonly PressureKey[] = [
 
 export type ClaimKind =
   | 'affair' | 'theft' | 'graft' | 'sickness' | 'sabotage'
-  | 'closure' | 'debt' | 'informer' | 'miracle' | 'collapse';
+  | 'closure' | 'debt' | 'informer' | 'miracle' | 'collapse'
+  | 'bylaw';
+
+export type OrdinanceKind =
+  | 'curfew' | 'licensingHours' | 'cartBylaw' | 'drainageAct' | 'dogTax'
+  | 'pewRents' | 'breadAssize' | 'childLabour' | 'inspectorPowers' | 'publicOrder';
 
 export type InterventionKind =
   | 'rumour' | 'cutGas' | 'delayTram' | 'tipOff'

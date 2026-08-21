@@ -19,7 +19,9 @@ export interface Pressure {
   decayPerHour: number;
 }
 
-export type CauseKind = 'intervention' | 'incident' | 'claim' | 'decay' | 'firm' | 'network' | 'weather' | 'seed';
+export type CauseKind =
+  | 'intervention' | 'incident' | 'claim' | 'decay' | 'firm' | 'network'
+  | 'weather' | 'seed' | 'law';
 
 export interface Cause {
   tick: number;
