@@ -33,6 +33,7 @@ import { mix } from '../sim/rng';
 import { buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
 import { worksStageFor } from '../sim/works';
+import { isDeputationActive } from '../sim/deputations';
 import type { WardKind } from '../sim/gen/wards';
 
 export interface StaticSprite {
@@ -54,6 +55,7 @@ export interface Scene {
    *  it changes, which is a handful of times a day, never per frame. */
   variant: Variant;
   worksRevision: number;
+  deputationRevision: number;
   ground: HTMLCanvasElement;
   props: Prop[];
   idBuffer: HTMLCanvasElement;
@@ -357,6 +359,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     boarded: b.fabric < (polite ? 260 : 340),
     // The flags the player paid for, on whatever fronts the square.
     bunting: city.buntingUntil > city.tick && nearSquare(city, b),
+    deputationBanner: b.kind === 'townhall' && isDeputationActive(city),
     chimneys: finial === 'mast' || shape === 'flat' || shape === 'pyramid' || shape === 'dome' ? 0
       : b.kind === 'mill' || b.kind === 'foundry' ? 1
         : 1 + ((salt >>> 6) % 2),
@@ -655,7 +658,8 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   const props = naturalProps.concat(squareProps, streetProps);
   props.sort((a, b) => a.depth - b.depth);
   return {
-    cartRoutes: buildCartRoutes(city), variant, worksRevision: city.works.revision,
+    cartRoutes: buildCartRoutes(city), variant,
+    worksRevision: city.works.revision, deputationRevision: city.deputations.revision,
     ground, props, idBuffer, idCtx, statics, originX, originY,
   };
 }

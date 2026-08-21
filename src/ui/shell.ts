@@ -8,6 +8,7 @@ import type { City } from '../sim/city';
 import { addressOf } from '../sim/worldgen';
 import { describeBuilding, describeSoul, insideList, boundFor, carrying } from '../sim/prose';
 import { worksSummary } from '../sim/works';
+import { deputationSummary } from '../sim/deputations';
 import { fullName } from '../sim/souls';
 import type { Selection } from '../render/frame';
 import type { ZoomStep } from '../render/iso';
@@ -516,7 +517,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
         insList.append(li);
       }
       const works = worksSummary(city, b.id);
-      insMore.textContent = [more > 0 ? `…and ${more} more` : '', works].filter(Boolean).join('\n');
+      const deputation = deputationSummary(city, b.id);
+      insMore.textContent = [more > 0 ? `…and ${more} more` : '', works, deputation].filter(Boolean).join('\n');
       return;
     }
     inspector.hidden = true;

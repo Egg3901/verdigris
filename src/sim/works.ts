@@ -102,6 +102,22 @@ export function fileWorks(city: City, buildingId: number): WorkOrder {
   return order;
 }
 
+/**
+ * Move one filed case forward in the register without pretending the work is
+ * finished. The duration is an invariant: a deputation can win a crew sooner,
+ * never make a drain or wall repair itself.
+ */
+export function expediteFiledOrder(city: City, orderId: number, startsAt: number): boolean {
+  const order = city.works.orders[orderId];
+  if (!order || order.status !== 'filed') return false;
+  const nextStart = Math.max(city.tick, Math.min(order.startsAt, startsAt));
+  if (nextStart >= order.startsAt) return false;
+  const duration = order.dueAt - order.startsAt;
+  order.startsAt = nextStart;
+  order.dueAt = nextStart + duration;
+  return true;
+}
+
 function firstBrokenOnPath(net: City['networks']['gas'], buildingId: number): number {
   let cur = net.buildingSeg[buildingId] ?? -1;
   let guard = 0;

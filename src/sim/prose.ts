@@ -23,6 +23,7 @@ import { Stream, streamAt } from './rng';
 import { addressOf } from './worldgen';
 import type { SoulId } from './types';
 import { latestOrderFor } from './works';
+import { isDeputationActive } from './deputations';
 
 const MAX_SENSES = 3;
 
@@ -88,6 +89,13 @@ function pickGrudge(city: City, b: Building): Grudge | null {
 
 /** Absence is information: a building with nothing happening gets no clause. */
 function liveClause(city: City, b: Building): string {
+  const deputation = city.deputations.current;
+  if (deputation && deputation.buildingId === b.id && isDeputationActive(city)) {
+    if (deputation.status === 'heard') return 'Its deputation has been heard beneath the windows of Civic Hall.';
+    if (deputation.status === 'dispersed') return 'Its deputation is being broken up beneath the windows of Civic Hall.';
+    if (deputation.status === 'thin') return 'Too few from this address reached Civic Hall to be heard.';
+    return 'Its neighbours are making their way to Civic Hall as a public deputation.';
+  }
   const order = latestOrderFor(city, b.id);
   if (order?.status === 'working') return 'A works gang has the frontage behind poles and canvas.';
   if (order?.status === 'filed') return 'A blue survey mark says the address has entered the works register.';

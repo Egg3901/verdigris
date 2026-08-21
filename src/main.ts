@@ -462,7 +462,8 @@ function loop(now: number): void {
   const wantVariant = variantFor(minuteOfDay(city.tick));
   const buntingNow = city.buntingUntil > city.tick;
   if (wantVariant !== scene.variant || buntingNow !== buntingShown
-    || scene.worksRevision !== city.works.revision) {
+    || scene.worksRevision !== city.works.revision
+    || scene.deputationRevision !== city.deputations.revision) {
     buntingShown = buntingNow;
     scene = buildScene(city, wantVariant);
   }

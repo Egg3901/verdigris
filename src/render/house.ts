@@ -73,6 +73,8 @@ export interface HouseSpec {
   boarded?: boolean;
   /** Flags up. The player paid for these. */
   bunting?: boolean;
+  /** A temporary cloth notice across the Civic Hall frontage. */
+  deputationBanner?: boolean;
   /** Awning colour for a shopfront. */
   awning?: string;
   /** Stable per-building number, so detail varies without being random. */
@@ -407,6 +409,25 @@ function drawFacade(
   }
   if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin);
   if (spec.bunting && lit.span >= 12) drawBunting(ctx, lit, spec.wallH);
+  if (spec.deputationBanner && lit.span >= 18) drawDeputationBanner(ctx, lit, spec.wallH);
+}
+
+/** A plain civic cloth, legible as a temporary public demand rather than signage. */
+function drawDeputationBanner(
+  ctx: CanvasRenderingContext2D, face: ReturnType<typeof makeFace>, wallH: number,
+): void {
+  const top = Math.max(4, wallH - 14);
+  const bottom = top + 5;
+  const a = face.at(0.18, top);
+  const b = face.at(0.82, top);
+  const c = face.at(0.82, bottom);
+  const d = face.at(0.18, bottom);
+  fillPolyHard(ctx, [a, b, c, d], PAL.buntCream);
+  lineHard(ctx, a, b, PAL.wood0);
+  lineHard(ctx, d, c, PAL.buntRed);
+  const seal = face.at(0.5, top + 2);
+  ctx.fillStyle = PAL.buntBlue;
+  ctx.fillRect(Math.round(seal.x) - 1, Math.round(seal.y), 3, 2);
 }
 
 function drawRoof(

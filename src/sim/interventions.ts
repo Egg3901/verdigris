@@ -1,4 +1,4 @@
-// The eight nudges, and the rule that keeps them honest.
+// The nudges, and the rule that keeps them honest.
 //
 // HARD RULE: an intervention must never be a direct pressure poke. If cutGas were
 // applyPressure('gas', -300) the game would be a slider board. It breaks a
@@ -23,6 +23,7 @@ import { addressOf } from './worldgen';
 import { mix } from './rng';
 import type { InterventionKind, Target } from './types';
 import { canFileWorks, fileWorks } from './works';
+import { canCallDeputation, callDeputation } from './deputations';
 
 export const DAILY_BUDGET = 3;
 
@@ -358,6 +359,20 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
       return `Works case ${order.id + 1} for ${b.name} ${route}. A number is not a repair.`;
     },
   },
+
+  callDeputation: {
+    kind: 'callDeputation',
+    label: 'Call a deputation',
+    blurb: 'Ask the street to carry its filed works case to Civic Hall in person.',
+    heat: 25,
+    targets: ['building'],
+    can: (city, t) => canCallDeputation(city, t.id),
+    apply: (city, t) => {
+      const attending = callDeputation(city, t.id);
+      const b = city.buildings[t.id];
+      return `${attending} neighbours have left ${b.name} for Civic Hall. Whether the hall hears them depends on who arrives.`;
+    },
+  },
 };
 
 function neighbourList(city: City, id: number): number[] {
@@ -382,7 +397,7 @@ export function apply(city: City, kind: InterventionKind, target: Target): boole
   const text = def.apply(city, target);
   applyPressure(city.press, 'suspicion', def.heat, 'intervention', target.id, def.label.toLowerCase(), city.tick);
   city.traced += def.heat > 55 ? 1 : 0;
-  pushLog(city, text, kind === 'fundBunting' || kind === 'fileWorks' ? 'gain' : 'loss');
+  pushLog(city, text, kind === 'fundBunting' || kind === 'fileWorks' || kind === 'callDeputation' ? 'gain' : 'loss');
   return true;
 }
 

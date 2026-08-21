@@ -740,6 +740,23 @@ export function gateOrdinanceTarget(city: City, s: Soul, target: BuildingId, act
   return target;
 }
 
+/**
+ * Pure preview for the only laws that can prevent an outdoor gathering. The UI
+ * asks this every frame, so it must not increment enforcement or mutate a soul.
+ * `gateOrdinanceTarget` remains the authoritative, recorded check at dispatch.
+ */
+export function wouldAllowGathering(city: City, s: Soul, target: BuildingId): boolean {
+  const laws = city.laws;
+  if (laws.active === 0) return true;
+  const mod = minuteOfDay(city.tick);
+  const curfew = laws.slots[IDX.curfew];
+  if (curfew.inForce && !curfew.captured && mod >= curfew.param && target !== s.homeId
+    && willComply(city, s, IDX.curfew)) return false;
+  const order = laws.slots[IDX.publicOrder];
+  if (order.inForce && !order.captured && willComply(city, s, IDX.publicOrder)) return false;
+  return true;
+}
+
 export function allowErrand(city: City, s: Soul, kind: 'pub' | 'shop', target: BuildingId): boolean {
   const laws = city.laws;
   if (laws.active === 0) return true;

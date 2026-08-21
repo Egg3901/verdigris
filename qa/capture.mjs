@@ -27,6 +27,7 @@ const SCENES = [
   { name: 'courts-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'courts' },
   { name: 'quayside-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'quayside' },
   { name: 'works-scaffold', seed: 'verdigris', tick: 641, zoom: 3, works: true },
+  { name: 'civic-deputation', seed: 'verdigris', tick: 641, zoom: 2, deputation: true },
 ];
 
 mkdirSync(OUT, { recursive: true });
@@ -50,6 +51,24 @@ for (const scene of SCENES) {
         window.__verdigris.warp(toStart + nextHour);
         window.__verdigris.select('building', target.id);
         window.__verdigris.lookAt(target.ox, target.oy);
+      }
+    }
+    if (s.deputation) {
+      const city = window.__verdigris.city;
+      const target = city.buildings
+        .filter((b) => b.streetId >= 0 && b.fabric < 760)
+        .map((b) => ({
+          b,
+          neighbours: city.souls.filter((soul) => city.buildings[soul.homeId]?.streetId === b.streetId).length,
+        }))
+        .filter((item) => item.neighbours >= 8)
+        .sort((a, b) => b.neighbours - a.neighbours || a.b.id - b.b.id)[0]?.b;
+      if (target
+        && window.__verdigris.nudge('fileWorks', { kind: 'building', id: target.id })
+        && window.__verdigris.nudge('callDeputation', { kind: 'building', id: target.id })) {
+        window.__verdigris.warp(60);
+        const hall = city.buildings.find((b) => b.kind === 'townhall');
+        if (hall) window.__verdigris.lookAt(hall.ox, hall.oy);
       }
     }
     if (s.ward) {

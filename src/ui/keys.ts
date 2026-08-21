@@ -6,7 +6,7 @@ export type Verb =
   | 'zoomIn' | 'zoomOut' | 'zoom1' | 'zoom2' | 'zoom3'
   | 'follow' | 'peek' | 'hide' | 'dismiss' | 'selectNear'
   | 'nudgeRumour' | 'nudgeGas' | 'nudgeTram' | 'nudgeTip' | 'nudgeStrike'
-  | 'nudgeStory' | 'nudgeQuarantine' | 'nudgeBunting' | 'nudgeWorks'
+  | 'nudgeStory' | 'nudgeQuarantine' | 'nudgeBunting' | 'nudgeWorks' | 'nudgeDeputation'
   | 'vestry'
   | 'pause' | 'slower' | 'faster'
   | 'scrubBack' | 'scrubOn' | 'help';
@@ -50,6 +50,7 @@ export const BINDINGS: readonly Binding[] = [
   { verb: 'nudgeQuarantine', keys: ['x'], label: 'Quarantine a street', group: 'nudges' },
   { verb: 'nudgeBunting', keys: ['b'], label: 'Fund the bunting', group: 'nudges' },
   { verb: 'nudgeWorks', keys: ['o'], label: 'File a works case', group: 'nudges' },
+  { verb: 'nudgeDeputation', keys: ['u'], label: 'Call a deputation', group: 'nudges' },
 
   { verb: 'selectNear', keys: ['Shift + arrows'], label: 'Move the selection about the district', group: 'verbs' },
 
@@ -76,6 +77,7 @@ export const NUDGE_VERBS: Record<string, string> = {
   nudgeQuarantine: 'quarantine',
   nudgeBunting: 'fundBunting',
   nudgeWorks: 'fileWorks',
+  nudgeDeputation: 'callDeputation',
 };
 
 export function keycapFor(verb: Verb): string {

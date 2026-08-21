@@ -42,6 +42,8 @@ import {
 } from './ordinances';
 import { newWorks, tickWorksHourly } from './works';
 import type { WorksState } from './works';
+import { newDeputations, tickDeputation } from './deputations';
+import type { DeputationState } from './deputations';
 
 export interface LogEvent {
   tick: number;
@@ -102,6 +104,7 @@ export interface City extends World {
   budgetLeft: number;
   laws: LawState;
   works: WorksState;
+  deputations: DeputationState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -133,6 +136,7 @@ export function newCity(seedStr: string): City {
     budgetLeft: DAILY_BUDGET,
     laws: null as unknown as LawState,
     works: newWorks(),
+    deputations: newDeputations(world.squareNode),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -296,6 +300,41 @@ export function sendTo(city: City, s: Soul, target: BuildingId, travelAs: Activi
   s.routeIdx = 0;
 }
 
+/** Send a soul to a graph node while keeping its eventual place outdoors. */
+export function sendToNode(city: City, s: Soul, target: number, travelAs: Activity, arriveAs: Activity): void {
+  if (target < 0 || target >= city.graph.n) return;
+  if (s.atNode < 0) s.atNode = city.buildings[s.inId]?.doorNode ?? target;
+  s.inId = -1;
+  s.destBuilding = -1;
+  s.destNode = target;
+  s.arriveActivity = arriveAs;
+  s.activity = travelAs;
+  s.activitySince = city.tick;
+  s.toNode = -1;
+  s.progressMilli = 0;
+  s.route.length = 0;
+  s.routeIdx = 0;
+}
+
+/** The schedule block whose jittered boundary most recently passed today. */
+function activeScheduleBlock(city: City, s: Soul): number {
+  const p = PATTERNS[s.scheduleId];
+  const mod = minuteOfDay(city.tick);
+  let best = 0;
+  let bestAge = Infinity;
+  for (let i = 0; i < p.blocks.length; i++) {
+    const start = blockStart(p, i, mix(city.seed, 20, s.id, i) % 4096);
+    const age = (mod - start + MIN_PER_DAY) % MIN_PER_DAY;
+    if (age < bestAge) { best = i; bestAge = age; }
+  }
+  return best;
+}
+
+/** Resume an interrupted day through the same block gateway as the due wheel. */
+export function resumeCurrentBlock(city: City, s: Soul): void {
+  beginBlock(city, s, activeScheduleBlock(city, s));
+}
+
 /**
  * A handful of souls step out every five minutes, for about half an hour.
  *
@@ -440,6 +479,7 @@ export function tickCity(city: City): void {
     const arrived = advanceSoul(city.graph, s);
     if (!arrived) continue;
     const target = s.destBuilding;
+    const arriveAs = s.arriveActivity;
     s.destBuilding = -1;
     s.destNode = -1;
     if (target >= 0) {
@@ -458,9 +498,15 @@ export function tickCity(city: City): void {
       s.activitySince = tick;
       onOrdinanceArrive(city, s);
     } else {
-      s.activity = 'loitering';
+      s.activity = arriveAs;
+      s.activitySince = tick;
     }
   }
+
+  // Hearing attendance is read after movement, so a soul that physically reaches
+  // the square on this minute counts. Cleanup only resumes souls the deputation
+  // still owns; later laws or incidents are never overwritten.
+  tickDeputation(city);
 
   // 4. Needs, sliced ten ways by id so the cost is flat and the phase is stable
   //    across a save.
@@ -813,6 +859,30 @@ export function hashWorld(city: City): number {
     h = Math.imul(h, 16777619);
   };
   put(city.tick);
+  put(city.deputations.revision);
+  put(city.deputations.nextId);
+  put(city.deputations.squareNode);
+  const deputation = city.deputations.current;
+  put(deputation ? 1 : 0);
+  if (deputation) {
+    put(deputation.id);
+    put(deputation.buildingId);
+    put(deputation.orderId);
+    put(deputation.hallId);
+    put(deputation.squareNode);
+    put(deputation.rejectedCount);
+    put(deputation.startedAt);
+    put(deputation.heardAt);
+    put(deputation.endsAt);
+    put(deputation.endedAt);
+    put(deputation.resolvedAt);
+    put(deputation.status === 'gathering' ? 1 : deputation.status === 'heard' ? 2
+      : deputation.status === 'thin' ? 3 : 4);
+    put(deputation.attendeeIds.length);
+    for (const id of deputation.attendeeIds) put(id);
+    put(deputation.arrivedIds.length);
+    for (const id of deputation.arrivedIds) put(id);
+  }
   for (const ward of city.wards) {
     put(ward.id);
     put(ward.kind.length * 31 + ward.kind.charCodeAt(0));

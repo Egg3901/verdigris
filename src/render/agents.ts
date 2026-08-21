@@ -6,6 +6,7 @@
 import type { City } from '../sim/city';
 import { soulPos } from '../sim/souls';
 import type { Soul } from '../sim/souls';
+import { isDeputationActive } from '../sim/deputations';
 import { PAL } from './palette';
 import { isoX, isoY, depthKey, LAYER_AGENT } from './iso';
 
@@ -26,6 +27,16 @@ export interface AgentDraw {
 const COATS = [PAL.soot1, PAL.wood1, PAL.buntBlue, PAL.brick0, PAL.verd1, PAL.ochre0];
 const HATS = [PAL.soot0, PAL.brass0, PAL.stone1, PAL.buntRed, PAL.slate0, PAL.wood0];
 
+// One, then two, then three, then two. These are offsets in tile space around
+// the square node: side displaces along the screen x axis and outward advances
+// toward the screen y axis, so the group reads as a small stopped deputation.
+const DEPUTATION_WEDGE: readonly [side: number, outward: number][] = [
+  [0, 0.28],
+  [-0.18, 0.44], [0.18, 0.44],
+  [-0.36, 0.62], [0, 0.62], [0.36, 0.62],
+  [-0.18, 0.8], [0.18, 0.8],
+];
+
 function coatOf(s: Soul): string {
   if (s.trade === 'constable') return PAL.buntBlue;
   if (s.trade === 'child') return PAL.buntCream;
@@ -38,28 +49,59 @@ function hatOf(s: Soul): string {
   return HATS[(s.id * 5 + s.given.length) % HATS.length];
 }
 
+function fillAgent(
+  out: AgentDraw[], n: number, s: Soul, cx: number, cy: number, step: number,
+): void {
+  const slot = out[n] ?? (out[n] = {
+    soulId: -1, wx: 0, wy: 0, tx: 0, ty: 0, depth: 0, coat: '', hat: '', step: 0,
+  });
+  slot.soulId = s.id;
+  slot.tx = cx;
+  slot.ty = cy;
+  slot.wx = isoX(cx, cy);
+  slot.wy = isoY(cx, cy);
+  slot.depth = depthKey(cx, cy, LAYER_AGENT);
+  slot.coat = coatOf(s);
+  slot.hat = hatOf(s);
+  slot.step = step;
+}
+
 /** Fill `out` in place. Called every frame, so it must not allocate. */
 export function collectAgents(city: City, fracMin: number, out: AgentDraw[]): number {
   let n = 0;
+  const deputation = isDeputationActive(city) ? city.deputations.current : null;
+  const squareNode = deputation?.squareNode ?? -1;
+  const attendeeIds = deputation?.attendeeIds ?? [];
+
   for (const s of city.souls) {
     if (s.inId >= 0 || s.atNode < 0) continue;
+    // Deputation members are redrawn at their stationary public arrangement
+    // below. Skipping their ordinary node position avoids a second body hidden
+    // underneath the wedge.
+    if (s.activity === 'gathering' && s.atNode === squareNode && s.toNode < 0
+      && attendeeIds.includes(s.id)) continue;
     const pos = soulPos(city.graph, s, fracMin);
-    const slot = out[n] ?? (out[n] = {
-      soulId: -1, wx: 0, wy: 0, tx: 0, ty: 0, depth: 0, coat: '', hat: '', step: 0,
-    });
-    slot.soulId = s.id;
-    slot.tx = pos.cx;
-    slot.ty = pos.cy;
-    slot.wx = isoX(pos.cx, pos.cy);
-    slot.wy = isoY(pos.cx, pos.cy);
-    slot.depth = depthKey(pos.cx, pos.cy, LAYER_AGENT);
-    slot.coat = coatOf(s);
-    slot.hat = hatOf(s);
+    fillAgent(out, n, s, pos.cx, pos.cy,
     // Frame-step from distance walked, so the gait matches the speed rather than
     // running off a wall clock.
-    slot.step = Math.floor((s.progressMilli / 1200) % 4);
+      Math.floor((s.progressMilli / 1200) % 4));
     n++;
   }
+
+  if (deputation && squareNode >= 0) {
+    const baseX = city.graph.cx[squareNode];
+    const baseY = city.graph.cy[squareNode];
+    for (let i = 0; i < attendeeIds.length && i < DEPUTATION_WEDGE.length; i++) {
+      const s = city.souls[attendeeIds[i]];
+      if (!s || s.inId >= 0 || s.activity !== 'gathering' || s.atNode !== squareNode || s.toNode >= 0) continue;
+      const [side, outward] = DEPUTATION_WEDGE[i];
+      // screen-x movement is x + side, y - side; shared outward movement makes
+      // each later row sit one small step further down the square.
+      fillAgent(out, n, s, baseX + side + outward, baseY - side + outward, i & 1 ? 0 : 2);
+      n++;
+    }
+  }
+
   for (let i = 0; i < n - 1; i++) {
     // Insertion sort: the list is nearly sorted frame to frame, so this beats
     // Array.sort and allocates nothing.

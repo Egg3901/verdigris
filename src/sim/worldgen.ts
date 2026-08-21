@@ -50,6 +50,8 @@ export interface World {
   graph: StreetGraph;
   networks: Networks;
   tram: TramLine;
+  /** A guaranteed graph destination on the civic square for outdoor gatherings. */
+  squareNode: NodeId;
   souls: Soul[];
   households: Household[];
   firms: Firm[];
@@ -197,7 +199,7 @@ export function generateWorld(seedStr: string): World {
 
   return {
     seedStr, seed, district, river, streetPlan, squareName,
-    blocks, wards, plots, buildings, streets, graph, networks, tram,
+    blocks, wards, plots, buildings, streets, graph, networks, tram, squareNode,
     souls, households, firms, doorNodes,
   };
 }
