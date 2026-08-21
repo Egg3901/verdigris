@@ -17,6 +17,9 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
+import { drawTrams, drawSmoke } from './fx';
+import { variantFor } from './palette';
+import { minuteOfDay } from '../sim/clock';
 
 export interface Selection {
   buildingId: number;
@@ -106,6 +109,12 @@ export function drawFrame(
       }
     }
   }
+
+  // Vehicles and smoke, above the structures: smoke is over the roofline by
+  // definition, and the tram runs down the middle of the street.
+  const variant = variantFor(minuteOfDay(city.tick));
+  stats.calls += drawTrams(ctx, city, variant);
+  stats.calls += drawSmoke(ctx, city, fracMin, variant, tl, br);
 
   if (import.meta.env.DEV && stats.calls > CALL_BUDGET) {
     console.warn(`draw-call budget breached: ${stats.calls} > ${CALL_BUDGET}`);

@@ -15,6 +15,39 @@ export interface TramLine {
   stopNames: string[];
 }
 
+/**
+ * A car on the line.
+ *
+ * Delaying the tram has been a real intervention with real consequences since the
+ * beginning, and there has never been a tram. The pressure moved, commutes
+ * lengthened, the pavements filled, and the thing the player was sabotaging was
+ * not on screen. A mechanic with no visible referent is a spreadsheet.
+ */
+export interface TramCar {
+  /** Index into route: the node the car has last passed. */
+  idx: number;
+  /** Progress in millicells from route[idx] toward the next node. */
+  progressMilli: number;
+  dir: 1 | -1;
+  /** Minutes left standing at a stop. */
+  dwell: number;
+}
+
+export function newTramCars(line: TramLine, count: number): TramCar[] {
+  const cars: TramCar[] = [];
+  if (line.route.length < 2) return cars;
+  for (let i = 0; i < count; i++) {
+    cars.push({
+      // Spaced around the line so they do not run nose to tail.
+      idx: Math.floor((line.route.length * i) / Math.max(1, count)),
+      progressMilli: 0,
+      dir: i % 2 === 0 ? 1 : -1,
+      dwell: 0,
+    });
+  }
+  return cars;
+}
+
 function pathNodes(g: StreetGraph, from: NodeId, to: NodeId): NodeId[] {
   const out: NodeId[] = [from];
   let cur = from;

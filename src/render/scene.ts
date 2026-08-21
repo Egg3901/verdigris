@@ -350,6 +350,57 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     }
   }
 
+  // The rails. Drawn as a polyline along the route rather than as tiles: the
+  // corridors between graph nodes bend, so a per-cell rail tile would miss them.
+  {
+    const route = city.tram.route;
+    const rail = gradeHex(PAL.soot3, variant);
+    const sleeper = gradeHex(shadeHex(PAL.wood1, -0.1), variant);
+    for (let i = 0; i + 1 < route.length; i++) {
+      const a = route[i];
+      const b = route[i + 1];
+      const ax = originX + isoX(city.graph.cx[a], city.graph.cy[a]);
+      const ay = originY + isoY(city.graph.cx[a], city.graph.cy[a]);
+      const bx = originX + isoX(city.graph.cx[b], city.graph.cy[b]);
+      const by = originY + isoY(city.graph.cx[b], city.graph.cy[b]);
+      // The polyline is a straight line between two graph nodes, but the CORRIDOR
+      // between them bends, so a naive line lays sleepers across open water where
+      // it cuts a corner. Step along in tile space and lay track only where the
+      // ground can actually carry it.
+      const acx = city.graph.cx[a];
+      const acy = city.graph.cy[a];
+      const bcx = city.graph.cx[b];
+      const bcy = city.graph.cy[b];
+      const steps = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay) / 5));
+      let runStart: { x: number; y: number } | null = null;
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        const tx2 = Math.round(acx + (bcx - acx) * t);
+        const ty2 = Math.round(acy + (bcy - acy) * t);
+        const solid = tx2 >= 0 && ty2 >= 0 && tx2 < d.width && ty2 < d.height
+          && d.tile[cellKey(d, tx2, ty2)] !== Tile.Water
+          && d.tile[cellKey(d, tx2, ty2)] !== Tile.Void;
+        const x = ax + (bx - ax) * t;
+        const y = ay + (by - ay) * t;
+        if (!solid) {
+          if (runStart) {
+            lineHard(gctx, { x: runStart.x, y: runStart.y - 1 }, { x, y: y - 1 }, rail);
+            lineHard(gctx, { x: runStart.x, y: runStart.y + 2 }, { x, y: y + 2 }, rail);
+            runStart = null;
+          }
+          continue;
+        }
+        if (!runStart) runStart = { x, y };
+        gctx.fillStyle = sleeper;
+        gctx.fillRect(Math.round(x) - 3, Math.round(y), 7, 1);
+      }
+      if (runStart) {
+        lineHard(gctx, { x: runStart.x, y: runStart.y - 1 }, { x: bx, y: by - 1 }, rail);
+        lineHard(gctx, { x: runStart.x, y: runStart.y + 2 }, { x: bx, y: by + 2 }, rail);
+      }
+    }
+  }
+
   // Contact shadows, baked into the ground under every footprint.
   //
   // Without one, every building in the district hovers: there is no cue that a

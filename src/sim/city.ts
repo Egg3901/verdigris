@@ -26,6 +26,10 @@ import type { ClaimState } from './claims';
 import { buildRelations, neighboursOf } from './relations';
 import type { Relations } from './relations';
 import { newEvents, emit, witnessesOf } from './events';
+import { newTramCars } from './gen/tram';
+import type { TramCar } from './gen/tram';
+import { edgeCostBetween } from './graph';
+import { TRAM_MILLICELL_PER_MIN } from './types';
 import type { EventState } from './events';
 import { checkIncidents, newIncidents } from './incidents';
 import type { IncidentState } from './incidents';
@@ -97,6 +101,8 @@ export interface City extends World {
   quarantined: Set<number>;
   /** Falls permanently when a planted story is retracted. */
   paperCredibility: number;
+  /** Cars on the line. Two, running opposite directions. */
+  trams: TramCar[];
 }
 
 export function newCity(seedStr: string): City {
@@ -121,6 +127,7 @@ export function newCity(seedStr: string): City {
     buntingUntil: -1,
     quarantined: new Set<number>(),
     paperCredibility: 800,
+    trams: [],
   };
 
   for (const b of city.buildings) {
@@ -169,6 +176,7 @@ export function newCity(seedStr: string): City {
     s.destBuilding = -1;
     s.progressMilli = 0;
   }
+  city.trams = newTramCars(city.tram, 2);
   rebuildOccupants(city);
   seedPrehistoryClaims(city);
   return city;
@@ -447,8 +455,43 @@ export function tickCity(city: City): void {
 
   rebuildOccupants(city);
 
+  tickTrams(city);
+
   if (mod % 60 === 0) tickHour(city);
   if (mod === DAILY_MINUTE) tickDay(city);
+}
+
+/**
+ * Move the cars.
+ *
+ * The line is a polyline of graph nodes, so a car is (idx, progress, dir) exactly
+ * as a soul is (atNode, toNode, progress). Delaying the tram halves its speed and
+ * doubles its dwell, which is what "the tram is not running properly" looks like
+ * rather than the tram vanishing.
+ */
+function tickTrams(city: City): void {
+  const route = city.tram.route;
+  if (route.length < 2) return;
+  const delayed = city.tramDelayedUntil > city.tick;
+  const speed = delayed ? TRAM_MILLICELL_PER_MIN / 2 : TRAM_MILLICELL_PER_MIN;
+
+  for (const car of city.trams) {
+    if (car.dwell > 0) { car.dwell--; continue; }
+    const next = car.idx + car.dir;
+    if (next < 0 || next >= route.length) {
+      // Terminus: turn round rather than run off the end of the rails.
+      car.dir = car.dir === 1 ? -1 : 1;
+      car.dwell = delayed ? 8 : 3;
+      continue;
+    }
+    const cost = Math.max(1, edgeCostBetween(city.graph, route[car.idx], route[next]));
+    car.progressMilli += speed;
+    if (car.progressMilli >= cost * 1000) {
+      car.progressMilli = 0;
+      car.idx = next;
+      if (city.tram.stops.includes(car.idx)) car.dwell = delayed ? 5 : 2;
+    }
+  }
 }
 
 function tickNeeds(city: City, s: Soul): void {
@@ -697,6 +740,21 @@ export function warp(city: City, minutes: number): void {
  * and for the screenshot goldens. Deliberately covers positions, activities,
  * needs, fabric and facade: anything a player could see change.
  */
+/** Where a car is, in cells. The renderer interpolates from here. */
+export function tramPos(city: City, car: TramCar): { cx: number; cy: number; dx: number; dy: number } {
+  const route = city.tram.route;
+  const a = route[car.idx];
+  const next = car.idx + car.dir;
+  const b = next >= 0 && next < route.length ? route[next] : a;
+  const cost = Math.max(1, edgeCostBetween(city.graph, a, b));
+  const t = Math.min(1, car.progressMilli / (cost * 1000));
+  const ax = city.graph.cx[a];
+  const ay = city.graph.cy[a];
+  const bx = city.graph.cx[b];
+  const by = city.graph.cy[b];
+  return { cx: ax + (bx - ax) * t, cy: ay + (by - ay) * t, dx: bx - ax, dy: by - ay };
+}
+
 export function hashWorld(city: City): number {
   let h = 2166136261 >>> 0;
   const put = (v: number) => {
@@ -719,6 +777,12 @@ export function hashWorld(city: City): number {
     put(s.health);
     put(s.grievance);
     put(s.purse);
+  }
+  for (const car of city.trams) {
+    put(car.idx);
+    put(car.progressMilli);
+    put(car.dir);
+    put(car.dwell);
   }
   for (const b of city.buildings) {
     put(b.fabric);
