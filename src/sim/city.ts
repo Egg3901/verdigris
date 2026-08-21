@@ -510,8 +510,34 @@ function tickNeeds(city: City, s: Soul): void {
   const drag = (san < 350 ? -6 : san > 650 ? 3 : 0) + (s.warmth < 250 ? -5 : 0) + (s.hunger > 850 ? -7 : 0);
   s.health = clamp(s.health + drag + 2);
 
-  if (s.hunger > 880 || s.warmth < 180) s.grievance = clamp(s.grievance + 4);
-  else if (s.mood > 700) s.grievance = clamp(s.grievance - 2);
+  // Grievance is HOMEOSTATIC, not a ratchet.
+  //
+  // It used to only ever fall when mood was above 700, and mood settles around
+  // 560, so the decrease branch effectively never fired: measured, 182 of 200
+  // souls were pinned at exactly 1000 by day seven and 193 by day thirty. Every
+  // mechanic gated on grievance was therefore dead after the first week. The
+  // delayTram backfire ("grievance already high, so the mill walks out") fired
+  // unconditionally, and the prose gave every soul in the district the same line
+  // about the new rota.
+  //
+  // Now it drifts toward a target set by the soul's actual circumstances, so it
+  // rises when things are bad, falls when they are fixed, and spreads across the
+  // population instead of collapsing onto the ceiling.
+  const wages = pressureOf(city.press, 'wages');
+  const household = city.households[s.householdId];
+  const arrears = household ? Math.min(4, household.arrearsDays) : 0;
+  let target = 120;
+  if (s.hunger > 780) target += 260;
+  if (s.warmth < 260) target += 200;
+  if (s.health < 420) target += 160;
+  target += arrears * 90;
+  target += Math.max(0, 500 - wages) / 2;
+  if (s.purse < 15) target += 80;
+  // Character: the same conditions do not aggrieve two people equally.
+  target += (s.boldness - 500) / 6;
+  target = Math.max(0, Math.min(1000, target));
+  const gap = target - s.grievance;
+  if (gap !== 0) s.grievance = clamp(s.grievance + Math.sign(gap) * (Math.abs(gap) > 200 ? 3 : 1));
 }
 
 function clamp(v: number): number {
