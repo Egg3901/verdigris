@@ -7,6 +7,9 @@ const CASES = [
   { name: 'day', tick: 641 },
   { name: 'dusk', tick: 1200 },
   { name: 'night', tick: 1320 },
+  { name: 'fire-night', tick: 1320, disaster: 'fire' },
+  { name: 'flood-day', tick: 641, disaster: 'flood' },
+  { name: 'collapse-day', tick: 641, disaster: 'collapse' },
 ];
 
 const browser = await chromium.launch();
@@ -15,6 +18,40 @@ try {
     const page = await browser.newPage({ viewport: { width: 960, height: 640 }, deviceScaleFactor: 1 });
     await page.goto(`${BASE}?seed=verdigris&t=${test.tick}&freeze=1`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => Boolean(window.__verdigris));
+    if (test.disaster) {
+      await page.evaluate((kind) => {
+        const hook = window.__verdigris;
+        const city = hook.city;
+        let candidates = city.buildings.filter((b) => b.firmId >= 0 && b.householdIds.length === 0);
+        if (kind === 'fire') candidates = candidates.filter((b) => b.kind === 'workshop' && b.gasSeg >= 0);
+        if (kind === 'flood') candidates = candidates.filter((b) => {
+          const riverY = city.river.centre[b.doorX];
+          return b.drainSeg >= 0 && riverY >= 0
+            && Math.abs(b.doorY - riverY) <= city.river.halfWidth[b.doorX] + 4;
+        });
+        if (kind === 'collapse') {
+          candidates = candidates.filter((b) => b.kind === 'wharfshed' || b.kind === 'warehouse' || b.kind === 'workshop');
+        }
+        candidates.sort((a, b) => {
+          if (kind === 'collapse') {
+            return Number(b.kind === 'wharfshed') - Number(a.kind === 'wharfshed')
+              || (b.w * b.d) - (a.w * a.d) || a.id - b.id;
+          }
+          if (kind === 'flood') {
+            const ar = city.river.centre[a.doorX];
+            const br = city.river.centre[b.doorX];
+            return Math.abs(a.doorY - ar) - Math.abs(b.doorY - br)
+              || (b.w * b.d) - (a.w * a.d) || a.id - b.id;
+          }
+          return a.id - b.id;
+        });
+        const target = candidates.find((b) => hook.disaster(kind, b.id));
+        if (!target) throw new Error(`no ${kind} target`);
+        hook.lookAt(target.ox, target.oy);
+        hook.zoom(3);
+      }, test.disaster);
+      await page.waitForTimeout(120);
+    }
     const result = await page.evaluate(() => {
       window.__verdigris.freeze();
       const canvas = document.querySelector('#world');

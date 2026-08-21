@@ -24,6 +24,7 @@ import { addressOf } from './worldgen';
 import type { SoulId } from './types';
 import { latestOrderFor } from './works';
 import { isDeputationActive } from './deputations';
+import { disasterAt, isBuildingClosed } from './disasters';
 
 const MAX_SENSES = 3;
 
@@ -89,6 +90,26 @@ function pickGrudge(city: City, b: Building): Grudge | null {
 
 /** Absence is information: a building with nothing happening gets no clause. */
 function liveClause(city: City, b: Building): string {
+  const disaster = disasterAt(city, b.id);
+  if (disaster) {
+    const active = disaster.status === 'active';
+    if (disaster.kind === 'fire') {
+      return active
+        ? 'A fire is burning here, and the gas main below it has failed.'
+        : 'The fire is contained, but the damage and the broken main remain.';
+    }
+    if (disaster.kind === 'flood') {
+      return active
+        ? 'Floodwater is around the foundations and the drains have failed.'
+        : 'The flood has gone down, but the drains and the fabric remain damaged.';
+    }
+    return active
+      ? 'The structure has collapsed and the site is closed.'
+      : 'The collapse has been contained, but the site remains closed until it is repaired.';
+  }
+  if (b.fabric === 0 && isBuildingClosed(city, b.id)) {
+    return 'The structure remains collapsed and closed until structural work is done.';
+  }
   const deputation = city.deputations.current;
   if (deputation && deputation.buildingId === b.id && isDeputationActive(city)) {
     if (deputation.status === 'heard') return 'Its deputation has been heard beneath the windows of Civic Hall.';

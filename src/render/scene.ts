@@ -34,6 +34,7 @@ import { buildProps, buildSquareProps, buildStreetProps, textureCell } from './p
 import type { Prop } from './props';
 import { worksStageFor } from '../sim/works';
 import { isDeputationActive } from '../sim/deputations';
+import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters';
 import type { WardKind } from '../sim/gen/wards';
 
 export interface StaticSprite {
@@ -56,6 +57,7 @@ export interface Scene {
   variant: Variant;
   worksRevision: number;
   deputationRevision: number;
+  disasterRevision: number;
   ground: HTMLCanvasElement;
   props: Prop[];
   idBuffer: HTMLCanvasElement;
@@ -343,6 +345,12 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   const dwelling = b.kind === 'terrace' || b.kind === 'tenement'
     || b.kind === 'courtdwelling' || b.kind === 'lodging';
   const finial: Finial = fam.finial ?? 'none';
+  const damageEvent = disasterAt(city, b.id);
+  const damage: HouseSpec['damage'] = isBuildingClosed(city, b.id)
+    && (damageEvent?.kind === 'collapse' || b.fabric === 0)
+    ? 'collapsed'
+    : damageEvent?.kind === 'fire' && isDisasterActive(city, damageEvent) ? 'burning'
+      : damageEvent?.kind === 'flood' && isDisasterActive(city, damageEvent) ? 'flooded' : 'none';
 
   return {
     w: b.w, d: b.d, wallH, roofH,
@@ -357,6 +365,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // fabric has genuinely failed gets its windows boarded. The working bank
     // fails earlier.
     boarded: b.fabric < (polite ? 260 : 340),
+    damage,
     // The flags the player paid for, on whatever fronts the square.
     bunting: city.buntingUntil > city.tick && nearSquare(city, b),
     deputationBanner: b.kind === 'townhall' && isDeputationActive(city),
@@ -408,10 +417,32 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   const b = worldBounds();
   const originX = -b.minX;
   const originY = -b.minY;
+  const floodedBuildings = new Set<number>();
+  for (const event of city.disasters.events) {
+    if (event.kind !== 'flood' || !isDisasterActive(city, event)) continue;
+    if (event.buildingId >= 0) floodedBuildings.add(event.buildingId);
+    for (const id of event.affectedBuildingIds) floodedBuildings.add(id);
+  }
 
   const ground = makeCanvas(b.w, b.h);
   const gctx = ctxOf(ground);
   const d = city.district;
+  const floodedCells = new Set<number>();
+  for (const id of floodedBuildings) {
+    const building = city.buildings[id];
+    if (!building) continue;
+    for (const k of building.cells) {
+      const x = k % d.width;
+      const y = (k - x) / d.width;
+      for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height) continue;
+        const nk = cellKey(d, nx, ny);
+        if (d.tile[nk] !== Tile.Void && d.tile[nk] !== Tile.Water) floodedCells.add(nk);
+      }
+    }
+  }
   const naturalProps = buildProps(d, city.seed, variant, city.wards);
   const streetProps = buildStreetProps(d, city.seed, variant, city.wards);
   const squareProps = buildSquareProps(
@@ -515,6 +546,24 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
         }
       }
     }
+  }
+
+  // Floods stain the ground beneath structures. This is deliberately before
+  // shadows and objects, so foundations, rubble and people all keep their depth.
+  for (const k of floodedCells) {
+    const tx = k % d.width;
+    const ty = (k - tx) / d.width;
+    const cx = originX + isoX(tx, ty);
+    const cy = originY + isoY(tx, ty);
+    drawIsoDiamond(gctx, cx, cy, gradeHex(PAL.riv1, variant));
+    ditherPolyHard(gctx, [
+      { x: cx, y: cy - TILE_H / 2 }, { x: cx + TILE_W / 2, y: cy },
+      { x: cx, y: cy + TILE_H / 2 }, { x: cx - TILE_W / 2, y: cy },
+    ], gradeHex(PAL.riv2, variant), 5);
+    ditherPolyHard(gctx, [
+      { x: cx, y: cy - TILE_H / 2 }, { x: cx + TILE_W / 2, y: cy },
+      { x: cx, y: cy + TILE_H / 2 }, { x: cx - TILE_W / 2, y: cy },
+    ], gradeHex(PAL.rivGlint, variant), 2);
   }
 
   // The rails. Drawn as a polyline along the route rather than as tiles: the
@@ -660,6 +709,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   return {
     cartRoutes: buildCartRoutes(city), variant,
     worksRevision: city.works.revision, deputationRevision: city.deputations.revision,
+    disasterRevision: city.disasters.revision,
     ground, props, idBuffer, idCtx, statics, originX, originY,
   };
 }

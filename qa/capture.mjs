@@ -28,6 +28,10 @@ const SCENES = [
   { name: 'quayside-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'quayside' },
   { name: 'works-scaffold', seed: 'verdigris', tick: 641, zoom: 3, works: true },
   { name: 'civic-deputation', seed: 'verdigris', tick: 641, zoom: 2, deputation: true },
+  { name: 'fire-day', seed: 'verdigris', tick: 641, zoom: 3, disaster: 'fire' },
+  { name: 'fire-night', seed: 'verdigris', tick: 1320, zoom: 3, disaster: 'fire' },
+  { name: 'flood-street', seed: 'verdigris', tick: 641, zoom: 3, disaster: 'flood' },
+  { name: 'collapse-ruin', seed: 'verdigris', tick: 641, zoom: 3, disaster: 'collapse' },
 ];
 
 mkdirSync(OUT, { recursive: true });
@@ -69,6 +73,41 @@ for (const scene of SCENES) {
         window.__verdigris.warp(60);
         const hall = city.buildings.find((b) => b.kind === 'townhall');
         if (hall) window.__verdigris.lookAt(hall.ox, hall.oy);
+      }
+    }
+    if (s.disaster) {
+      const city = window.__verdigris.city;
+      const ordinaryFirm = (b) => b.firmId >= 0 && b.householdIds.length === 0;
+      let candidates = city.buildings.filter(ordinaryFirm);
+      if (s.disaster === 'fire') {
+        candidates = candidates.filter((b) => b.kind === 'workshop' && b.gasSeg >= 0);
+      } else if (s.disaster === 'flood') {
+        candidates = candidates.filter((b) => {
+          const riverY = city.river.centre[b.doorX];
+          return b.drainSeg >= 0 && riverY >= 0
+            && Math.abs(b.doorY - riverY) <= city.river.halfWidth[b.doorX] + 4;
+        });
+      } else {
+        candidates = candidates.filter((b) => b.kind === 'wharfshed' || b.kind === 'warehouse' || b.kind === 'workshop');
+      }
+      candidates.sort((a, b) => {
+        if (s.disaster === 'collapse') {
+          return Number(b.kind === 'wharfshed') - Number(a.kind === 'wharfshed')
+            || (b.w * b.d) - (a.w * a.d) || a.id - b.id;
+        }
+        if (s.disaster === 'flood') {
+          const ar = city.river.centre[a.doorX];
+          const br = city.river.centre[b.doorX];
+          return Math.abs(a.doorY - ar) - Math.abs(b.doorY - br)
+            || (b.w * b.d) - (a.w * a.d) || a.id - b.id;
+        }
+        return a.id - b.id;
+      });
+      for (const target of candidates) {
+        if (!window.__verdigris.disaster(s.disaster, target.id)) continue;
+        window.__verdigris.select('building', target.id);
+        window.__verdigris.lookAt(target.ox, target.oy);
+        break;
       }
     }
     if (s.ward) {

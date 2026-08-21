@@ -9,12 +9,13 @@ import { isRunning } from '../sim/firms';
 import { PAL, gradeHex, shadeHex } from './palette';
 import type { Variant } from './palette';
 import { minuteOfDay } from '../sim/clock';
-import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_AGENT } from './iso';
+import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_AGENT, LAYER_OVERHEAD } from './iso';
 import { fillPolyHard } from './raster';
 import { mix } from '../sim/rng';
 import { stepToward } from '../sim/graph';
 import { Tile } from '../sim/types';
 import { cellKey } from '../sim/district';
+import { isDisasterActive } from '../sim/disasters';
 
 export interface VehicleDraw {
   /** 0 tram, 1 cart. */
@@ -26,6 +27,77 @@ export interface VehicleDraw {
   depth: number;
   /** Tram body axis. Carts do not need an orientation at this resolution. */
   along: boolean;
+}
+
+/** A fire sits on its source roof but remains part of the world depth order. */
+export interface HazardDraw {
+  wx: number;
+  wy: number;
+  depth: number;
+  phase: number;
+  wide: boolean;
+}
+
+/** Collect active roof fires without particle state or per-frame allocation. */
+export function collectHazards(
+  city: City, fracMin: number,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number }, out: HazardDraw[],
+): number {
+  let n = 0;
+  const frame = Math.floor((city.tick + fracMin) * 0.28);
+  for (const event of city.disasters.events) {
+    if (event.kind !== 'fire' || !isDisasterActive(city, event)) continue;
+    const b = city.buildings[event.buildingId];
+    if (!b) continue;
+    const anchors = b.w * b.d > 2 ? 2 : 1;
+    const sx = b.ox + b.w - 1;
+    const sy = b.oy + b.d - 1;
+    const roofY = isoY(sx, sy) - b.storeys * 8 - 11;
+    for (let i = 0; i < anchors; i++) {
+      const wx = isoX(sx, sy) + (anchors === 1 ? 0 : i === 0 ? -7 : 7);
+      if (wx < tl.wx - 12 || wx > br.wx + 12 || roofY < tl.wy - 24 || roofY > br.wy + 8) continue;
+      const slot = out[n] ?? (out[n] = { wx: 0, wy: 0, depth: 0, phase: 0, wide: false });
+      slot.wx = wx;
+      slot.wy = roofY;
+      slot.depth = depthKey(sx, sy, LAYER_OVERHEAD);
+      slot.phase = frame + (mix(city.seed, 184, event.id, i) % 4);
+      slot.wide = anchors === 2;
+      n++;
+    }
+  }
+  for (let i = 0; i < n - 1; i++) {
+    const cur = out[i + 1];
+    let j = i;
+    while (j >= 0 && out[j].depth > cur.depth) {
+      out[j + 1] = out[j];
+      j--;
+    }
+    out[j + 1] = cur;
+  }
+  return n;
+}
+
+/** Draw one stepped flame cluster using the existing civic and gaslight ramps. */
+export function drawHazard(ctx: CanvasRenderingContext2D, hazard: HazardDraw, variant: Variant): number {
+  const x = Math.round(hazard.wx);
+  const y = Math.round(hazard.wy);
+  const lean = (hazard.phase % 3) - 1;
+  const height = hazard.wide ? 12 : 10;
+  fillPolyHard(ctx, [
+    { x: x - 5, y }, { x: x - 4, y: y - 4 }, { x: x - 1 + lean, y: y - height },
+    { x: x + 2 + lean, y: y - 5 }, { x: x + 5, y },
+  ], gradeHex(PAL.buntRed, variant));
+  fillPolyHard(ctx, [
+    { x: x - 3, y }, { x: x - 2, y: y - 4 }, { x: x + lean, y: y - height + 3 },
+    { x: x + 2 + lean, y: y - 3 }, { x: x + 3, y },
+  ], gradeHex(PAL.buntRedHi, variant));
+  fillPolyHard(ctx, [
+    { x: x - 1, y }, { x: x - 1, y: y - 4 }, { x: x + lean, y: y - 7 },
+    { x: x + 2, y: y - 3 }, { x: x + 1, y },
+  ], gradeHex(PAL.brass2, variant, true));
+  ctx.fillStyle = gradeHex(PAL.gas2, variant, true);
+  ctx.fillRect(x, y - 3, 1, 2);
+  return 4;
 }
 
 /**
@@ -223,6 +295,30 @@ export function drawSmoke(
       const r = industrial
         ? Math.max(1, Math.round((1 - age) * 2) + 1)
         : 1;
+      ctx.fillStyle = shades[Math.min(2, Math.floor(age * 3))];
+      ctx.fillRect(px - r, py - r, r * 2, Math.max(1, r * 2 - 1));
+      calls++;
+    }
+  }
+
+  // Disaster smoke is larger and denser than a flue, but uses the same hard,
+  // deterministic puff language. It remains an atmospheric pass above roofs.
+  for (const event of city.disasters.events) {
+    if (event.kind !== 'fire' || !isDisasterActive(city, event)) continue;
+    const b = city.buildings[event.buildingId];
+    if (!b) continue;
+    const sx = b.ox + b.w - 1;
+    const sy = b.oy + b.d - 1;
+    const wx = isoX(sx, sy);
+    const wy = isoY(sx, sy) - b.storeys * 8 - 19;
+    if (wx < tl.wx - 48 || wx > br.wx + 48 || wy < tl.wy - 96 || wy > br.wy + 40) continue;
+    const puffs = b.w * b.d > 2 ? 10 : 7;
+    for (let i = 0; i < puffs; i++) {
+      const age = (t * 0.07 + i / puffs) % 1;
+      const drift = (((mix(city.seed, 185, event.id, i) >>> 0) % 9) - 4) * 0.7;
+      const px = Math.round(wx + drift * age * 5);
+      const py = Math.round(wy - age * 62);
+      const r = Math.max(1, Math.round((1 - age) * 3));
       ctx.fillStyle = shades[Math.min(2, Math.floor(age * 3))];
       ctx.fillRect(px - r, py - r, r * 2, Math.max(1, r * 2 - 1));
       calls++;

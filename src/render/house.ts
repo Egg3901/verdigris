@@ -71,6 +71,8 @@ export interface HouseSpec {
   dormers?: number;
   /** Windows boarded over: the rot, on the building itself. */
   boarded?: boolean;
+  /** Structural loss replaces the house silhouette instead of sitting on it. */
+  damage?: 'none' | 'collapsed' | 'burning' | 'flooded';
   /** Flags up. The player paid for these. */
   bunting?: boolean;
   /** A temporary cloth notice across the Civic Hall frontage. */
@@ -105,7 +107,9 @@ export function houseBounds(spec: HouseSpec) {
   const sy = spec.d - 1;
   const ox = isoX(sx, sy);
   const oy = isoY(sx, sy);
-  const top = spec.wallH + spec.roofH + spec.finialH + (spec.chimneys > 0 ? 9 : 0);
+  const top = spec.damage === 'collapsed'
+    ? Math.max(9, Math.round(spec.wallH * 0.5))
+    : spec.wallH + spec.roofH + spec.finialH + (spec.chimneys > 0 ? 9 : 0);
   return {
     minX: isoX(0, sy) - TILE_W / 2 - ox - 5,
     maxX: isoX(sx, 0) + TILE_W / 2 - ox + 5,
@@ -151,6 +155,11 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   const ground = houseCorners(ox, oy, w, d, 0);
   const eave = houseCorners(ox, oy, w, d, wallH);
 
+  if (spec.damage === 'collapsed') {
+    drawCollapsedHouse(ctx, ox, oy, ground, spec);
+    return;
+  }
+
   if (spec.finial === 'mast') {
     drawMooringMast(ctx, ground, spec);
     return;
@@ -170,6 +179,7 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   const roofQuad = drawRoof(ctx, eave, spec, alongX);
   drawFinial(ctx, ground, eave, spec, alongX);
   drawFacade(ctx, eave, spec);
+  if (spec.damage === 'flooded') drawFloodDamage(ctx, eave, spec);
   if (spec.drainState) drawRainwaterGoods(ctx, eave, spec);
   if (roofQuad && spec.dormers) {
     const n = Math.min(3, spec.dormers);
@@ -180,6 +190,7 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   if (roofQuad && spec.patched) {
     drawRoofPatch(ctx, roofQuad, shadeHex(skin.roofShade, -0.08));
   }
+  if (roofQuad && spec.damage === 'burning') drawBurnedRoof(ctx, roofQuad, spec);
 
   if (spec.washing && lit.span >= 10) drawWashingLine(ctx, lit, wallH, spec.salt ?? 0);
 
@@ -218,6 +229,132 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
     const drop = (p: Pt): Pt => ({ x: p.x, y: p.y + 1 });
     lineHard(ctx, drop(eave.W), drop(eave.S), skin.outline);
     lineHard(ctx, drop(eave.S), drop(eave.E), skin.outline);
+  }
+}
+
+/**
+ * A failed structure is a low, broken shell, not an intact home with a rubble
+ * decal. The rear wall is left standing just enough to make the loss legible.
+ */
+function drawCollapsedHouse(
+  ctx: CanvasRenderingContext2D, ox: number, oy: number, ground: Corners, spec: HouseSpec,
+): void {
+  const low = Math.max(7, Math.round(spec.wallH * 0.45));
+  const remnant = houseCorners(ox, oy, spec.w, spec.d, low);
+  const litTop = [
+    remnant.W,
+    { x: remnant.W.x + (remnant.S.x - remnant.W.x) * 0.28, y: remnant.W.y - 2 },
+    { x: remnant.W.x + (remnant.S.x - remnant.W.x) * 0.58, y: remnant.W.y + 1 },
+    remnant.S,
+  ];
+  const shadeTop = [
+    remnant.S,
+    { x: remnant.S.x + (remnant.E.x - remnant.S.x) * 0.34, y: remnant.S.y - 2 },
+    { x: remnant.S.x + (remnant.E.x - remnant.S.x) * 0.7, y: remnant.S.y + 1 },
+    remnant.E,
+  ];
+
+  // The roof is gone. Fill the exposed room before raising the surviving near
+  // walls, then leave joists and masonry scattered across that dark interior.
+  fillPolyHard(ctx, [ground.W, ground.N, ground.E, ground.S], PAL.soot1);
+  ditherPolyHard(ctx, [ground.W, ground.N, ground.E, ground.S], PAL.dirt0, 4);
+  const roomMid = mid(ground.N, ground.S);
+  lineHard(ctx, lerp(ground.W, ground.N, 0.34), lerp(ground.S, ground.E, 0.3), PAL.wood1);
+  lineHard(ctx, lerp(ground.W, ground.N, 0.68), lerp(ground.S, ground.E, 0.64), PAL.wood0);
+  ctx.fillStyle = spec.material === 'brick' ? PAL.brick2 : PAL.stone2;
+  ctx.fillRect(Math.round(roomMid.x) - 4, Math.round(roomMid.y) - 2, 3, 2);
+  ctx.fillRect(Math.round(roomMid.x) + 2, Math.round(roomMid.y), 4, 2);
+
+  fillPolyHard(ctx, [litTop[0], ground.W, ground.S, litTop[3]], spec.skin.wallLit);
+  fillPolyHard(ctx, [shadeTop[0], ground.S, ground.E, shadeTop[3]], spec.skin.wallShade);
+  fillPolyHard(ctx, litTop, spec.skin.wallLit);
+  fillPolyHard(ctx, shadeTop, spec.skin.wallShade);
+  ditherPolyHard(ctx, [litTop[0], ground.W, ground.S, litTop[3]], PAL.soot1, 3);
+
+  // One dark void makes this a broken room rather than a deliberately low shed.
+  const face = makeFace(remnant.W, remnant.S, true);
+  const opening = [face.at(0.42, Math.max(2, low - 7)), face.at(0.64, Math.max(2, low - 7)),
+    face.at(0.64, low - 1), face.at(0.42, low - 1)];
+  fillPolyHard(ctx, opening, PAL.darkWindow);
+  lineHard(ctx, opening[0], opening[1], PAL.soot0);
+
+  const stone = spec.material === 'brick' ? [PAL.brick2, PAL.brick1, PAL.brick0]
+    : spec.material === 'ashlar' ? [PAL.stone3, PAL.stone2, PAL.stone1]
+      : [PAL.plaster1, PAL.plaster0, PAL.wood1];
+  const chips = [
+    [-7, -1, 4, 2], [-2, 1, 3, 2], [3, -2, 5, 2], [8, 1, 3, 2],
+    [-11, 2, 3, 2], [12, 3, 4, 2], [-5, 4, 4, 2], [5, 5, 3, 1],
+  ] as const;
+  for (let i = 0; i < chips.length; i++) {
+    const [dx, dy, rw, rh] = chips[i];
+    ctx.fillStyle = stone[i % stone.length];
+    ctx.fillRect(Math.round(ground.S.x + dx), Math.round(ground.S.y + dy), rw, rh);
+  }
+  lineHard(ctx, { x: ground.S.x - 9, y: ground.S.y + 1 }, { x: ground.S.x + 5, y: ground.S.y + 5 }, PAL.wood0);
+  lineHard(ctx, { x: ground.S.x + 2, y: ground.S.y - 1 }, { x: ground.S.x + 12, y: ground.S.y + 3 }, PAL.wood1);
+  lineHard(ctx, remnant.W, { x: remnant.W.x - 1, y: remnant.W.y - 5 }, PAL.wood0);
+  lineHard(ctx, remnant.E, { x: remnant.E.x + 1, y: remnant.E.y - 4 }, PAL.wood0);
+  lineHard(ctx, ground.W, ground.S, spec.skin.outline);
+  lineHard(ctx, ground.S, ground.E, spec.skin.outline);
+}
+
+/** Broken tiles and a soot-black opening keep the flame attached to real damage. */
+function drawBurnedRoof(ctx: CanvasRenderingContext2D, roof: Pt[], spec: HouseSpec): void {
+  const topA = lerp(roof[0], roof[1], 0.3);
+  const topB = lerp(roof[0], roof[1], 0.66);
+  const lowB = lerp(roof[3], roof[2], 0.62);
+  const lowA = lerp(roof[3], roof[2], 0.34);
+  const hole = [
+    { x: topA.x + 1, y: topA.y + 1 }, topB,
+    { x: lowB.x - 1, y: lowB.y - 1 }, lowA,
+  ];
+  fillPolyHard(ctx, hole, PAL.soot0);
+  ditherPolyHard(ctx, hole, PAL.soot2, 3);
+  lineHard(ctx, topA, topB, spec.material === 'brick' ? PAL.brick0 : PAL.wood0);
+  lineHard(ctx, lowA, lowB, PAL.soot1);
+  const emberA = lerp(topA, lowB, 0.58);
+  const emberB = lerp(topB, lowA, 0.62);
+  ctx.fillStyle = PAL.buntRedHi;
+  ctx.fillRect(Math.round(emberA.x), Math.round(emberA.y), 2, 1);
+  ctx.fillStyle = PAL.brass2;
+  ctx.fillRect(Math.round(emberB.x), Math.round(emberB.y), 1, 1);
+}
+
+/**
+ * A flood must climb the building, not merely recolour the ground beneath it.
+ * The uneven dither is the receding waterline, while the dark lower band and
+ * snagged boards make the depth readable against doors and shopfronts.
+ */
+function drawFloodDamage(
+  ctx: CanvasRenderingContext2D,
+  eave: { W: Pt; N: Pt; E: Pt; S: Pt },
+  spec: HouseSpec,
+): void {
+  const lit = makeFace(eave.W, eave.S, true);
+  const shade = makeFace(eave.S, eave.E, false);
+  const rise = Math.max(4, Math.min(7, Math.round(spec.wallH * 0.24)));
+
+  for (const face of [lit, shade]) {
+    if (face.span < 5) continue;
+    const stain = [
+      face.at(0, spec.wallH - rise), face.at(1, spec.wallH - rise - (face.lit ? 1 : 0)),
+      face.at(1, spec.wallH), face.at(0, spec.wallH),
+    ];
+    ditherPolyHard(ctx, stain, PAL.riv1, face.lit ? 4 : 3);
+    const water = [
+      face.at(0, spec.wallH - 2), face.at(1, spec.wallH - 2),
+      face.at(1, spec.wallH), face.at(0, spec.wallH),
+    ];
+    fillPolyHard(ctx, water, face.lit ? PAL.riv2 : PAL.riv1);
+    lineHard(ctx, face.at(0.04, spec.wallH - rise), face.at(0.96, spec.wallH - rise - (face.lit ? 1 : 0)), PAL.riv2);
+  }
+
+  if (lit.span >= 9) {
+    const boardY = spec.wallH - 3;
+    lineHard(ctx, lit.at(0.12, boardY), lit.at(0.46, boardY + 1), PAL.wood1);
+    const rag = lit.at(0.69, spec.wallH - 2);
+    ctx.fillStyle = PAL.buntCream;
+    ctx.fillRect(Math.round(rag.x), Math.round(rag.y), 2, 1);
   }
 }
 

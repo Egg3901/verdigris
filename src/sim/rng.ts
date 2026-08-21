@@ -59,6 +59,9 @@ export const Stream = {
   Tram: 24,
   Crowd: 25,
   Law: 28,
+  /** Natural physical failures. Kept apart from incidents so adding a disaster
+   *  kind never changes the district's social incident sequence. */
+  Disaster: 29,
 } as const;
 export type StreamId = (typeof Stream)[keyof typeof Stream];
 

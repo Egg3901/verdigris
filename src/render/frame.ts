@@ -18,8 +18,8 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectVehicles, drawSmoke, drawVehicle } from './fx';
-import type { VehicleDraw } from './fx';
+import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle } from './fx';
+import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
 import { lineHard } from './raster';
@@ -41,6 +41,7 @@ const CALL_BUDGET = 1200;
 
 const agentPool: AgentDraw[] = [];
 const vehiclePool: VehicleDraw[] = [];
+const hazardPool: HazardDraw[] = [];
 
 export function drawFrame(
   ctx: CanvasRenderingContext2D, city: City, scene: Scene, cam: Camera,
@@ -66,6 +67,7 @@ export function drawFrame(
 
   const agentCount = collectAgents(city, fracMin, agentPool);
   const vehicleCount = collectVehicles(city, scene.cartRoutes, fracMin, tl, br, vehiclePool);
+  const hazardCount = collectHazards(city, fracMin, tl, br, hazardPool);
   stats.agents = agentCount;
 
   // Merge-walk static and dynamic world objects. Vehicles share actor depth, so
@@ -76,14 +78,16 @@ export function drawFrame(
   let si = 0;
   let pi = 0;
   let vi = 0;
+  let hi = 0;
   const statics = scene.statics;
   const props = scene.props;
-  while (si < statics.length || ai < agentCount || pi < props.length || vi < vehicleCount) {
+  while (si < statics.length || ai < agentCount || pi < props.length || vi < vehicleCount || hi < hazardCount) {
     const sDepth = si < statics.length ? statics[si].depth : Infinity;
     const pDepth = pi < props.length ? props[pi].depth : Infinity;
     const aDepth = ai < agentCount ? agentPool[ai].depth : Infinity;
     const vDepth = vi < vehicleCount ? vehiclePool[vi].depth : Infinity;
-    if (pDepth <= sDepth && pDepth <= aDepth && pDepth <= vDepth) {
+    const hDepth = hi < hazardCount ? hazardPool[hi].depth : Infinity;
+    if (pDepth <= sDepth && pDepth <= aDepth && pDepth <= vDepth && pDepth <= hDepth) {
       const p = props[pi++];
       const px = p.wx - p.ax;
       const py = p.wy - p.ay;
@@ -92,7 +96,7 @@ export function drawFrame(
       stats.calls++;
       continue;
     }
-    const useStatic = sDepth <= aDepth && sDepth <= vDepth;
+    const useStatic = sDepth <= aDepth && sDepth <= vDepth && sDepth <= hDepth;
     if (useStatic) {
       const s = statics[si++];
       const x = s.wx - s.ax;
@@ -101,13 +105,15 @@ export function drawFrame(
       ctx.drawImage(s.sprite, Math.round(x), Math.round(y));
       stats.calls++;
       stats.statics++;
-    } else if (vDepth <= aDepth) {
+    } else if (vDepth <= aDepth && vDepth <= hDepth) {
       stats.calls += drawVehicle(ctx, vehiclePool[vi++], scene.variant);
-    } else {
+    } else if (aDepth <= hDepth) {
       const a = agentPool[ai++];
       if (a.wx > br.wx || a.wy > br.wy || a.wx < tl.wx || a.wy < tl.wy) continue;
       drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId, scene.variant);
       stats.calls++;
+    } else {
+      stats.calls += drawHazard(ctx, hazardPool[hi++], scene.variant);
     }
   }
 

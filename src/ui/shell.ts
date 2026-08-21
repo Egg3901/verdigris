@@ -9,6 +9,7 @@ import { addressOf } from '../sim/worldgen';
 import { describeBuilding, describeSoul, insideList, boundFor, carrying } from '../sim/prose';
 import { worksSummary } from '../sim/works';
 import { deputationSummary } from '../sim/deputations';
+import { disasterSummary } from '../sim/disasters';
 import { fullName } from '../sim/souls';
 import type { Selection } from '../render/frame';
 import type { ZoomStep } from '../render/iso';
@@ -518,7 +519,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       }
       const works = worksSummary(city, b.id);
       const deputation = deputationSummary(city, b.id);
-      insMore.textContent = [more > 0 ? `…and ${more} more` : '', works, deputation].filter(Boolean).join('\n');
+      const disaster = disasterSummary(city, b.id);
+      insMore.textContent = [more > 0 ? `…and ${more} more` : '', disaster, works, deputation].filter(Boolean).join('\n');
       return;
     }
     inspector.hidden = true;

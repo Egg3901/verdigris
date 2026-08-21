@@ -25,6 +25,8 @@ import { soulPos } from './sim/souls';
 import { describeBuilding } from './sim/prose';
 import { INTERVENTIONS, canApply, apply as applyNudge } from './sim/interventions';
 import { enact as enactOrdinance, repeal as repealOrdinance } from './sim/ordinances';
+import { startDisaster } from './sim/disasters';
+import type { DisasterKind } from './sim/disasters';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
 
 const params = new URLSearchParams(location.search);
@@ -463,7 +465,8 @@ function loop(now: number): void {
   const buntingNow = city.buntingUntil > city.tick;
   if (wantVariant !== scene.variant || buntingNow !== buntingShown
     || scene.worksRevision !== city.works.revision
-    || scene.deputationRevision !== city.deputations.revision) {
+    || scene.deputationRevision !== city.deputations.revision
+    || scene.disasterRevision !== city.disasters.revision) {
     buntingShown = buntingNow;
     scene = buildScene(city, wantVariant);
   }
@@ -491,6 +494,7 @@ interface QaHook {
   enact: (kind: string, param?: number) => boolean;
   repeal: (kind: string) => boolean;
   nudge: (kind: string, target: Target) => boolean;
+  disaster: (kind: string, buildingId: number) => boolean;
   palette: () => readonly string[];
 }
 
@@ -519,5 +523,6 @@ interface QaHook {
   enact: (kind, param) => enactOrdinance(city, kind as OrdinanceKind, param),
   repeal: (kind) => repealOrdinance(city, kind as OrdinanceKind),
   nudge: (kind, target) => applyNudge(city, kind as InterventionKind, target),
+  disaster: (kind, buildingId) => startDisaster(city, kind as DisasterKind, buildingId) !== null,
   palette: () => renderPalette(scene.variant),
 };

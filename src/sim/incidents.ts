@@ -62,11 +62,6 @@ export const INCIDENTS: readonly IncidentDef[] = [
       ? 'The hall has opened an inquiry. It will find nothing, and everyone knows it.'
       : 'The hall has opened an inquiry, and this one may actually look.'),
   },
-  {
-    id: 'collapse', label: 'a collapse', key: 'rot',
-    fireAbove: 690, clearAt: 560, cooldownHours: 72,
-    say: () => 'Something gave way that had been giving way for eleven years.',
-  },
 ];
 
 export interface Incident {
@@ -158,22 +153,6 @@ function fire(city: City, def: IncidentDef, tick: number): void {
     case 'riot':
       applyPressure(city.press, 'suspicion', 90, 'incident', incident.id, def.label, tick);
       break;
-    case 'collapse': {
-      // The collapse takes the worst-maintained building, which is exactly the
-      // one the facade spending has been papering over.
-      let worst = -1;
-      let worstFabric = 1e9;
-      for (const b of city.buildings) {
-        if (b.fabric < worstFabric) { worstFabric = b.fabric; worst = b.id; }
-      }
-      if (worst >= 0) {
-        city.buildings[worst].fabric = 0;
-        city.buildings[worst].facade = Math.round(city.buildings[worst].facade * 0.4);
-        incident.placeId = worst;
-      }
-      applyPressure(city.press, 'mood', -150, 'incident', incident.id, def.label, tick);
-      break;
-    }
     case 'inquiry':
       applyPressure(city.press, 'coin', -60, 'incident', incident.id, def.label, tick);
       if (pressureOf(city.press, 'rot') > 520) {

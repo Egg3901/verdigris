@@ -44,6 +44,8 @@ import { newWorks, tickWorksHourly } from './works';
 import type { WorksState } from './works';
 import { newDeputations, tickDeputation } from './deputations';
 import type { DeputationState } from './deputations';
+import { newDisasters, tickDisastersHourly, isBuildingClosed } from './disasters';
+import type { DisasterState } from './disasters';
 
 export interface LogEvent {
   tick: number;
@@ -105,6 +107,7 @@ export interface City extends World {
   laws: LawState;
   works: WorksState;
   deputations: DeputationState;
+  disasters: DisasterState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -137,6 +140,7 @@ export function newCity(seedStr: string): City {
     laws: null as unknown as LawState,
     works: newWorks(),
     deputations: newDeputations(world.squareNode),
+    disasters: newDisasters(),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -239,6 +243,13 @@ function resolvePlace(city: City, s: Soul, place: PlaceRef): BuildingId {
   }
 }
 
+/** A closed destination resolves to shelter before a route is dispatched. */
+function openDestination(city: City, s: Soul, target: BuildingId): BuildingId {
+  if (target < 0 || !isBuildingClosed(city, target)) return target;
+  if (s.homeId >= 0 && !isBuildingClosed(city, s.homeId)) return s.homeId;
+  return city.buildings.find((b) => b.kind === 'townhall' && !isBuildingClosed(city, b.id))?.id ?? -1;
+}
+
 /** Start the block a soul is due for. Either it is already there, or it walks. */
 function beginBlock(city: City, s: Soul, blockIdx: number): void {
   const p = PATTERNS[s.scheduleId];
@@ -247,6 +258,9 @@ function beginBlock(city: City, s: Soul, blockIdx: number): void {
   let target = resolvePlace(city, s, blk.place);
   s.arriveActivity = blk.activity;
   target = gateOrdinanceTarget(city, s, target, blk.activity);
+  // A closure is a physical fact, not a schedule exception. The resident still
+  // has a day, but cannot walk into a burning or collapsed workplace.
+  target = openDestination(city, s, target);
 
   if (target < 0 || target === s.inId) {
     s.activity = s.arriveActivity;
@@ -285,6 +299,7 @@ function beginBlock(city: City, s: Soul, blockIdx: number): void {
 /** Send a soul walking to a building, with the verb to use on the way and the one
  *  to adopt on arrival. Shared by the schedule, by errands, and by the laws. */
 export function sendTo(city: City, s: Soul, target: BuildingId, travelAs: Activity, arriveAs: Activity): void {
+  target = openDestination(city, s, target);
   const dest = city.buildings[target];
   if (!dest || dest.doorNode < 0 || target === s.inId) return;
   if (s.atNode < 0) s.atNode = city.buildings[s.inId]?.doorNode ?? dest.doorNode;
@@ -478,10 +493,21 @@ export function tickCity(city: City): void {
     if (s.inId >= 0) continue;
     const arrived = advanceSoul(city.graph, s);
     if (!arrived) continue;
-    const target = s.destBuilding;
+    const intended = s.destBuilding;
+    const target = openDestination(city, s, intended);
     const arriveAs = s.arriveActivity;
     s.destBuilding = -1;
     s.destNode = -1;
+    // The building may have failed after this journey began. Reach its door,
+    // observe the closure, and continue to shelter without ever entering it.
+    if (target !== intended) {
+      if (target >= 0) sendTo(city, s, target, 'commuting', 'visiting');
+      else {
+        s.activity = 'visiting';
+        s.activitySince = tick;
+      }
+      continue;
+    }
     if (target >= 0) {
       // A beat trade at work does not go inside: it arrives, and moves on. The
       // effect is a soul permanently in transit around its workplace, which is
@@ -655,7 +681,7 @@ function tickHour(city: City): void {
   }
 
   for (const f of city.firms) {
-    if (!isRunning(f, tick)) { f.output = 0; continue; }
+    if (!isRunning(f, tick) || isBuildingClosed(city, f.buildingId)) { f.output = 0; continue; }
     const b = city.buildings[f.buildingId];
     const hasGas = !DEFS[b.kind].needsGas || serviceAt(city.networks.gas, b.id);
     const tram = pressureOf(city.press, 'tram');
@@ -693,6 +719,7 @@ function tickHour(city: City): void {
 
   tickOrdinancesHourly(city);
   checkIncidents(city, tick);
+  tickDisastersHourly(city);
   decayPressuresHourly(city.press, tick);
 }
 
@@ -729,7 +756,7 @@ function recomputeBaselines(city: City): void {
   let running = 0;
   let output = 0;
   for (const f of city.firms) {
-    if (!isRunning(f, city.tick)) continue;
+    if (!isRunning(f, city.tick) || isBuildingClosed(city, f.buildingId)) continue;
     running++;
     output += f.output;
   }
@@ -791,7 +818,7 @@ function tickDay(city: City): void {
   // rent still falls due.
   const wagePress = pressureOf(city.press, 'wages');
   for (const f of city.firms) {
-    if (!isRunning(f, tick)) continue;
+    if (!isRunning(f, tick) || isBuildingClosed(city, f.buildingId)) continue;
     const perHead = Math.max(1, Math.round((f.wageBase + f.wageOffset) * (0.5 + wagePress / 1000)));
     for (const id of f.workerIds) city.souls[id].purse += perHead;
   }
@@ -882,6 +909,25 @@ export function hashWorld(city: City): number {
     for (const id of deputation.attendeeIds) put(id);
     put(deputation.arrivedIds.length);
     for (const id of deputation.arrivedIds) put(id);
+  }
+  put(city.disasters.revision);
+  put(city.disasters.next);
+  for (const at of city.disasters.lastStartedAt) put(at);
+  put(city.disasters.events.length);
+  for (const event of city.disasters.events) {
+    put(event.id);
+    put(event.kind === 'collapse' ? 1 : event.kind === 'fire' ? 2 : 3);
+    put(event.buildingId);
+    put(event.startedAt);
+    put(event.containedAt);
+    put(event.clearsAt);
+    put(event.severity);
+    put(event.status === 'active' ? 1 : 2);
+    put(event.brokenSegment);
+    put(event.affectedBuildingIds.length);
+    for (const id of event.affectedBuildingIds) put(id);
+    put(event.evacuatedIds.length);
+    for (const id of event.evacuatedIds) put(id);
   }
   for (const ward of city.wards) {
     put(ward.id);
