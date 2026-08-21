@@ -41,6 +41,7 @@ export function newClaims(): ClaimState {
 const KIND_SEVERITY: Record<ClaimKind, number> = {
   affair: 380, theft: 520, graft: 640, sickness: 700, sabotage: 780,
   closure: 560, debt: 340, informer: 820, miracle: 260, collapse: 900,
+  bylaw: 480,
 };
 
 export function seedClaim(

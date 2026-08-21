@@ -35,6 +35,11 @@ import { checkIncidents, newIncidents } from './incidents';
 import type { IncidentState } from './incidents';
 import type { Nudge } from './interventions';
 import { DAILY_BUDGET } from './interventions';
+import type { LawState } from './ordinances';
+import {
+  newLaws, gateOrdinanceTarget, allowErrand, cartRetarget, cartExtraMinutes,
+  onOrdinanceArrive, tickOrdinancesHourly, tickOrdinancesDaily,
+} from './ordinances';
 
 export interface LogEvent {
   tick: number;
@@ -90,9 +95,10 @@ export interface City extends World {
   events: EventState;
   incidents: IncidentState;
 
-  /** The save format. Everything else is replayable from (seedStr, tick, nudges). */
+  /** The save format. Everything else is replayable from (seedStr, tick, nudges, acts). */
   nudges: Nudge[];
   budgetLeft: number;
+  laws: LawState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -122,6 +128,7 @@ export function newCity(seedStr: string): City {
     incidents: newIncidents(),
     nudges: [],
     budgetLeft: DAILY_BUDGET,
+    laws: null as unknown as LawState,
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -179,6 +186,7 @@ export function newCity(seedStr: string): City {
   city.trams = newTramCars(city.tram, 2);
   rebuildOccupants(city);
   seedPrehistoryClaims(city);
+  city.laws = newLaws(city);
   return city;
 }
 
@@ -228,24 +236,27 @@ function beginBlock(city: City, s: Soul, blockIdx: number): void {
   const p = PATTERNS[s.scheduleId];
   s.blockIdx = blockIdx;
   const blk = p.blocks[blockIdx];
-  const target = resolvePlace(city, s, blk.place);
+  let target = resolvePlace(city, s, blk.place);
   s.arriveActivity = blk.activity;
+  target = gateOrdinanceTarget(city, s, target, blk.activity);
 
   if (target < 0 || target === s.inId) {
-    s.activity = blk.activity;
+    s.activity = s.arriveActivity;
     s.activitySince = city.tick;
     s.inId = target < 0 ? s.inId : target;
     s.destNode = -1;
     s.toNode = -1;
     s.destBuilding = -1;
+    onOrdinanceArrive(city, s);
     return;
   }
 
   const dest = city.buildings[target];
   if (!dest || dest.doorNode < 0) {
-    s.activity = blk.activity;
+    s.activity = s.arriveActivity;
     s.inId = target;
     s.activitySince = city.tick;
+    onOrdinanceArrive(city, s);
     return;
   }
 
@@ -255,7 +266,7 @@ function beginBlock(city: City, s: Soul, blockIdx: number): void {
   s.inId = -1;
   s.destBuilding = target;
   s.destNode = dest.doorNode;
-  s.activity = blk.activity === 'asleep' || blk.activity === 'waking' ? 'commuting' : travelVerbFor(blk.activity);
+  s.activity = blk.activity === 'asleep' || blk.activity === 'waking' ? 'commuting' : travelVerbFor(s.arriveActivity);
   s.activitySince = city.tick;
   s.toNode = -1;
   s.progressMilli = 0;
@@ -264,8 +275,8 @@ function beginBlock(city: City, s: Soul, blockIdx: number): void {
 }
 
 /** Send a soul walking to a building, with the verb to use on the way and the one
- *  to adopt on arrival. Shared by the schedule and by errands. */
-function sendTo(city: City, s: Soul, target: BuildingId, travelAs: Activity, arriveAs: Activity): void {
+ *  to adopt on arrival. Shared by the schedule, by errands, and by the laws. */
+export function sendTo(city: City, s: Soul, target: BuildingId, travelAs: Activity, arriveAs: Activity): void {
   const dest = city.buildings[target];
   if (!dest || dest.doorNode < 0 || target === s.inId) return;
   if (s.atNode < 0) s.atNode = city.buildings[s.inId]?.doorNode ?? dest.doorNode;
@@ -317,12 +328,16 @@ function startErrands(city: City, tick: number): void {
     }
     const kind = mix(city.seed, 25, bucket, s.id) % 3 === 0 ? 'pub' : 'shop';
     const fav = city.favourite[kind];
-    const target = fav ? fav[s.id] : -1;
+    let target = fav ? fav[s.id] : -1;
     if (target < 0 || target === s.inId) continue;
+    if (!allowErrand(city, s, kind, target)) continue;
+    target = cartRetarget(city, s, target);
+    if (target < 0 || target === s.inId) continue;
+    const extra = cartExtraMinutes(city, s, target);
     const onShift = s.activity === 'working';
     s.returnTo = s.inId;
     // A delivery is a there-and-back, not an afternoon off.
-    s.returnAt = tick + (onShift ? 14 : 30) + (mix(city.seed, 25, s.id, bucket) % (onShift ? 16 : 34));
+    s.returnAt = tick + (onShift ? 14 : 30) + extra + (mix(city.seed, 25, s.id, bucket) % (onShift ? 16 : 34));
     // overrideUntil covers the errand ITSELF and nothing more.
     //
     // It used to run 100 minutes past the return, as a cooldown. But this flag
@@ -436,6 +451,7 @@ export function tickCity(city: City): void {
       s.inId = target;
       s.activity = s.arriveActivity;
       s.activitySince = tick;
+      onOrdinanceArrive(city, s);
     } else {
       s.activity = 'loitering';
     }
@@ -596,6 +612,7 @@ function tickHour(city: City): void {
     applyPressure(city.press, 'mood', 8, 'intervention', 0, 'the flags are still up', tick);
   }
 
+  tickOrdinancesHourly(city);
   checkIncidents(city, tick);
   decayPressuresHourly(city.press, tick);
 }
@@ -686,6 +703,7 @@ function recomputeBaselines(city: City): void {
 function tickDay(city: City): void {
   const tick = city.tick;
   city.budgetLeft = DAILY_BUDGET;
+  tickOrdinancesDaily(city);
   decayBeliefsDaily(city.claims, city.souls);
   // Quarantines are lifted after a day: a cordon nobody maintains is not a cordon.
   city.quarantined.clear();
@@ -788,6 +806,16 @@ export function hashWorld(city: City): number {
     put(b.fabric);
     put(b.facade);
     put(b.occupants.length);
+  }
+  put(city.laws.enforcement);
+  put(city.laws.active);
+  put(city.laws.shebeenId);
+  for (const slot of city.laws.slots) {
+    put(slot.inForce);
+    put(slot.param);
+    put(slot.captured);
+    put(slot.enforced);
+    put(slot.breached);
   }
   return h >>> 0;
 }

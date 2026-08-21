@@ -57,6 +57,7 @@ export const Stream = {
   Prose: 23,
   Tram: 24,
   Crowd: 25,
+  Law: 28,
 } as const;
 export type StreamId = (typeof Stream)[keyof typeof Stream];
 

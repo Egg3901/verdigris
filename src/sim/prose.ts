@@ -147,7 +147,10 @@ export function carrying(city: City, s: Soul): string {
   else if (s.purse < 20) bits.push('nothing worth taking');
   if (s.hunger > 800) bits.push('an empty stomach');
   if (s.grievance > 700) bits.push('a grievance');
-  if (s.beliefs.length) bits.push(`${s.beliefs.length} thing${s.beliefs.length === 1 ? '' : 's'} heard secondhand`);
-  void city;
+  if (s.beliefs.some((b) => city.claims.claims[b.claimId]?.kind === 'bylaw')) {
+    bits.push('a grievance against the hall');
+  } else if (s.beliefs.length) {
+    bits.push(`${s.beliefs.length} thing${s.beliefs.length === 1 ? '' : 's'} heard secondhand`);
+  }
   return bits.length ? joinList(bits) : 'nothing in particular';
 }

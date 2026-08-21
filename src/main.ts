@@ -23,7 +23,8 @@ import { verbForKey, NUDGE_VERBS } from './ui/keys';
 import type { Verb } from './ui/keys';
 import { soulPos } from './sim/souls';
 import { INTERVENTIONS, canApply, apply as applyNudge } from './sim/interventions';
-import type { InterventionKind, Target } from './sim/types';
+import { enact as enactOrdinance, repeal as repealOrdinance } from './sim/ordinances';
+import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
 
 const params = new URLSearchParams(location.search);
 const SEED = params.get('seed') ?? 'verdigris';
@@ -391,6 +392,8 @@ interface QaHook {
   select: (kind: 'building' | 'soul', id: number) => void;
   debugSkin: (id: number) => unknown;
   state: () => { tick: number; outdoors: number; buildings: number; souls: number };
+  enact: (kind: string, param?: number) => boolean;
+  repeal: (kind: string) => boolean;
 }
 
 (window as unknown as { __verdigris: QaHook }).__verdigris = {
@@ -411,5 +414,7 @@ interface QaHook {
     buildings: city.buildings.length,
     souls: city.souls.length,
   }),
+  enact: (kind, param) => enactOrdinance(city, kind as OrdinanceKind, param),
+  repeal: (kind) => repealOrdinance(city, kind as OrdinanceKind),
 };
 

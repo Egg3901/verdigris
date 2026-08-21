@@ -5,11 +5,12 @@
 // makes this whole layer trustworthy: the prose can never assert something the
 // simulation does not contain. That property is worth more than any amount of
 // generated fluency, and it is exactly what an LLM in this slot would destroy.
-import { isLampHour } from './clock';
+import { isLampHour, minuteOfDay } from './clock';
 import { DEFS } from './buildings';
 import type { Building } from './buildings';
 import { serviceAt } from './networks';
 import { pressureOf } from './pressures';
+import { inForce, ordinanceOf } from './ordinances';
 import type { Activity, Trade } from './types';
 import type { City } from './city';
 
@@ -55,6 +56,14 @@ export const SENSES: readonly Fragment[] = [
   { token: 'soot on the sills', when: (c, b) => c.district.grime[b.cells[0]] > 150, salience: 58 },
   { token: 'a draught nobody will name', when: (_c, b) => b.fabric < 300, salience: 66 },
   { token: 'the smell of the drains', when: (c) => pressureOf(c.press, 'sanitation') < 340, salience: 76 },
+  { token: 'a notice about the new hours', when: (c, b) => b.kind === 'pub' && inForce(c, 'licensingHours'), salience: 82 },
+  { token: 'the door locked from inside', when: (c, b) => b.kind === 'pub' && inForce(c, 'licensingHours') && b.occupants.some((id) => c.souls[id].activity === 'drinking') && minuteOfDay(c.tick) >= ordinanceOf(c, 'licensingHours').param, salience: 94 },
+  { token: 'a queue for the four-pound loaf', when: (c, b) => b.kind === 'shop' && inForce(c, 'breadAssize') && b.occupants.length > 2, salience: 88 },
+  { token: 'an empty pew', when: (c, b) => b.kind === 'chapel' && inForce(c, 'pewRents') && b.occupants.length < 3, salience: 80 },
+  { token: 'a condemned bill on the door', when: (c, b) => c.laws.condemnedUntil[b.id] > c.tick, salience: 92 },
+  { token: 'carts sent round', when: (c, b) => inForce(c, 'cartBylaw') && ordinanceOf(c, 'cartBylaw').param === b.streetId && (b.kind === 'shop' || b.kind === 'warehouse'), salience: 84 },
+  { token: 'the courts still off the mains', when: (c, b) => b.kind === 'courtdwelling' && !serviceAt(c.networks.drain, b.id), salience: 90 },
+  { token: 'a shebeen after hours', when: (c, b) => c.laws.shebeenId === b.id && inForce(c, 'licensingHours'), salience: 95 },
 
   // Occupancy. Absence is information, so an empty room says so.
   { token: 'an argument', when: (c, b) => b.occupants.some((id) => c.souls[id].activity === 'arguing'), salience: 90 },
