@@ -209,15 +209,20 @@ function bakeLamp(variant: Variant, arc: boolean): HTMLCanvasElement {
   ctx.fillRect(6, 10, 2, 15);
   ctx.fillRect(4, 24, 6, 2);
   ctx.fillRect(2, 10, 6, 2);
+  // A 7x9 brass-framed lantern is the loudest object in the frame at zoom 1:
+  // across the district it reads as a scatter of gold rectangles floating over
+  // the roofs, because the post is one dark pixel wide and vanishes while the
+  // head does not. Five by six, and the frame is brass INK rather than brass, so
+  // the lamp reads as a lamp close up and as a dot from above.
   const glass = variant === 'day' ? g(PAL.darkWindow) : (arc ? PAL.arc1 : PAL.gas2);
-  const frame = g(arc ? PAL.stone2 : PAL.brass2);
+  const frame = g(arc ? PAL.stone1 : PAL.brassInk);
   ctx.fillStyle = frame;
-  ctx.fillRect(1, 2, 7, 9);
+  ctx.fillRect(2, 4, 5, 6);
   ctx.fillStyle = glass;
-  ctx.fillRect(2, 3, 5, 7);
+  ctx.fillRect(3, 5, 3, 4);
   if (variant !== 'day') {
     ctx.fillStyle = arc ? PAL.arc0 : PAL.gas1;
-    ctx.fillRect(3, 5, 3, 3);
+    ctx.fillRect(3, 6, 2, 2);
   }
   hardenAlpha(ctx, c.width, c.height);
   return c;

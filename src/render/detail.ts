@@ -409,16 +409,16 @@ export function drawRoofPatch(
 ): void {
   if (quad.length < 4) return;
   const a = {
-    x: quad[0].x + (quad[1].x - quad[0].x) * 0.15,
-    y: quad[0].y + (quad[1].y - quad[0].y) * 0.15,
+    x: quad[0].x + (quad[1].x - quad[0].x) * 0.30,
+    y: quad[0].y + (quad[1].y - quad[0].y) * 0.30,
   };
   const b = {
-    x: quad[0].x + (quad[1].x - quad[0].x) * 0.55,
-    y: quad[0].y + (quad[1].y - quad[0].y) * 0.55,
+    x: quad[0].x + (quad[1].x - quad[0].x) * 0.52,
+    y: quad[0].y + (quad[1].y - quad[0].y) * 0.52,
   };
   const c = {
-    x: quad[3].x + (quad[2].x - quad[3].x) * 0.55,
-    y: quad[3].y + (quad[2].y - quad[3].y) * 0.55,
+    x: quad[3].x + (quad[2].x - quad[3].x) * 0.52,
+    y: quad[3].y + (quad[2].y - quad[3].y) * 0.52,
   };
   const d = {
     x: quad[3].x + (quad[2].x - quad[3].x) * 0.15,
