@@ -54,6 +54,8 @@ import { newShelters, tickShelters } from './shelters';
 import type { ShelterState } from './shelters';
 import { civicGrievanceTarget, newCivicMemory, tickCivicRecoveryDaily } from './civic-memory';
 import type { CivicMemoryState } from './civic-memory';
+import { newOccasions, tickOccasions } from './occasions';
+import type { OccasionState } from './occasions';
 
 export interface LogEvent {
   tick: number;
@@ -118,6 +120,7 @@ export interface City extends World {
   disasters: DisasterState;
   shelters: ShelterState;
   civic: CivicMemoryState;
+  occasions: OccasionState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -153,6 +156,7 @@ export function newCity(seedStr: string): City {
     disasters: newDisasters(),
     shelters: newShelters(),
     civic: newCivicMemory(world.buildings.length, world.households.length),
+    occasions: newOccasions(),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -547,6 +551,7 @@ export function tickCity(city: City): void {
   // still owns; later laws or incidents are never overwritten.
   tickDeputation(city);
   tickShelters(city);
+  tickOccasions(city);
 
   // 4. Needs, sliced ten ways by id so the cost is flat and the phase is stable
   //    across a save.
@@ -951,6 +956,41 @@ export function hashWorld(city: City): number {
   put(weather.kind === 'fair' ? 1 : weather.kind === 'overcast' ? 2
     : weather.kind === 'rain' ? 3 : weather.kind === 'storm' ? 4 : 5);
   put(weather.windX);
+  put(city.occasions.revision);
+  put(city.occasions.lastDay);
+  put(city.occasions.nextId);
+  const lastMarket = city.occasions.lastOutcome;
+  put(lastMarket ? 1 : 0);
+  if (lastMarket) {
+    put(lastMarket.day);
+    put(lastMarket.hallId);
+    put(lastMarket.status === 'open' ? 1 : lastMarket.status === 'thin' ? 2 : 3);
+    put(lastMarket.arrived);
+    put(lastMarket.invited);
+    put(lastMarket.endedAt);
+  }
+  const occasion = city.occasions.current;
+  put(occasion ? 1 : 0);
+  if (occasion) {
+    put(occasion.id);
+    put(occasion.squareNode);
+    put(occasion.hallId);
+    put(occasion.day);
+    put(occasion.startedAt);
+    put(occasion.endsAt);
+    put(occasion.rejectedCount);
+    put(occasion.status === 'assembling' ? 1 : occasion.status === 'open' ? 2 : occasion.status === 'thin' ? 3 : 4);
+    put(occasion.vendorIds.length);
+    for (const id of occasion.vendorIds) put(id);
+    put(occasion.visitorIds.length);
+    for (const id of occasion.visitorIds) put(id);
+    put(occasion.attendeeIds.length);
+    for (const id of occasion.attendeeIds) put(id);
+    put(occasion.arrivedIds.length);
+    for (const id of occasion.arrivedIds) put(id);
+    put(occasion.servedIds.length);
+    for (const id of occasion.servedIds) put(id);
+  }
   put(city.deputations.revision);
   put(city.deputations.nextId);
   put(city.deputations.squareNode);

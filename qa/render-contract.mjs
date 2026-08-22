@@ -15,6 +15,7 @@ const CASES = [
   { name: 'storm-day', seed: 'weather-3', tick: 641, weather: 'storm' },
   { name: 'rain-night', seed: 'night-rain-5', tick: 1320, weather: 'rain' },
   { name: 'storm-refuge', seed: 'weather-3', tick: 641, weather: 'storm', shelter: true },
+  { name: 'civic-market', seed: 'coppergate', tick: 480, expectedTick: 540, market: true },
   { name: 'merchant-authorship', seed: 'verdigris', tick: 641, ward: 'merchant' },
   { name: 'works-authorship', seed: 'verdigris', tick: 641, ward: 'works' },
   { name: 'courts-authorship', seed: 'verdigris', tick: 641, ward: 'courts' },
@@ -49,6 +50,16 @@ try {
         if (!hook.nudge('openShelter', { kind: 'building', id: provider.id })) throw new Error('storm refuge refused');
         hook.lookAt(provider.ox, provider.oy);
         hook.zoom(3);
+      });
+      await page.waitForTimeout(120);
+    }
+    if (test.market) {
+      await page.evaluate(() => {
+        const hook = window.__verdigris;
+        if (!hook.market()) throw new Error('market fixture refused');
+        hook.warp(60);
+        const hall = hook.city.buildings.find((b) => b.kind === 'townhall');
+        if (hall) { hook.lookAt(hall.ox, hall.oy); hook.zoom(3); }
       });
       await page.waitForTimeout(120);
     }
@@ -111,7 +122,8 @@ try {
         illegal: [...illegal].slice(0, 12),
       };
     });
-    if (result.tick !== test.tick) throw new Error(`${test.name}: expected tick ${test.tick}, got ${result.tick}`);
+    const expectedTick = test.expectedTick ?? test.tick;
+    if (result.tick !== expectedTick) throw new Error(`${test.name}: expected tick ${expectedTick}, got ${result.tick}`);
     if (test.weather && result.weather !== test.weather) {
       throw new Error(`${test.name}: expected ${test.weather}, got ${result.weather}`);
     }

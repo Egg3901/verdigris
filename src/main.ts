@@ -27,6 +27,7 @@ import { INTERVENTIONS, canApply, apply as applyNudge } from './sim/intervention
 import { enact as enactOrdinance, repeal as repealOrdinance } from './sim/ordinances';
 import { startDisaster } from './sim/disasters';
 import type { DisasterKind } from './sim/disasters';
+import { startMarketDay } from './sim/occasions';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
 import { weatherAt } from './sim/weather';
 
@@ -469,7 +470,8 @@ function loop(now: number): void {
     || scene.deputationRevision !== city.deputations.revision
     || scene.disasterRevision !== city.disasters.revision
     || scene.weatherRevision !== weatherAt(city.seed, city.tick).revision
-    || scene.shelterRevision !== city.shelters.revision) {
+    || scene.shelterRevision !== city.shelters.revision
+    || scene.occasionRevision !== city.occasions.revision) {
     buntingShown = buntingNow;
     scene = buildScene(city, wantVariant);
   }
@@ -498,6 +500,7 @@ interface QaHook {
   repeal: (kind: string) => boolean;
   nudge: (kind: string, target: Target) => boolean;
   disaster: (kind: string, buildingId: number) => boolean;
+  market: () => boolean;
   weather: () => string;
   palette: () => readonly string[];
 }
@@ -528,6 +531,7 @@ interface QaHook {
   repeal: (kind) => repealOrdinance(city, kind as OrdinanceKind),
   nudge: (kind, target) => applyNudge(city, kind as InterventionKind, target),
   disaster: (kind, buildingId) => startDisaster(city, kind as DisasterKind, buildingId) !== null,
+  market: () => startMarketDay(city) > 0,
   weather: () => weatherAt(city.seed, city.tick).kind,
   palette: () => renderPalette(scene.variant),
 };

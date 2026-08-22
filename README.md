@@ -74,7 +74,7 @@ Built and playing:
   a lineage you can walk back.
 - Six incidents with hysteresis and cooldowns, each carrying the cause chain that
   produced it.
-- Nine interventions, each with a second-order effect and a backfire that is
+- Eleven interventions, each with a second-order effect and a backfire that is
   a documented state condition rather than a dice roll.
 - The Works Register: file a fabric, drain or gas case on a building. Pneumatic
   post access changes lead time; coin, rot and workshop state decide whether it
@@ -82,6 +82,15 @@ Built and playing:
   sheeting, completion plaques, gutters, broken pipes, damp and puddles put that
   state directly on the building.
 - Predicate-gated prose that cannot assert anything the sim does not contain.
+- Seeded six-hour weather watches with rain, storms, fog, wind, wet streets,
+  umbrellas, exposure, failed-drain wear, altered wharf output, and weather-gated
+  fires and floods.
+- A fixed civic record at every address. Disasters, works cases, hearings and
+  storm relief leave bounded household burdens, institutional evidence and
+  persistent inspector history after the temporary event has cleared.
+- Civic Market Day: a seeded public occasion whose vendors and visitors walk to
+  the square, whose goods appear only after vendors arrive, and whose turnout can
+  be thinned or cancelled by weather, public order, a deputation or storm relief.
 - Isometric renderer: gable, hip, pyramid, flat, mansard, gambrel, sawtooth and
   dome roofs; chimneys, dormers, facade materials, window rhythm, vehicles,
   smoke, lit windows, trees, ground texture, flatten-per-building compositor,
@@ -100,7 +109,6 @@ Not built:
   all built against those primitives, so an atlas drops in behind an unchanged
   `blit()`. `atlas.ts`'s contract is that a missing frame falls back to a
   primitive, so art can never blank the game.
-- Weather beyond soot, smoke and rainwater staining.
 - The 9-slice panel frames and the two pixel fonts. Panels use flat CSS borders
   and a system monospace stack.
 

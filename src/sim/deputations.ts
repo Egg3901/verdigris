@@ -84,6 +84,7 @@ function eligibleFromStreet(city: City, buildingId: BuildingId): SoulId[] {
 /** Reason suitable for the disabled intervention row, or null when callable. */
 export function canCallDeputation(city: City, buildingId: BuildingId): string | null {
   if (isDeputationActive(city)) return 'Another street is already before the hall.';
+  if (city.occasions.current) return 'The market has the square.';
   const target = city.buildings[buildingId];
   if (!target) return 'Nothing there.';
   if (target.streetId < 0) return 'No street can answer for this address.';

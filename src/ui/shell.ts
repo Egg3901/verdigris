@@ -21,6 +21,7 @@ import type { Vestry } from './vestry';
 import { weatherAt, weatherLabel } from '../sim/weather';
 import { shelterSummary } from '../sim/shelters';
 import { civicSummary } from '../sim/civic-memory';
+import { occasionSummary } from '../sim/occasions';
 
 export interface ShellHooks {
   /** The selected building, for ordinances that need a street named. */
@@ -526,7 +527,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       const disaster = disasterSummary(city, b.id);
       const shelter = shelterSummary(city, b.id);
       const civic = civicSummary(city, b.id);
-      insMore.textContent = [more > 0 ? `…and ${more} more` : '', civic, shelter, disaster, works, deputation].filter(Boolean).join('\n');
+      const occasion = occasionSummary(city, b.id);
+      insMore.textContent = [more > 0 ? `…and ${more} more` : '', civic, shelter, occasion, disaster, works, deputation].filter(Boolean).join('\n');
       return;
     }
     inspector.hidden = true;

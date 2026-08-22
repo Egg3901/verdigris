@@ -37,6 +37,7 @@ const SCENES = [
   { name: 'storm-quay', seed: 'weather-3', tick: 641, zoom: 2, ward: 'quayside' },
   { name: 'rain-night', seed: 'night-rain-5', tick: 1320, zoom: 2, ward: 'civic' },
   { name: 'storm-refuge', seed: 'weather-3', tick: 641, zoom: 3, shelter: true },
+  { name: 'civic-market', seed: 'coppergate', tick: 480, zoom: 3, market: true },
   { name: 'merchant-frontage', seed: 'verdigris', tick: 641, zoom: 3, ward: 'merchant' },
   { name: 'works-yard', seed: 'verdigris', tick: 641, zoom: 3, ward: 'works' },
   { name: 'courts-patina', seed: 'verdigris', tick: 641, zoom: 3, ward: 'courts' },
@@ -132,6 +133,16 @@ for (const scene of SCENES) {
           window.__verdigris.select('building', provider.id);
           window.__verdigris.lookAt(provider.ox, provider.oy);
         }
+      }
+    }
+    if (s.market) {
+      const city = window.__verdigris.city;
+      if (!window.__verdigris.market()) throw new Error('market fixture refused');
+      const hall = city.buildings.find((b) => b.kind === 'townhall');
+      if (hall) {
+        window.__verdigris.warp(60);
+        window.__verdigris.select('building', hall.id);
+        window.__verdigris.lookAt(hall.ox, hall.oy);
       }
     }
     if (s.ward) {

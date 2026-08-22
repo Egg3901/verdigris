@@ -115,7 +115,7 @@ export function drawFrame(
       if (a.wx > br.wx || a.wy > br.wy || a.wx < tl.wx || a.wy < tl.wy) continue;
       const umbrella = weather.precipitation > 0
         && mix(city.seed, Stream.Weather, weather.watch, a.soulId) % 100 < 78;
-      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId, scene.variant, umbrella);
+      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId, scene.variant, umbrella, a.vendor);
       stats.calls++;
     } else {
       stats.calls += drawHazard(ctx, hazardPool[hi++], scene.variant);

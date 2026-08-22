@@ -129,7 +129,7 @@ const LEG = PAL.ink;
 export function drawSoul(
   ctx: CanvasRenderingContext2D, x: number, y: number,
   coat: string, hat: string, step: number, salt = 0, variant: Variant = 'day',
-  umbrella = false,
+  umbrella = false, basket = false,
 ): void {
   const px = Math.round(x);
   const py = Math.round(y);
@@ -178,5 +178,11 @@ export function drawSoul(
     lineHard(ctx, { x: px, y: py - 17 + bob }, { x: px, y: py - 7 + bob }, gradeHex(PAL.wood0, variant));
     ctx.fillStyle = gradeHex(PAL.rivGlint, variant);
     ctx.fillRect(px - 3, py - 15 + bob, 2, 1);
+  }
+  if (basket) {
+    ctx.fillStyle = gradeHex(PAL.wood2, variant);
+    ctx.fillRect(px + 2, py - 7 + bob, 2, 2);
+    ctx.fillStyle = gradeHex(PAL.ochre1, variant);
+    ctx.fillRect(px + 2, py - 8 + bob, 1, 1);
   }
 }

@@ -29,6 +29,7 @@ import { weatherAt } from './weather';
 import { serviceAt } from './networks';
 import { isShelterActive } from './shelters';
 import { civicBuildingClause, civicHouseholdClause } from './civic-memory';
+import { isOccasionActive } from './occasions';
 
 const MAX_SENSES = 3;
 
@@ -121,6 +122,11 @@ function liveClause(city: City, b: Building): string {
     }
     if (!shelter.arrivedIds.length) return 'A storm refuge has opened here and the first people are still on their way.';
     return `${shelter.arrivedIds.length} ${shelter.arrivedIds.length === 1 ? 'person has' : 'people have'} reached the storm refuge inside.`;
+  }
+  const market = city.occasions.current;
+  if (market && market.hallId === b.id && isOccasionActive(city)) {
+    if (market.status === 'open') return `${market.arrivedIds.length} people have made a market in the square outside.`;
+    return 'The market is assembling in the square outside.';
   }
   const weather = weatherAt(city.seed, city.tick);
   if (weather.precipitation > 0 && DEFS[b.kind].needsDrain && !serviceAt(city.networks.drain, b.id)) {

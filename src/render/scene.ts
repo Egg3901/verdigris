@@ -30,7 +30,7 @@ import type { CartRoute } from './fx';
 import type { HouseSpec, HouseSkin, RoofShape, Finial, Frontage } from './house';
 import type { WallMaterial } from './detail';
 import { mix, Stream } from '../sim/rng';
-import { buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
+import { buildMarketProps, buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
 import { worksStageFor } from '../sim/works';
 import { isDeputationActive } from '../sim/deputations';
@@ -62,6 +62,7 @@ export interface Scene {
   disasterRevision: number;
   weatherRevision: number;
   shelterRevision: number;
+  occasionRevision: number;
   ground: HTMLCanvasElement;
   props: Prop[];
   idBuffer: HTMLCanvasElement;
@@ -471,6 +472,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   const squareProps = buildSquareProps(
     d, city.seed, variant, city.streetPlan.squareX, city.streetPlan.squareY, city.streetPlan.squareW,
   );
+  const marketProps = buildMarketProps(city, variant);
 
   // Distance from each water cell to the nearest bank, so the channel can be
   // shaded across its width. A single flat value over 13% of the frame was the
@@ -773,7 +775,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   }
   statics.sort((p, q) => p.depth - q.depth);
 
-  const props = naturalProps.concat(squareProps, streetProps);
+  const props = naturalProps.concat(squareProps, streetProps, marketProps);
   props.sort((a, b) => a.depth - b.depth);
   return {
     cartRoutes: buildCartRoutes(city), variant,
@@ -781,6 +783,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     disasterRevision: city.disasters.revision,
     weatherRevision: weather.revision,
     shelterRevision: city.shelters.revision,
+    occasionRevision: city.occasions.revision,
     ground, props, idBuffer, idCtx, statics, originX, originY,
   };
 }

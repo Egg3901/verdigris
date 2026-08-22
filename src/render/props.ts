@@ -12,6 +12,8 @@ import { Tile } from '../sim/types';
 import type { District } from '../sim/district';
 import type { Ward } from '../sim/gen/wards';
 import { cellKey, insideIsland } from '../sim/district';
+import type { City } from '../sim/city';
+import { isOccasionActive } from '../sim/occasions';
 
 export interface Prop {
   sprite: HTMLCanvasElement;
@@ -152,6 +154,46 @@ export function buildSquareProps(
         depth: depthKey(x, y, LAYER_STRUCT),
       });
     }
+  }
+  return out;
+}
+
+function bakeMarketGoods(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 20; c.height = 18;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const cloth = [PAL.buntRed, PAL.buntBlue, PAL.verd1][salt % 3];
+  fillPolyHard(ctx, [{ x: 10, y: 2 }, { x: 19, y: 6 }, { x: 10, y: 10 }, { x: 1, y: 6 }], g(cloth));
+  ctx.fillStyle = g(PAL.wood0);
+  ctx.fillRect(2, 6, 1, 9);
+  ctx.fillRect(17, 6, 1, 9);
+  ctx.fillStyle = g(PAL.wood2);
+  ctx.fillRect(5, 11, 10, 3);
+  ctx.fillStyle = g(PAL.ochre1);
+  ctx.fillRect(6, 10, 2, 1);
+  ctx.fillStyle = g(PAL.verd2);
+  ctx.fillRect(11, 10, 2, 1);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** Extra awnings and goods appear only when the simulation has actual vendors in the square. */
+export function buildMarketProps(city: City, variant: Variant): Prop[] {
+  const occasion = city.occasions.current;
+  if (!occasion || !isOccasionActive(city)) return [];
+  const out: Prop[] = [];
+  const sqX = city.streetPlan.squareX;
+  const sqY = city.streetPlan.squareY;
+  const sqW = city.streetPlan.squareW;
+  const placements: readonly [number, number][] = [
+    [sqX + 1, sqY + 1], [sqX + sqW - 2, sqY + 1], [sqX + 1, sqY + sqW - 2],
+  ];
+  for (let i = 0; i < occasion.vendorIds.length && i < placements.length; i++) {
+    if (!occasion.arrivedIds.includes(occasion.vendorIds[i])) continue;
+    const [x, y] = placements[i];
+    const sprite = bakeMarketGoods(occasion.vendorIds[i], variant);
+    out.push({ sprite, ax: 10, ay: 15, wx: isoX(x, y), wy: isoY(x, y), depth: depthKey(x, y, LAYER_STRUCT) });
   }
   return out;
 }
