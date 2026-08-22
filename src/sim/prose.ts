@@ -28,6 +28,7 @@ import { disasterAt, isBuildingClosed } from './disasters';
 import { weatherAt } from './weather';
 import { serviceAt } from './networks';
 import { isShelterActive } from './shelters';
+import { civicBuildingClause, civicHouseholdClause } from './civic-memory';
 
 const MAX_SENSES = 3;
 
@@ -144,6 +145,8 @@ function liveClause(city: City, b: Building): string {
   if (order?.status === 'filed') return 'A blue survey mark says the address has entered the works register.';
   if (order?.status === 'skimmed') return 'The defect remains behind fresh paint and a new brass plaque.';
   if (order?.status === 'shelved') return 'A numbered works notice is pasted by the door, already curling at the corners.';
+  const civic = civicBuildingClause(city, b.id);
+  if (civic) return civic;
   if (b.lastIncidentTick >= 0 && city.tick - b.lastIncidentTick < 240) {
     return 'Something happened here this morning and nobody has written it down yet.';
   }
@@ -189,7 +192,8 @@ export function describeSoul(city: City, id: number): string {
   const exposure = s.inId < 0 && weather.precipitation > 0
     ? weather.kind === 'storm' ? ' The hard rain has got through every layer.' : ' Out in the rain.'
     : '';
-  return `${s.age}, ${trade}, of ${where}. Currently ${doing}.${exposure}`;
+  const civic = civicHouseholdClause(city, s.householdId);
+  return `${s.age}, ${trade}, of ${where}. Currently ${doing}.${exposure}${civic ? ` ${civic}` : ''}`;
 }
 
 /** Where a soul is going, for the BOUND FOR line on the inspector. */

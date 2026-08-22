@@ -52,6 +52,8 @@ import {
 import type { Weather } from './weather';
 import { newShelters, tickShelters } from './shelters';
 import type { ShelterState } from './shelters';
+import { civicGrievanceTarget, newCivicMemory, tickCivicRecoveryDaily } from './civic-memory';
+import type { CivicMemoryState } from './civic-memory';
 
 export interface LogEvent {
   tick: number;
@@ -115,6 +117,7 @@ export interface City extends World {
   deputations: DeputationState;
   disasters: DisasterState;
   shelters: ShelterState;
+  civic: CivicMemoryState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -149,6 +152,7 @@ export function newCity(seedStr: string): City {
     deputations: newDeputations(world.squareNode),
     disasters: newDisasters(),
     shelters: newShelters(),
+    civic: newCivicMemory(world.buildings.length, world.households.length),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -638,6 +642,10 @@ function tickNeeds(city: City, s: Soul, weather: Weather): void {
   target += arrears * 90;
   target += Math.max(0, 500 - wages) / 2;
   if (s.purse < 15) target += 80;
+  // A disaster or failed repair remains a household fact after its ticker event
+  // clears. This raises a person's later willingness to act, rather than moving
+  // a global pressure by decree.
+  target += civicGrievanceTarget(city, s.householdId);
   // Character: the same conditions do not aggrieve two people equally.
   target += (s.boldness - 500) / 6;
   target = Math.max(0, Math.min(1000, target));
@@ -830,6 +838,7 @@ function tickDay(city: City): void {
   const tick = city.tick;
   city.budgetLeft = DAILY_BUDGET;
   tickOrdinancesDaily(city);
+  tickCivicRecoveryDaily(city);
   decayBeliefsDaily(city.claims, city.souls);
   // Quarantines are lifted after a day: a cordon nobody maintains is not a cordon.
   city.quarantined.clear();
@@ -906,6 +915,37 @@ export function hashWorld(city: City): number {
     h = Math.imul(h, 16777619);
   };
   put(city.tick);
+  put(city.civic.revision);
+  for (const record of city.civic.records) {
+    put(record.buildingId);
+    put(record.episode);
+    put(record.cause === 'none' ? 0 : record.cause === 'fire' ? 1 : record.cause === 'flood' ? 2
+      : record.cause === 'collapse' ? 3 : record.cause === 'fabric' ? 4 : record.cause === 'drain' ? 5 : 6);
+    put(record.verdict === 'none' ? 0 : record.verdict === 'open' ? 1 : record.verdict === 'madeGood' ? 2 : 3);
+    put(record.openedAt);
+    put(record.resolvedAt);
+    put(record.disasterId);
+    put(record.worksOrderId);
+    put(record.hallOutcome);
+    put(record.severity);
+    put(record.scars);
+    put(record.failedWorks);
+    put(record.completedWorks);
+    put(record.householdIds.length);
+    for (const id of record.householdIds) put(id);
+  }
+  for (let i = 0; i < city.civic.householdBurden.length; i++) {
+    put(city.civic.householdBurden[i]);
+    put(city.civic.householdRecovery[i]);
+    put(city.civic.householdLastBuilding[i]);
+  }
+  const institutions = city.civic.institutions;
+  put(institutions.worksKept);
+  put(institutions.worksFailed);
+  put(institutions.hallHeard);
+  put(institutions.hallDismissed);
+  put(institutions.reliefHelped);
+  put(institutions.reliefHarmed);
   const weather = weatherAt(city.seed, city.tick);
   put(weather.revision);
   put(weather.kind === 'fair' ? 1 : weather.kind === 'overcast' ? 2

@@ -7,6 +7,7 @@ import { gateOrdinanceTarget, wouldAllowGathering } from './ordinances';
 import { mix, Stream } from './rng';
 import { expediteFiledOrder, latestOrderFor } from './works';
 import type { BuildingId, SoulId } from './types';
+import { civicHouseholdBurden, recordCivicHearing } from './civic-memory';
 
 export type DeputationStatus = 'gathering' | 'heard' | 'thin' | 'dispersed';
 
@@ -69,6 +70,9 @@ function eligibleFromStreet(city: City, buildingId: BuildingId): SoulId[] {
     const atAddressA = sa.homeId === buildingId ? 1 : 0;
     const atAddressB = sb.homeId === buildingId ? 1 : 0;
     if (atAddressA !== atAddressB) return atAddressB - atAddressA;
+    const burdenA = civicHouseholdBurden(city, sa.householdId);
+    const burdenB = civicHouseholdBurden(city, sb.householdId);
+    if (burdenA !== burdenB) return burdenB - burdenA;
     if (sa.grievance !== sb.grievance) return sb.grievance - sa.grievance;
     const ha = mix(city.seed, Stream.Crowd, city.tick, a + buildingId * 257);
     const hb = mix(city.seed, Stream.Crowd, city.tick, b + buildingId * 257);
@@ -161,6 +165,7 @@ function resolveHearing(city: City, current: Deputation): void {
   current.resolvedAt = city.tick;
   if (present.length >= HEARD_THRESHOLD) {
     current.status = 'heard';
+    recordCivicHearing(city, current.orderId, true);
     const moved = expediteFiledOrder(city, current.orderId, city.tick + 60);
     pushLog(city, moved
       ? `${present.length} neighbours were heard at Civic Hall. Their works case has been brought forward.`
@@ -170,6 +175,7 @@ function resolveHearing(city: City, current: Deputation): void {
     return;
   }
   current.status = current.rejectedCount > 0 ? 'dispersed' : 'thin';
+  recordCivicHearing(city, current.orderId, false);
   if (current.status === 'dispersed') current.endsAt = city.tick;
   pushLog(city, current.status === 'dispersed'
     ? 'The public-order men kept enough neighbours from Civic Hall that no case was heard.'

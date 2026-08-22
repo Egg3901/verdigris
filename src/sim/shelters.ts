@@ -9,6 +9,7 @@ import { serviceAt } from './networks';
 import { mix, Stream } from './rng';
 import type { BuildingId, SoulId } from './types';
 import { isWetWeather, weatherAt } from './weather';
+import { recordCivicRelief } from './civic-memory';
 
 export interface Shelter {
   id: number;
@@ -166,10 +167,12 @@ export function tickShelters(city: City): void {
       s.warmth = Math.min(1000, s.warmth + (heated ? 90 : 40));
       s.health = Math.max(0, s.health - 24);
       s.grievance = Math.min(1000, s.grievance + 35);
+      recordCivicRelief(city, id, false);
     } else {
       s.warmth = Math.min(1000, s.warmth + (heated ? 160 : 70));
       s.health = Math.min(1000, s.health + (heated ? 28 : 14));
       s.grievance = Math.max(0, s.grievance - (heated ? 42 : 20));
+      recordCivicRelief(city, id, true);
     }
     shelter.relievedIds.push(id);
     city.shelters.revision++;

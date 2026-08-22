@@ -12,6 +12,7 @@ import { applyPressure, pressureOf } from './pressures';
 import { mix, Stream } from './rng';
 import type { BuildingId, SoulId } from './types';
 import { weatherAt } from './weather';
+import { openCivicDisaster } from './civic-memory';
 
 export type DisasterKind = 'fire' | 'flood' | 'collapse';
 export type DisasterStatus = 'active' | 'contained';
@@ -186,6 +187,7 @@ export function startDisaster(city: City, kind: DisasterKind, buildingId?: numbe
   st.events.push(event);
   st.lastStartedAt[KIND_INDEX[kind]] = startedAt;
   st.revision++;
+  openCivicDisaster(city, event);
 
   emit(city.events, kind, targetId, witnesses, severity, startedAt);
   if (witnesses.length) {

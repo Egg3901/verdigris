@@ -10,6 +10,7 @@ import { DEFS } from './buildings';
 import { emit } from './events';
 import { applyPressure, pressureOf } from './pressures';
 import { connectBuilding, repairSegment, serviceAt } from './networks';
+import { fileCivicWorks, resolveCivicWorks } from './civic-memory';
 
 export type WorksKind = 'fabric' | 'drain' | 'gas';
 export type WorksStatus = 'filed' | 'working' | 'completed' | 'skimmed' | 'shelved';
@@ -98,6 +99,7 @@ export function fileWorks(city: City, buildingId: number): WorkOrder {
   };
   city.works.orders.push(order);
   city.works.revision++;
+  fileCivicWorks(city, order);
   emit(city.events, 'worksFiled', buildingId, [], 160, city.tick);
   return order;
 }
@@ -158,6 +160,7 @@ export function tickWorksHourly(city: City): WorksUpdate[] {
         order.status = 'shelved';
         order.resolvedAt = city.tick;
         city.works.revision++;
+        resolveCivicWorks(city, order, false);
         out.push({
           buildingId: b.id,
           text: `The works case at ${b.name} was entered, numbered, and shelved for want of funds.`,
@@ -183,6 +186,7 @@ export function tickWorksHourly(city: City): WorksUpdate[] {
     if (honest && funded && crewWorking) {
       completePhysicalWork(city, order);
       order.status = 'completed';
+      resolveCivicWorks(city, order, true);
       emit(city.events, 'worksCompleted', b.id, [], 220, city.tick);
       out.push({
         buildingId: b.id,
@@ -196,6 +200,7 @@ export function tickWorksHourly(city: City): WorksUpdate[] {
     // the pipe or fabric that justified the case is left exactly as it was.
     order.status = 'skimmed';
     b.facade = Math.min(1000, b.facade + 90);
+    resolveCivicWorks(city, order, false);
     emit(city.events, 'worksSkimmed', b.id, [], 420, city.tick);
     out.push({
       buildingId: b.id,
