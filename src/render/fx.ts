@@ -10,12 +10,13 @@ import { PAL, gradeHex, shadeHex } from './palette';
 import type { Variant } from './palette';
 import { minuteOfDay } from '../sim/clock';
 import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_AGENT, LAYER_OVERHEAD } from './iso';
-import { fillPolyHard } from './raster';
-import { mix } from '../sim/rng';
+import { fillPolyHard, lineHard } from './raster';
+import { mix, Stream } from '../sim/rng';
 import { stepToward } from '../sim/graph';
 import { Tile } from '../sim/types';
-import { cellKey } from '../sim/district';
+import { cellKey, insideIsland } from '../sim/district';
 import { isDisasterActive } from '../sim/disasters';
+import { weatherAt } from '../sim/weather';
 
 export interface VehicleDraw {
   /** 0 tram, 1 cart. */
@@ -243,6 +244,7 @@ export function drawSmoke(
   tl: { wx: number; wy: number }, br: { wx: number; wy: number },
 ): number {
   const t = city.tick + fracMin;
+  const weather = weatherAt(city.seed, city.tick);
   let calls = 0;
 
   // Smoke has to be LIGHTER than what is behind it, and what is behind it flips
@@ -288,7 +290,7 @@ export function drawSmoke(
     for (let i = 0; i < puffs; i++) {
       const age = (t * (industrial ? 0.05 : 0.03) + i / puffs) % 1;
       const drift = (((mix(city.seed, 81, b.id, i) >>> 0) % 7) - 3) * 0.6;
-      const px = Math.round(wx + drift * age * 4);
+      const px = Math.round(wx + drift * age * 4 + weather.windX * age * (industrial ? 14 : 8));
       const py = Math.round(wy - age * rise);
       // Small, and shrinking to nothing rather than fading. Two pixels across at
       // the top of a domestic flue is the whole of it.
@@ -316,13 +318,47 @@ export function drawSmoke(
     for (let i = 0; i < puffs; i++) {
       const age = (t * 0.07 + i / puffs) % 1;
       const drift = (((mix(city.seed, 185, event.id, i) >>> 0) % 9) - 4) * 0.7;
-      const px = Math.round(wx + drift * age * 5);
+      const px = Math.round(wx + drift * age * 5 + weather.windX * age * 18);
       const py = Math.round(wy - age * 62);
       const r = Math.max(1, Math.round((1 - age) * 3));
       ctx.fillStyle = shades[Math.min(2, Math.floor(age * 3))];
       ctx.fillRect(px - r, py - r, r * 2, Math.max(1, r * 2 - 1));
       calls++;
     }
+  }
+  return calls;
+}
+
+/** Viewport rain, generated from the current watch and animation frame. */
+export function drawWeatherFx(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const weather = weatherAt(city.seed, city.tick);
+  if (weather.precipitation === 0) return 0;
+  const count = weather.precipitation === 2 ? 78 : 48;
+  const spanX = Math.max(1, Math.floor(br.wx - tl.wx));
+  const spanY = Math.max(1, Math.floor(br.wy - tl.wy));
+  const frame = Math.floor((city.tick + fracMin) * (weather.precipitation === 2 ? 2 : 1.4));
+  const dark = gradeHex(PAL.riv2, variant);
+  const glint = gradeHex(PAL.rivGlint, variant);
+  let calls = 0;
+  for (let i = 0; i < count * 5 && calls < count; i++) {
+    // The lane is fixed for the whole watch. Only y advances, so rain falls
+    // instead of every streak teleporting to a new x each animation frame.
+    const h = mix(city.seed, Stream.Weather, weather.watch, i);
+    const x = Math.floor(tl.wx + (h % spanX));
+    const fall = frame * (weather.precipitation === 2 ? 5 : 3);
+    const y = Math.floor(tl.wy + (((h >>> 12) + fall) % spanY));
+    const tx = Math.round(x / TILE_W + y / TILE_H);
+    const ty = Math.round(y / TILE_H - x / TILE_W);
+    if (!insideIsland(city.district, tx, ty)) continue;
+    const len = weather.precipitation === 2 ? 6 + (h & 1) : 4 + (h & 1);
+    const lean = weather.windX * (weather.precipitation === 2 ? 3 : 2);
+    const bright = weather.precipitation === 2 ? (h % 5) < 2 : (h & 3) === 0;
+    const colour = bright ? glint : dark;
+    lineHard(ctx, { x, y }, { x: x + lean, y: y + len }, colour);
+    calls++;
   }
   return calls;
 }

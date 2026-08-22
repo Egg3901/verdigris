@@ -77,6 +77,8 @@ export interface HouseSpec {
   bunting?: boolean;
   /** A temporary cloth notice across the Civic Hall frontage. */
   deputationBanner?: boolean;
+  /** A striped public awning marks the building currently taking storm refugees. */
+  shelterOpen?: boolean;
   /** Awning colour for a shopfront. */
   awning?: string;
   /** Stable per-building number, so detail varies without being random. */
@@ -95,6 +97,8 @@ export interface HouseSpec {
   worksStage?: 0 | 1 | 2 | 3;
   /** 0 no drain needed, 1 served, 2 disconnected or behind a broken main. */
   drainState?: 0 | 1 | 2;
+  /** 0 dry, 1 rain, 2 hard rain. Drives only baked roof and gutter runoff. */
+  rainStrength?: 0 | 1 | 2;
   finial: Finial;
   finialH: number;
 }
@@ -181,6 +185,7 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   drawFacade(ctx, eave, spec);
   if (spec.damage === 'flooded') drawFloodDamage(ctx, eave, spec);
   if (spec.drainState) drawRainwaterGoods(ctx, eave, spec);
+  if (spec.rainStrength) drawRainRunoff(ctx, eave, roofQuad, spec);
   if (roofQuad && spec.dormers) {
     const n = Math.min(3, spec.dormers);
     for (let i = 0; i < n; i++) {
@@ -191,6 +196,7 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
     drawRoofPatch(ctx, roofQuad, shadeHex(skin.roofShade, -0.08));
   }
   if (roofQuad && spec.damage === 'burning') drawBurnedRoof(ctx, roofQuad, spec);
+  if (spec.shelterOpen) drawShelterEntrance(ctx, eave, roofQuad, spec);
 
   if (spec.washing && lit.span >= 10) drawWashingLine(ctx, lit, wallH, spec.salt ?? 0);
 
@@ -355,6 +361,33 @@ function drawFloodDamage(
     const rag = lit.at(0.69, spec.wallH - 2);
     ctx.fillStyle = PAL.buntCream;
     ctx.fillRect(Math.round(rag.x), Math.round(rag.y), 2, 1);
+  }
+}
+
+/** Wet roof edges and discrete gutter overflow, all inside the building sprite. */
+function drawRainRunoff(
+  ctx: CanvasRenderingContext2D,
+  eave: { W: Pt; N: Pt; E: Pt; S: Pt },
+  roof: Pt[] | null,
+  spec: HouseSpec,
+): void {
+  const strength = spec.rainStrength ?? 0;
+  if (!strength) return;
+  const face = makeFace(eave.W, eave.S, true);
+  if (face.span < 5) return;
+  if (roof) {
+    lineHard(ctx, lerp(roof[3], roof[2], 0.08), lerp(roof[3], roof[2], 0.46), PAL.riv2);
+    if (strength === 2) lineHard(ctx, lerp(roof[3], roof[2], 0.62), lerp(roof[3], roof[2], 0.86), PAL.riv1);
+  }
+  const drips = strength === 2 ? [0.12, 0.38, 0.67, 0.91] : [0.2, 0.76];
+  for (let i = 0; i < drips.length; i++) {
+    const p = face.at(drips[i], 1);
+    const len = strength === 2 && i % 2 === 0 ? 4 : 2;
+    lineHard(ctx, p, { x: p.x, y: p.y + len }, i === 0 ? PAL.rivGlint : PAL.riv2);
+  }
+  if (spec.drainState === 2) {
+    const foot = face.at(0.82, spec.wallH + 1);
+    lineHard(ctx, { x: foot.x - 4, y: foot.y }, { x: foot.x + 4, y: foot.y }, PAL.riv2);
   }
 }
 
@@ -565,6 +598,55 @@ function drawDeputationBanner(
   const seal = face.at(0.5, top + 2);
   ctx.fillStyle = PAL.buntBlue;
   ctx.fillRect(Math.round(seal.x) - 1, Math.round(seal.y), 3, 2);
+}
+
+/** A dry public threshold, loud enough to find through the rain at zoom one. */
+function drawShelterEntrance(
+  ctx: CanvasRenderingContext2D, eave: { W: Pt; N: Pt; E: Pt; S: Pt },
+  roof: Pt[] | null, spec: HouseSpec,
+): void {
+  const face = makeFace(eave.W, eave.S, true);
+  if (face.span < 9) return;
+  const top = Math.max(4, spec.wallH - 9);
+  const a = face.at(0.08, top);
+  const b = face.at(0.54, top);
+  const c = { x: b.x + 2, y: b.y + 3 };
+  const d = { x: a.x + 2, y: a.y + 3 };
+  fillPolyHard(ctx, [a, b, c, d], PAL.buntBlueHi);
+  for (const t of [0.16, 0.48, 0.8]) {
+    const p = lerp(a, b, t);
+    const q = lerp(d, c, t);
+    lineHard(ctx, p, q, PAL.buntCream);
+  }
+  lineHard(ctx, a, d, PAL.wood1);
+  lineHard(ctx, b, c, PAL.wood1);
+  const lamp = face.at(0.63, top + 3);
+  ctx.fillStyle = PAL.brassInk;
+  ctx.fillRect(Math.round(lamp.x) - 1, Math.round(lamp.y) - 1, 3, 4);
+  ctx.fillStyle = PAL.gas2;
+  ctx.fillRect(Math.round(lamp.x), Math.round(lamp.y), 1, 2);
+
+  const bannerTop = face.at(0.7, Math.max(3, top - 5));
+  const bannerBottom = face.at(0.88, top + 1);
+  fillPolyHard(ctx, [
+    bannerTop, { x: bannerTop.x + 5, y: bannerTop.y + 2 },
+    bannerBottom, { x: bannerBottom.x - 5, y: bannerBottom.y - 2 },
+  ], PAL.buntCream);
+  const mark = face.at(0.79, top - 1);
+  ctx.fillStyle = PAL.buntBlue;
+  ctx.fillRect(Math.round(mark.x) - 1, Math.round(mark.y), 3, 1);
+
+  // The doorway awning is hidden in a packed street until the player is close.
+  // A tied cloth on the near roof slope gives the refuge a district-wide read.
+  if (roof) {
+    const ra = lerp(roof[0], roof[1], 0.18);
+    const rb = lerp(roof[0], roof[1], 0.52);
+    const rc = lerp(roof[3], roof[2], 0.52);
+    const rd = lerp(roof[3], roof[2], 0.18);
+    fillPolyHard(ctx, [ra, rb, rc, rd], PAL.buntCream);
+    lineHard(ctx, lerp(ra, rb, 0.5), lerp(rd, rc, 0.5), PAL.buntBlueHi);
+    lineHard(ctx, lerp(ra, rd, 0.5), lerp(rb, rc, 0.5), PAL.buntBlue);
+  }
 }
 
 function drawRoof(

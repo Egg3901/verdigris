@@ -11,6 +11,7 @@ import { breakSegment, serviceAt } from './networks';
 import { applyPressure, pressureOf } from './pressures';
 import { mix, Stream } from './rng';
 import type { BuildingId, SoulId } from './types';
+import { weatherAt } from './weather';
 
 export type DisasterKind = 'fire' | 'flood' | 'collapse';
 export type DisasterStatus = 'active' | 'contained';
@@ -57,7 +58,8 @@ function candidateSeverity(city: City, kind: DisasterKind, buildingId: number): 
   const b = city.buildings[buildingId];
   const rot = pressureOf(city.press, 'rot');
   if (kind === 'fire') return Math.min(1000, rot + Math.max(0, 600 - b.fabric));
-  if (kind === 'flood') return Math.min(1000, Math.max(0, 520 - pressureOf(city.press, 'sanitation')) + Math.max(0, 680 - b.fabric));
+  if (kind === 'flood') return Math.min(1000, weatherAt(city.seed, city.tick).precipitation * 120
+    + Math.max(0, 520 - pressureOf(city.press, 'sanitation')) + Math.max(0, 680 - b.fabric));
   return Math.min(1000, rot + Math.max(0, 360 - b.fabric));
 }
 
@@ -70,20 +72,22 @@ function eligible(city: City, kind: DisasterKind, buildingId: number): boolean {
   if (!isFirmTarget(city, buildingId) || disasterAt(city, buildingId)) return false;
   const b = city.buildings[buildingId];
   const rot = pressureOf(city.press, 'rot');
+  const weather = weatherAt(city.seed, city.tick);
   if (kind === 'fire') {
-    return rot >= 620 && b.fabric < 520 && b.gasSeg >= 0 && b.gasSeg !== city.networks.gas.root
+    return weather.precipitation === 0 && rot >= 620 && b.fabric < 520
+      && b.gasSeg >= 0 && b.gasSeg !== city.networks.gas.root
       && serviceAt(city.networks.gas, b.id);
   }
   if (kind === 'flood') {
     const x = b.doorX;
     const riverY = city.river.centre[x];
     const bank = city.river.halfWidth[x];
-    return pressureOf(city.press, 'sanitation') < 380 && b.fabric < 560
+    return weather.precipitation > 0 && pressureOf(city.press, 'sanitation') < 380 && b.fabric < 560
       && riverY >= 0 && Math.abs(b.doorY - riverY) <= bank + 3
       && b.drainSeg >= 0 && b.drainSeg !== city.networks.drain.root
       && serviceAt(city.networks.drain, b.id);
   }
-  return rot >= 690 && b.fabric < 180;
+  return rot >= 690 && b.fabric < (weather.kind === 'storm' ? 220 : 180);
 }
 
 function chooseNaturalTarget(city: City, kind: DisasterKind): number {

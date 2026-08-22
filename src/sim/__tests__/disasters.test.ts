@@ -5,6 +5,7 @@ import { disasterAt, isBuildingClosed, startDisaster } from '../disasters';
 import { apply } from '../interventions';
 import { servedCount, serviceAt } from '../networks';
 import { latestOrderFor } from '../works';
+import { weatherAt } from '../weather';
 
 type City = ReturnType<typeof newCity>;
 
@@ -53,6 +54,14 @@ function makeOrdinaryFirmsSound(city: City): void {
   for (const b of city.buildings) {
     if (b.firmId >= 0 && b.householdIds.length === 0 && !DEFS[b.kind].landmark) b.fabric = 700;
   }
+}
+
+function advanceUntilNextHour(city: City, when: (kind: ReturnType<typeof weatherAt>) => boolean): void {
+  for (let hour = 0; hour < 96; hour++) {
+    if (when(weatherAt(city.seed, city.tick + 60))) return;
+    warp(city, 60);
+  }
+  throw new Error('weather condition missing');
 }
 
 describe('physical disasters', () => {
@@ -218,6 +227,7 @@ describe('physical disasters', () => {
 
     const fireCity = atWorkday();
     makeOrdinaryFirmsSound(fireCity);
+    advanceUntilNextHour(fireCity, (weather) => weather.precipitation === 0);
     const fireId = fireTarget(fireCity);
     fireCity.buildings[fireId].fabric = 300;
     fireCity.press.pressures.rot.value = 650;
@@ -228,6 +238,7 @@ describe('physical disasters', () => {
 
     const floodCity = atWorkday();
     makeOrdinaryFirmsSound(floodCity);
+    advanceUntilNextHour(floodCity, (weather) => weather.precipitation > 0);
     const floodId = floodTarget(floodCity);
     floodCity.buildings[floodId].fabric = 400;
     floodCity.press.pressures.rot.value = 300;
@@ -237,5 +248,29 @@ describe('physical disasters', () => {
     warp(floodCity, 60);
     expect(floodCity.disasters.events.at(-1)?.kind).toBe('flood');
     expect(floodCity.disasters.events.at(-1)?.buildingId).toBe(floodId);
+  });
+
+  it('requires rain for a natural flood and dry weather for a natural fire', () => {
+    const dryFlood = atWorkday();
+    makeOrdinaryFirmsSound(dryFlood);
+    advanceUntilNextHour(dryFlood, (weather) => weather.precipitation === 0);
+    const floodId = floodTarget(dryFlood);
+    dryFlood.buildings[floodId].fabric = 400;
+    dryFlood.press.pressures.rot.value = 300;
+    dryFlood.press.pressures.rot.baseline = 300;
+    dryFlood.press.pressures.sanitation.value = 300;
+    dryFlood.press.pressures.sanitation.baseline = 300;
+    warp(dryFlood, 60);
+    expect(dryFlood.disasters.events.some((event) => event.kind === 'flood')).toBe(false);
+
+    const wetFire = atWorkday();
+    makeOrdinaryFirmsSound(wetFire);
+    advanceUntilNextHour(wetFire, (weather) => weather.precipitation > 0);
+    const fireId = fireTarget(wetFire);
+    wetFire.buildings[fireId].fabric = 300;
+    wetFire.press.pressures.rot.value = 650;
+    wetFire.press.pressures.rot.baseline = 650;
+    warp(wetFire, 60);
+    expect(wetFire.disasters.events.some((event) => event.kind === 'fire')).toBe(false);
   });
 });

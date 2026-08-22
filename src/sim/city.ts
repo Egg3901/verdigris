@@ -46,6 +46,12 @@ import { newDeputations, tickDeputation } from './deputations';
 import type { DeputationState } from './deputations';
 import { newDisasters, tickDisastersHourly, isBuildingClosed } from './disasters';
 import type { DisasterState } from './disasters';
+import {
+  weatherAt, weatherErrandQuota, weatherExposurePenalty, weatherFabricWear, weatherOutputPermille,
+} from './weather';
+import type { Weather } from './weather';
+import { newShelters, tickShelters } from './shelters';
+import type { ShelterState } from './shelters';
 
 export interface LogEvent {
   tick: number;
@@ -108,6 +114,7 @@ export interface City extends World {
   works: WorksState;
   deputations: DeputationState;
   disasters: DisasterState;
+  shelters: ShelterState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -141,6 +148,7 @@ export function newCity(seedStr: string): City {
     works: newWorks(),
     deputations: newDeputations(world.squareNode),
     disasters: newDisasters(),
+    shelters: newShelters(),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -369,7 +377,8 @@ function startErrands(city: City, tick: number): void {
   // Tuned by measurement against the whole day, not guessed: at 14 the median was
   // 35 and the reference tick of 10:41 showed 16.
   const scale = Math.max(1, city.souls.length / 200);
-  const wanted = Math.round((mod > 1080 || mod < 480 ? 7 : 13) * scale);
+  const baseWanted = Math.round((mod > 1080 || mod < 480 ? 7 : 13) * scale);
+  const wanted = weatherErrandQuota(baseWanted, weatherAt(city.seed, tick));
   let sent = 0;
   const n = city.souls.length;
   if (!n) return;
@@ -533,13 +542,15 @@ export function tickCity(city: City): void {
   // the square on this minute counts. Cleanup only resumes souls the deputation
   // still owns; later laws or incidents are never overwritten.
   tickDeputation(city);
+  tickShelters(city);
 
   // 4. Needs, sliced ten ways by id so the cost is flat and the phase is stable
   //    across a save.
   const slice = tick % 10;
+  const weather = weatherAt(city.seed, tick);
   for (const s of city.souls) {
     if (s.id % 10 !== slice) continue;
-    tickNeeds(city, s);
+    tickNeeds(city, s, weather);
   }
 
   // 5. Gossip, sliced sixty ways so the cost is flat and the spread feels
@@ -587,7 +598,7 @@ function tickTrams(city: City): void {
   }
 }
 
-function tickNeeds(city: City, s: Soul): void {
+function tickNeeds(city: City, s: Soul, weather: Weather): void {
   const asleep = s.activity === 'asleep';
   s.fatigue = clamp(s.fatigue + (asleep ? -34 : 9));
   s.hunger = clamp(s.hunger + (s.activity === 'eating' ? -160 : 7));
@@ -595,7 +606,8 @@ function tickNeeds(city: City, s: Soul): void {
 
   const home = city.buildings[s.homeId];
   const warm = home && (!DEFS[home.kind].needsGas || serviceAt(city.networks.gas, home.id));
-  s.warmth = clamp(s.warmth + (s.inId === s.homeId ? (warm ? 12 : -14) : -2));
+  const exposure = s.inId < 0 ? weatherExposurePenalty(weather) : 0;
+  s.warmth = clamp(s.warmth + (s.inId === s.homeId ? (warm ? 12 : -14) : -2) - exposure);
 
   // Health follows sanitation and warmth, which is how a broken drain becomes a
   // person in the dispensary rather than a number going down.
@@ -639,6 +651,11 @@ function clamp(v: number): number {
 
 function tickHour(city: City): void {
   const tick = city.tick;
+  const weather = weatherAt(city.seed, tick);
+  // Fabric wear accounts for the watch that just elapsed. Sampling the new
+  // watch at the boundary charged a storm the instant it arrived and forgave
+  // six hours of rain the instant it cleared.
+  const completedWeather = weatherAt(city.seed, Math.max(0, tick - 1));
 
   // Gas service is measured, never assumed: the pressure is a REPORT of how many
   // buildings the tree still reaches, so cutting a main moves it as a consequence.
@@ -663,7 +680,9 @@ function tickHour(city: City): void {
   const decayHour = tick % 360 === 0;
   for (const b of city.buildings) {
     const wet = !serviceAt(city.networks.drain, b.id) ? 1 : 0;
-    if (decayHour) b.fabric = clamp(b.fabric - 1 - wet - Math.trunc(rot / 300));
+    const drainServed = !DEFS[b.kind].needsDrain || serviceAt(city.networks.drain, b.id);
+    const rainWear = weatherFabricWear(completedWeather, drainServed);
+    if (decayHour) b.fabric = clamp(b.fabric - 1 - wet - rainWear - Math.trunc(rot / 300));
     // A repair only happens if there is money AND the rot has not already
     // eaten the order. This single branch is where 'the repair was ordered' turns
     // into 'the repair never happened'.
@@ -686,7 +705,8 @@ function tickHour(city: City): void {
     const hasGas = !DEFS[b.kind].needsGas || serviceAt(city.networks.gas, b.id);
     const tram = pressureOf(city.press, 'tram');
     const staffing = Math.min(1000, Math.round((tram + 200) * 0.8));
-    f.output = Math.round((f.orders / 1000) * (hasGas ? 1 : 0.45) * (staffing / 1000) * 100);
+    const weatherOutput = weatherOutputPermille(weather, f.kind) / 1000;
+    f.output = Math.round((f.orders / 1000) * (hasGas ? 1 : 0.45) * (staffing / 1000) * weatherOutput * 100);
     f.orders = clamp(f.orders + (f.output > 55 ? 3 : -4));
   }
 
@@ -886,6 +906,11 @@ export function hashWorld(city: City): number {
     h = Math.imul(h, 16777619);
   };
   put(city.tick);
+  const weather = weatherAt(city.seed, city.tick);
+  put(weather.revision);
+  put(weather.kind === 'fair' ? 1 : weather.kind === 'overcast' ? 2
+    : weather.kind === 'rain' ? 3 : weather.kind === 'storm' ? 4 : 5);
+  put(weather.windX);
   put(city.deputations.revision);
   put(city.deputations.nextId);
   put(city.deputations.squareNode);
@@ -929,6 +954,23 @@ export function hashWorld(city: City): number {
     put(event.evacuatedIds.length);
     for (const id of event.evacuatedIds) put(id);
   }
+  put(city.shelters.revision);
+  put(city.shelters.nextId);
+  const shelter = city.shelters.current;
+  put(shelter ? 1 : 0);
+  if (shelter) {
+    put(shelter.id);
+    put(shelter.providerId);
+    put(shelter.openedAt);
+    put(shelter.endsAt);
+    put(shelter.capacity);
+    put(shelter.guestIds.length);
+    for (const id of shelter.guestIds) put(id);
+    put(shelter.arrivedIds.length);
+    for (const id of shelter.arrivedIds) put(id);
+    put(shelter.relievedIds.length);
+    for (const id of shelter.relievedIds) put(id);
+  }
   for (const ward of city.wards) {
     put(ward.id);
     put(ward.kind.length * 31 + ward.kind.charCodeAt(0));
@@ -946,8 +988,18 @@ export function hashWorld(city: City): number {
     put(s.progressMilli);
     put(s.inId);
     put(s.activity.length * 31 + s.activity.charCodeAt(0));
+    put(s.arriveActivity.length * 31 + s.arriveActivity.charCodeAt(0));
+    put(s.overrideUntil);
+    put(s.destBuilding);
+    put(s.destNode);
+    put(s.routeIdx);
+    put(s.route.length);
+    for (const node of s.route) put(node);
+    put(s.returnAt);
+    put(s.returnTo);
     put(s.hunger);
     put(s.fatigue);
+    put(s.warmth);
     put(s.health);
     put(s.grievance);
     put(s.purse);

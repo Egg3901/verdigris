@@ -18,6 +18,8 @@ import type { Verb } from './keys';
 import { PAL } from '../render/palette';
 import { mountVestry } from './vestry';
 import type { Vestry } from './vestry';
+import { weatherAt, weatherLabel } from '../sim/weather';
+import { shelterSummary } from '../sim/shelters';
 
 export interface ShellHooks {
   /** The selected building, for ordinances that need a street named. */
@@ -394,6 +396,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   let prevKey = '';
   const update: Shell['update'] = (city, sel, zoom, speedIndex, budget) => {
     const phase = phaseOf(city.tick);
+    const weather = weatherAt(city.seed, city.tick);
     const key = `${city.tick}|${zoom}|${speedIndex}|${budget}|${city.buildings.length}|${city.souls.length}`;
     if (key === prevKey) {
       // Selection and the vestry can change without the clock moving.
@@ -403,9 +406,9 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     }
     prevKey = key;
 
-    clock.textContent = `${formatClock(city.tick)} · ${phaseLabel(phase)}`;
+    clock.textContent = `${formatClock(city.tick)} · ${phaseLabel(phase)} · ${weatherLabel(weather)}`;
     counts.textContent = `${city.buildings.length} ROOFS · ${city.souls.length} SOULS`;
-    readout.textContent = `${formatClock(city.tick)} · ${phaseLabel(phase)}`;
+    readout.textContent = `${formatClock(city.tick)} · ${phaseLabel(phase)} · ${weatherLabel(weather)}`;
 
     if (budget !== prevBudget) {
       prevBudget = budget;
@@ -520,7 +523,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       const works = worksSummary(city, b.id);
       const deputation = deputationSummary(city, b.id);
       const disaster = disasterSummary(city, b.id);
-      insMore.textContent = [more > 0 ? `…and ${more} more` : '', disaster, works, deputation].filter(Boolean).join('\n');
+      const shelter = shelterSummary(city, b.id);
+      insMore.textContent = [more > 0 ? `…and ${more} more` : '', shelter, disaster, works, deputation].filter(Boolean).join('\n');
       return;
     }
     inspector.hidden = true;

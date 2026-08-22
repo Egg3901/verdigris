@@ -24,6 +24,7 @@ import { mix } from './rng';
 import type { InterventionKind, Target } from './types';
 import { canFileWorks, fileWorks } from './works';
 import { canCallDeputation, callDeputation } from './deputations';
+import { canOpenShelter, openShelter } from './shelters';
 
 export const DAILY_BUDGET = 3;
 
@@ -373,6 +374,20 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
       return `${attending} neighbours have left ${b.name} for Civic Hall. Whether the hall hears them depends on who arrives.`;
     },
   },
+
+  openShelter: {
+    kind: 'openShelter',
+    label: 'Open a storm refuge',
+    blurb: 'Open a public door in the rain. The vulnerable still have to reach it.',
+    heat: 5,
+    targets: ['building'],
+    can: (city, t) => canOpenShelter(city, t.id),
+    apply: (city, t) => {
+      const admitted = openShelter(city, t.id);
+      const b = city.buildings[t.id];
+      return `${b?.name ?? 'The building'} has opened its doors. ${admitted} people are making for shelter.`;
+    },
+  },
 };
 
 function neighbourList(city: City, id: number): number[] {
@@ -397,7 +412,7 @@ export function apply(city: City, kind: InterventionKind, target: Target): boole
   const text = def.apply(city, target);
   applyPressure(city.press, 'suspicion', def.heat, 'intervention', target.id, def.label.toLowerCase(), city.tick);
   city.traced += def.heat > 55 ? 1 : 0;
-  pushLog(city, text, kind === 'fundBunting' || kind === 'fileWorks' || kind === 'callDeputation' ? 'gain' : 'loss');
+  pushLog(city, text, kind === 'fundBunting' || kind === 'fileWorks' || kind === 'callDeputation' || kind === 'openShelter' ? 'gain' : 'loss');
   return true;
 }
 

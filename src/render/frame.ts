@@ -18,13 +18,15 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle } from './fx';
+import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx } from './fx';
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
 import { lineHard } from './raster';
 import { houseCorners } from './house';
 import { soulPos } from '../sim/souls';
+import { weatherAt } from '../sim/weather';
+import { mix, Stream } from '../sim/rng';
 
 export interface Selection {
   buildingId: number;
@@ -68,6 +70,7 @@ export function drawFrame(
   const agentCount = collectAgents(city, fracMin, agentPool);
   const vehicleCount = collectVehicles(city, scene.cartRoutes, fracMin, tl, br, vehiclePool);
   const hazardCount = collectHazards(city, fracMin, tl, br, hazardPool);
+  const weather = weatherAt(city.seed, city.tick);
   stats.agents = agentCount;
 
   // Merge-walk static and dynamic world objects. Vehicles share actor depth, so
@@ -110,7 +113,9 @@ export function drawFrame(
     } else if (aDepth <= hDepth) {
       const a = agentPool[ai++];
       if (a.wx > br.wx || a.wy > br.wy || a.wx < tl.wx || a.wy < tl.wy) continue;
-      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId, scene.variant);
+      const umbrella = weather.precipitation > 0
+        && mix(city.seed, Stream.Weather, weather.watch, a.soulId) % 100 < 78;
+      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId, scene.variant, umbrella);
       stats.calls++;
     } else {
       stats.calls += drawHazard(ctx, hazardPool[hi++], scene.variant);
@@ -121,6 +126,7 @@ export function drawFrame(
   // the depth-sorted street pass.
   const variant = variantFor(minuteOfDay(city.tick));
   stats.calls += drawSmoke(ctx, city, fracMin, variant, tl, br);
+  stats.calls += drawWeatherFx(ctx, city, fracMin, variant, tl, br);
 
   // Selection belongs to the ground plane, not to a sprite's rectangular canvas
   // bounds. Four iso corner brackets read as an instrument sight and never expose

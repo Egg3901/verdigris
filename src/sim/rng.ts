@@ -62,6 +62,8 @@ export const Stream = {
   /** Natural physical failures. Kept apart from incidents so adding a disaster
    *  kind never changes the district's social incident sequence. */
   Disaster: 29,
+  /** Six-hour weather watches and their two-day pressure systems. */
+  Weather: 30,
 } as const;
 export type StreamId = (typeof Stream)[keyof typeof Stream];
 

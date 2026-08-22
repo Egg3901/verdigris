@@ -10,14 +10,36 @@ const CASES = [
   { name: 'fire-night', tick: 1320, disaster: 'fire' },
   { name: 'flood-day', tick: 641, disaster: 'flood' },
   { name: 'collapse-day', tick: 641, disaster: 'collapse' },
+  { name: 'fog-day', seed: 'verdigris', tick: 641, weather: 'fog' },
+  { name: 'rain-day', seed: 'weather-0', tick: 641, weather: 'rain' },
+  { name: 'storm-day', seed: 'weather-3', tick: 641, weather: 'storm' },
+  { name: 'rain-night', seed: 'night-rain-5', tick: 1320, weather: 'rain' },
+  { name: 'storm-refuge', seed: 'weather-3', tick: 641, weather: 'storm', shelter: true },
 ];
 
 const browser = await chromium.launch();
 try {
   for (const test of CASES) {
     const page = await browser.newPage({ viewport: { width: 960, height: 640 }, deviceScaleFactor: 1 });
-    await page.goto(`${BASE}?seed=verdigris&t=${test.tick}&freeze=1`, { waitUntil: 'networkidle' });
+    await page.goto(`${BASE}?seed=${test.seed ?? 'verdigris'}&t=${test.tick}&freeze=1`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => Boolean(window.__verdigris));
+    if (test.shelter) {
+      await page.evaluate(() => {
+        const hook = window.__verdigris;
+        const provider = hook.city.buildings
+          .filter((b) => b.kind === 'chapel' || b.kind === 'bathhouse' || b.kind === 'dispensary' || b.kind === 'townhall')
+          .sort((a, b) => Number(b.kind === 'dispensary') - Number(a.kind === 'dispensary') || a.id - b.id)[0];
+        const exposed = hook.city.souls.find((s) => s.inId < 0 && s.activity !== 'held' && s.activity !== 'dead');
+        if (!provider || !exposed) throw new Error('storm refuge fixture missing');
+        exposed.age = 6;
+        exposed.health = 200;
+        exposed.warmth = 180;
+        if (!hook.nudge('openShelter', { kind: 'building', id: provider.id })) throw new Error('storm refuge refused');
+        hook.lookAt(provider.ox, provider.oy);
+        hook.zoom(3);
+      });
+      await page.waitForTimeout(120);
+    }
     if (test.disaster) {
       await page.evaluate((kind) => {
         const hook = window.__verdigris;
@@ -70,6 +92,7 @@ try {
       }
       return {
         tick: window.__verdigris.state().tick,
+        weather: window.__verdigris.weather(),
         colours: colours.size,
         allowed: allowed.size,
         partialAlpha,
@@ -77,6 +100,9 @@ try {
       };
     });
     if (result.tick !== test.tick) throw new Error(`${test.name}: expected tick ${test.tick}, got ${result.tick}`);
+    if (test.weather && result.weather !== test.weather) {
+      throw new Error(`${test.name}: expected ${test.weather}, got ${result.weather}`);
+    }
     if (result.partialAlpha) throw new Error(`${test.name}: ${result.partialAlpha} partial-alpha pixels`);
     if (result.illegal.length) throw new Error(`${test.name}: colours outside bank: ${result.illegal.join(', ')}`);
     console.log(`${test.name}: tick ${result.tick}, ${result.colours}/${result.allowed} palette colours, binary alpha`);

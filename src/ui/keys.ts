@@ -7,6 +7,7 @@ export type Verb =
   | 'follow' | 'peek' | 'hide' | 'dismiss' | 'selectNear'
   | 'nudgeRumour' | 'nudgeGas' | 'nudgeTram' | 'nudgeTip' | 'nudgeStrike'
   | 'nudgeStory' | 'nudgeQuarantine' | 'nudgeBunting' | 'nudgeWorks' | 'nudgeDeputation'
+  | 'nudgeShelter'
   | 'vestry'
   | 'pause' | 'slower' | 'faster'
   | 'scrubBack' | 'scrubOn' | 'help';
@@ -51,6 +52,7 @@ export const BINDINGS: readonly Binding[] = [
   { verb: 'nudgeBunting', keys: ['b'], label: 'Fund the bunting', group: 'nudges' },
   { verb: 'nudgeWorks', keys: ['o'], label: 'File a works case', group: 'nudges' },
   { verb: 'nudgeDeputation', keys: ['u'], label: 'Call a deputation', group: 'nudges' },
+  { verb: 'nudgeShelter', keys: ['e'], label: 'Open a storm refuge', group: 'nudges' },
 
   { verb: 'selectNear', keys: ['Shift + arrows'], label: 'Move the selection about the district', group: 'verbs' },
 
@@ -78,6 +80,7 @@ export const NUDGE_VERBS: Record<string, string> = {
   nudgeBunting: 'fundBunting',
   nudgeWorks: 'fileWorks',
   nudgeDeputation: 'callDeputation',
+  nudgeShelter: 'openShelter',
 };
 
 export function keycapFor(verb: Verb): string {

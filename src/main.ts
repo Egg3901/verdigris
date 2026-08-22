@@ -28,6 +28,7 @@ import { enact as enactOrdinance, repeal as repealOrdinance } from './sim/ordina
 import { startDisaster } from './sim/disasters';
 import type { DisasterKind } from './sim/disasters';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
+import { weatherAt } from './sim/weather';
 
 const params = new URLSearchParams(location.search);
 const SEED = params.get('seed') ?? 'verdigris';
@@ -466,7 +467,9 @@ function loop(now: number): void {
   if (wantVariant !== scene.variant || buntingNow !== buntingShown
     || scene.worksRevision !== city.works.revision
     || scene.deputationRevision !== city.deputations.revision
-    || scene.disasterRevision !== city.disasters.revision) {
+    || scene.disasterRevision !== city.disasters.revision
+    || scene.weatherRevision !== weatherAt(city.seed, city.tick).revision
+    || scene.shelterRevision !== city.shelters.revision) {
     buntingShown = buntingNow;
     scene = buildScene(city, wantVariant);
   }
@@ -495,6 +498,7 @@ interface QaHook {
   repeal: (kind: string) => boolean;
   nudge: (kind: string, target: Target) => boolean;
   disaster: (kind: string, buildingId: number) => boolean;
+  weather: () => string;
   palette: () => readonly string[];
 }
 
@@ -524,5 +528,6 @@ interface QaHook {
   repeal: (kind) => repealOrdinance(city, kind as OrdinanceKind),
   nudge: (kind, target) => applyNudge(city, kind as InterventionKind, target),
   disaster: (kind, buildingId) => startDisaster(city, kind as DisasterKind, buildingId) !== null,
+  weather: () => weatherAt(city.seed, city.tick).kind,
   palette: () => renderPalette(scene.variant),
 };

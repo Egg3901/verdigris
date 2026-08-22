@@ -25,6 +25,9 @@ import type { SoulId } from './types';
 import { latestOrderFor } from './works';
 import { isDeputationActive } from './deputations';
 import { disasterAt, isBuildingClosed } from './disasters';
+import { weatherAt } from './weather';
+import { serviceAt } from './networks';
+import { isShelterActive } from './shelters';
 
 const MAX_SENSES = 3;
 
@@ -110,6 +113,25 @@ function liveClause(city: City, b: Building): string {
   if (b.fabric === 0 && isBuildingClosed(city, b.id)) {
     return 'The structure remains collapsed and closed until structural work is done.';
   }
+  const shelter = city.shelters.current;
+  if (shelter && shelter.providerId === b.id && isShelterActive(city)) {
+    if (DEFS[b.kind].needsDrain && !serviceAt(city.networks.drain, b.id)) {
+      return 'The storm refuge is open, but its drain has failed and the crowded room is turning foul.';
+    }
+    if (!shelter.arrivedIds.length) return 'A storm refuge has opened here and the first people are still on their way.';
+    return `${shelter.arrivedIds.length} ${shelter.arrivedIds.length === 1 ? 'person has' : 'people have'} reached the storm refuge inside.`;
+  }
+  const weather = weatherAt(city.seed, city.tick);
+  if (weather.precipitation > 0 && DEFS[b.kind].needsDrain && !serviceAt(city.networks.drain, b.id)) {
+    return weather.kind === 'storm'
+      ? 'Water is spilling from the broken rain goods and backing through the drain.'
+      : 'Rain is finding the broken drain and darkening the lower brickwork.';
+  }
+  if (weather.precipitation > 0 && b.firmId >= 0 && city.firms[b.firmId]?.kind === 'wharf') {
+    return weather.kind === 'storm'
+      ? 'Hard rain has slowed the quay to dangerous, deliberate work.'
+      : 'The quay work is carrying on more slowly in the rain.';
+  }
   const deputation = city.deputations.current;
   if (deputation && deputation.buildingId === b.id && isDeputationActive(city)) {
     if (deputation.status === 'heard') return 'Its deputation has been heard beneath the windows of Civic Hall.';
@@ -163,7 +185,11 @@ export function describeSoul(city: City, id: number): string {
   const where = home ? addressOf(city, home) : 'nowhere fixed';
   const trade = s.trade === 'none' ? 'no trade left' : s.trade === 'child' ? 'still at school' : s.trade;
   const doing = activityPhrase(s.activity, s.trade, s.fatigue, s.grievance, s.hunger, s.id);
-  return `${s.age}, ${trade}, of ${where}. Currently ${doing}.`;
+  const weather = weatherAt(city.seed, city.tick);
+  const exposure = s.inId < 0 && weather.precipitation > 0
+    ? weather.kind === 'storm' ? ' The hard rain has got through every layer.' : ' Out in the rain.'
+    : '';
+  return `${s.age}, ${trade}, of ${where}. Currently ${doing}.${exposure}`;
 }
 
 /** Where a soul is going, for the BOUND FOR line on the inspector. */

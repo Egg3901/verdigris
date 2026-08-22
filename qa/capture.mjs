@@ -32,6 +32,11 @@ const SCENES = [
   { name: 'fire-night', seed: 'verdigris', tick: 1320, zoom: 3, disaster: 'fire' },
   { name: 'flood-street', seed: 'verdigris', tick: 641, zoom: 3, disaster: 'flood' },
   { name: 'collapse-ruin', seed: 'verdigris', tick: 641, zoom: 3, disaster: 'collapse' },
+  { name: 'river-fog', seed: 'verdigris', tick: 641, zoom: 2, ward: 'quayside' },
+  { name: 'rain-street', seed: 'weather-0', tick: 641, zoom: 2, ward: 'merchant' },
+  { name: 'storm-quay', seed: 'weather-3', tick: 641, zoom: 2, ward: 'quayside' },
+  { name: 'rain-night', seed: 'night-rain-5', tick: 1320, zoom: 2, ward: 'civic' },
+  { name: 'storm-refuge', seed: 'weather-3', tick: 641, zoom: 3, shelter: true },
 ];
 
 mkdirSync(OUT, { recursive: true });
@@ -108,6 +113,22 @@ for (const scene of SCENES) {
         window.__verdigris.select('building', target.id);
         window.__verdigris.lookAt(target.ox, target.oy);
         break;
+      }
+    }
+    if (s.shelter) {
+      const city = window.__verdigris.city;
+      const provider = city.buildings
+        .filter((b) => b.kind === 'chapel' || b.kind === 'bathhouse' || b.kind === 'dispensary' || b.kind === 'townhall')
+        .sort((a, b) => Number(b.kind === 'dispensary') - Number(a.kind === 'dispensary') || a.id - b.id)[0];
+      const exposed = city.souls.find((soul) => soul.inId < 0 && soul.activity !== 'held' && soul.activity !== 'dead');
+      if (provider && exposed) {
+        exposed.age = 6;
+        exposed.health = 200;
+        exposed.warmth = 180;
+        if (window.__verdigris.nudge('openShelter', { kind: 'building', id: provider.id })) {
+          window.__verdigris.select('building', provider.id);
+          window.__verdigris.lookAt(provider.ox, provider.oy);
+        }
       }
     }
     if (s.ward) {

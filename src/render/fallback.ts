@@ -129,6 +129,7 @@ const LEG = PAL.ink;
 export function drawSoul(
   ctx: CanvasRenderingContext2D, x: number, y: number,
   coat: string, hat: string, step: number, salt = 0, variant: Variant = 'day',
+  umbrella = false,
 ): void {
   const px = Math.round(x);
   const py = Math.round(y);
@@ -166,4 +167,16 @@ export function drawSoul(
   ctx.fillStyle = gradeHex(hat, variant);
   ctx.fillRect(px - 2, py - 12 + bob, 4, 1);
   ctx.fillRect(px - 1, py - 14 + bob, 2, 2);
+
+  if (umbrella) {
+    const cloth = gradeHex([PAL.slate2, PAL.buntRed, PAL.verd2, PAL.buntBlue][salt % 4], variant);
+    fillPolyHard(ctx, [
+      { x: px - 5, y: py - 14 + bob }, { x: px, y: py - 18 + bob },
+      { x: px + 5, y: py - 14 + bob }, { x: px + 3, y: py - 13 + bob },
+      { x: px, y: py - 14 + bob }, { x: px - 3, y: py - 13 + bob },
+    ], cloth);
+    lineHard(ctx, { x: px, y: py - 17 + bob }, { x: px, y: py - 7 + bob }, gradeHex(PAL.wood0, variant));
+    ctx.fillStyle = gradeHex(PAL.rivGlint, variant);
+    ctx.fillRect(px - 3, py - 15 + bob, 2, 1);
+  }
 }

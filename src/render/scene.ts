@@ -29,13 +29,15 @@ import { buildCartRoutes } from './fx';
 import type { CartRoute } from './fx';
 import type { HouseSpec, HouseSkin, RoofShape, Finial } from './house';
 import type { WallMaterial } from './detail';
-import { mix } from '../sim/rng';
+import { mix, Stream } from '../sim/rng';
 import { buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
 import { worksStageFor } from '../sim/works';
 import { isDeputationActive } from '../sim/deputations';
 import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters';
 import type { WardKind } from '../sim/gen/wards';
+import { weatherAt } from '../sim/weather';
+import { isShelterActive } from '../sim/shelters';
 
 export interface StaticSprite {
   buildingId: number;
@@ -58,6 +60,8 @@ export interface Scene {
   worksRevision: number;
   deputationRevision: number;
   disasterRevision: number;
+  weatherRevision: number;
+  shelterRevision: number;
   ground: HTMLCanvasElement;
   props: Prop[];
   idBuffer: HTMLCanvasElement;
@@ -369,6 +373,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // The flags the player paid for, on whatever fronts the square.
     bunting: city.buntingUntil > city.tick && nearSquare(city, b),
     deputationBanner: b.kind === 'townhall' && isDeputationActive(city),
+    shelterOpen: isShelterActive(city) && city.shelters.current?.providerId === b.id,
     chimneys: finial === 'mast' || shape === 'flat' || shape === 'pyramid' || shape === 'dome' ? 0
       : b.kind === 'mill' || b.kind === 'foundry' ? 1
         : 1 + ((salt >>> 6) % 2),
@@ -392,6 +397,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
       && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall' || b.kind === 'terrace'),
     worksStage: worksStageFor(city, b.id),
     drainState: !def.needsDrain ? 0 : serviceAt(city.networks.drain, b.id) ? 1 : 2,
+    rainStrength: weatherAt(city.seed, city.tick).precipitation,
     finial,
     finialH: fam.finialH ?? 0,
   };
@@ -415,6 +421,7 @@ function ctxOf(c: HTMLCanvasElement, readFrequently = false): CanvasRenderingCon
  *  changes (peek, fire, boarded windows), never per frame. */
 export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay(city.tick))): Scene {
   const b = worldBounds();
+  const weather = weatherAt(city.seed, city.tick);
   const originX = -b.minX;
   const originY = -b.minY;
   const floodedBuildings = new Set<number>();
@@ -500,6 +507,28 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), gradeHex(colour, variant));
       textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant, d.polite[k] === 1);
 
+      // Standing rain gathers in selected joints and wheel ruts. Patches are
+      // sparse and hashed per watch, so wet streets glint without becoming a
+      // second river or crawling while the clock is held.
+      const wettable = tile === Tile.Street || tile === Tile.Alley || tile === Tile.Square
+        || tile === Tile.Embankment || tile === Tile.Wharf || tile === Tile.Rail;
+      const wetRoll = mix(city.seed, Stream.Weather, weather.watch, k) % 100;
+      if (weather.precipitation > 0 && wettable && d.buildingId[k] < 0
+        && wetRoll < (weather.precipitation === 2 ? 32 : 19)) {
+        const cx = originX + isoX(tx, ty);
+        const cy = originY + isoY(tx, ty) + 2;
+        const puddle = [
+          { x: cx, y: cy - 3 }, { x: cx + 8, y: cy },
+          { x: cx, y: cy + 3 }, { x: cx - 8, y: cy },
+        ];
+        ditherPolyHard(gctx, puddle, gradeHex(PAL.riv1, variant), weather.precipitation === 2 ? 6 : 4);
+        const lean = weather.windX * 2;
+        lineHard(gctx, { x: cx - 4 + lean, y: cy }, { x: cx + 3 + lean, y: cy }, gradeHex(PAL.riv2, variant));
+        if ((wetRoll & 3) === 0) {
+          lineHard(gctx, { x: cx - 1, y: cy - 1 }, { x: cx + 2, y: cy - 1 }, gradeHex(PAL.rivGlint, variant));
+        }
+      }
+
       // Dither the step between depth bands. A hard step made the channel read as
       // a set of tiled patches rather than as water getting deeper.
       if (tile === Tile.Water && depth[k] === 2) {
@@ -544,6 +573,30 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
             lineHard(gctx, { x: a.x, y: a.y - 4 }, { x: b.x, y: b.y - 4 }, rail);
           }
         }
+      }
+    }
+  }
+
+  // River fog lies on the water plane, so roofs, bridges, people and cranes are
+  // still painted in front of it by the normal compositor. Opaque ordered
+  // dither gives it ragged holes without introducing alpha or a postprocess.
+  if (weather.kind === 'fog') {
+    for (let tx = 2; tx < d.width - 2; tx += 5) {
+      const riverY = city.river.centre[tx];
+      if (riverY < 0) continue;
+      const salt = mix(city.seed, Stream.Weather, weather.watch, tx);
+      const cx = originX + isoX(tx, riverY) + ((salt >>> 5) % 13) - 6;
+      const cy = originY + isoY(tx, riverY) - 8 - ((salt >>> 10) % 5);
+      for (let lobe = 0; lobe < 2; lobe++) {
+        const lx = cx + (lobe === 0 ? -10 : 12);
+        const ly = cy + (lobe === 0 ? 1 : -2);
+        const bank = [
+          { x: lx - 22, y: ly + 1 }, { x: lx - 11, y: ly - 6 },
+          { x: lx + 8, y: ly - 7 }, { x: lx + 24, y: ly - 1 },
+          { x: lx + 15, y: ly + 6 }, { x: lx - 13, y: ly + 7 },
+        ];
+        ditherPolyHard(gctx, bank, gradeHex(PAL.smoke2, variant), 7);
+        ditherPolyHard(gctx, bank, gradeHex(PAL.smoke1, variant), 3);
       }
     }
   }
@@ -710,6 +763,8 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     cartRoutes: buildCartRoutes(city), variant,
     worksRevision: city.works.revision, deputationRevision: city.deputations.revision,
     disasterRevision: city.disasters.revision,
+    weatherRevision: weather.revision,
+    shelterRevision: city.shelters.revision,
     ground, props, idBuffer, idCtx, statics, originX, originY,
   };
 }
