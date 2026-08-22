@@ -15,6 +15,9 @@ const CASES = [
   { name: 'storm-day', seed: 'weather-3', tick: 641, weather: 'storm' },
   { name: 'rain-night', seed: 'night-rain-5', tick: 1320, weather: 'rain' },
   { name: 'storm-refuge', seed: 'weather-3', tick: 641, weather: 'storm', shelter: true },
+  { name: 'merchant-authorship', seed: 'verdigris', tick: 641, ward: 'merchant' },
+  { name: 'works-authorship', seed: 'verdigris', tick: 641, ward: 'works' },
+  { name: 'courts-authorship', seed: 'verdigris', tick: 641, ward: 'courts' },
 ];
 
 const browser = await chromium.launch();
@@ -23,6 +26,15 @@ try {
     const page = await browser.newPage({ viewport: { width: 960, height: 640 }, deviceScaleFactor: 1 });
     await page.goto(`${BASE}?seed=${test.seed ?? 'verdigris'}&t=${test.tick}&freeze=1`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => Boolean(window.__verdigris));
+    if (test.ward) {
+      await page.evaluate((kind) => {
+        const ward = window.__verdigris.city.wards.find((item) => item.kind === kind);
+        if (!ward) throw new Error(`missing ${kind} ward`);
+        window.__verdigris.lookAt(ward.anchorX, ward.anchorY);
+        window.__verdigris.zoom(3);
+      }, test.ward);
+      await page.waitForTimeout(120);
+    }
     if (test.shelter) {
       await page.evaluate(() => {
         const hook = window.__verdigris;

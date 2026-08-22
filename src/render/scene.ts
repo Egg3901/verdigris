@@ -27,7 +27,7 @@ import { drawHouse, houseBounds } from './house';
 import { hardenAlpha, ditherPolyHard, lineHard } from './raster';
 import { buildCartRoutes } from './fx';
 import type { CartRoute } from './fx';
-import type { HouseSpec, HouseSkin, RoofShape, Finial } from './house';
+import type { HouseSpec, HouseSkin, RoofShape, Finial, Frontage } from './house';
 import type { WallMaterial } from './detail';
 import { mix, Stream } from '../sim/rng';
 import { buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
@@ -349,6 +349,19 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   const dwelling = b.kind === 'terrace' || b.kind === 'tenement'
     || b.kind === 'courtdwelling' || b.kind === 'lodging';
   const finial: Finial = fam.finial ?? 'none';
+  const worksStage = worksStageFor(city, b.id);
+  const drainState: 0 | 1 | 2 = !def.needsDrain ? 0 : serviceAt(city.networks.drain, b.id) ? 1 : 2;
+  const wardWear = wardKind === 'works' || wardKind === 'courts' || wardKind === 'quayside' ? 1 : 0;
+  const roofWear: 0 | 1 | 2 = worksStage >= 2 ? 0
+    : b.fabric < 250 ? 2 : b.fabric < 540 || (wardWear > 0 && grime > 300) ? 1 : 0;
+  const facadeWear: 0 | 1 | 2 = b.fabric < 220 ? 2
+    : b.fabric < 500 || drainState === 2 || (wardWear > 0 && grime > 360) ? 1 : 0;
+  const frontage: Frontage = b.kind === 'mill' || b.kind === 'foundry' || b.kind === 'gasworks'
+    || b.kind === 'tramdepot' || b.kind === 'pumphouse' || b.kind === 'workshop' ? 'works'
+    : b.kind === 'warehouse' ? 'warehouse'
+      : b.kind === 'wharfshed' ? 'wharf'
+        : b.kind === 'shop' || b.kind === 'pub' ? 'shop'
+          : def.landmark ? 'civic' : 'house';
   const damageEvent = disasterAt(city, b.id);
   const damage: HouseSpec['damage'] = isBuildingClosed(city, b.id)
     && (damageEvent?.kind === 'collapse' || b.fabric === 0)
@@ -389,14 +402,17 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // see gable ends only where the row stops.
     ridgeAlongX: plotOf(city, b) === 'x',
     material,
+    frontage,
     polite,
     patched: !polite && dwelling && ((salt >>> 9) % (wardKind === 'courts' ? 2 : 3) === 0),
+    roofWear,
+    facadeWear,
     washing: !polite && dwelling && ((salt >>> 11) % (wardKind === 'courts' ? 2 : 3) === 0),
     cresting: fam.cresting === true || ((wardKind === 'garden' || polite) && b.kind === 'villa'),
     railings: (polite || wardKind === 'garden' || wardKind === 'civic')
       && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall' || b.kind === 'terrace'),
-    worksStage: worksStageFor(city, b.id),
-    drainState: !def.needsDrain ? 0 : serviceAt(city.networks.drain, b.id) ? 1 : 2,
+    worksStage,
+    drainState,
     rainStrength: weatherAt(city.seed, city.tick).precipitation,
     finial,
     finialH: fam.finialH ?? 0,

@@ -401,6 +401,124 @@ export function drawSootStreaks(
 }
 
 /**
+ * Local scars say more about a facade than another overall shade ever could.
+ * These marks sit below doors and windows, so the address keeps its use as well
+ * as its condition.
+ */
+export function drawFacadePatina(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, material: WallMaterial,
+  wear: 0 | 1 | 2, drainState: 0 | 1 | 2, salt: number, skin: DetailSkin,
+): void {
+  if (wear === 0 || f.span < 7) return;
+  const crack = skin.wallDark;
+  const low = Math.max(4, wallH - 7);
+  if (material === 'stucco' || material === 'ashlar') {
+    const t = 0.18 + ((salt >>> 3) % 54) / 100;
+    const a = f.at(t, Math.max(3, low - 7));
+    const b = f.at(t + 0.04, low - 3);
+    const c = f.at(t - 0.02, low);
+    lineHard(ctx, a, b, crack);
+    lineHard(ctx, b, c, crack);
+    if (wear === 2) lineHard(ctx, b, f.at(t + 0.12, low - 1), crack);
+  } else if (material === 'brick') {
+    const p = f.at(0.2 + ((salt >>> 5) % 52) / 100, low - 3);
+    ctx.fillStyle = crack;
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), wear === 2 ? 3 : 2, 1);
+    if (wear === 2) ctx.fillRect(Math.round(p.x) + 1, Math.round(p.y) + 1, 1, 2);
+  } else if (material === 'timber' || material === 'wood') {
+    const a = f.at(0.12 + ((salt >>> 4) % 28) / 100, low - 4);
+    const b = f.at(0.37 + ((salt >>> 6) % 22) / 100, low - 4);
+    lineHard(ctx, a, b, PAL.wood2);
+    lineHard(ctx, f.at(0.5, low - 5), f.at(0.5, low + 1), skin.outline);
+  } else {
+    const p = f.at(0.58, low - 3);
+    ctx.fillStyle = PAL.buntCream;
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 1);
+  }
+
+  if (drainState === 2) {
+    const a = f.at(0.79, Math.max(2, wallH - 5));
+    const b = f.at(0.76, wallH - 1);
+    lineHard(ctx, a, b, PAL.riv1);
+    if (wear === 2) lineHard(ctx, f.at(0.7, wallH - 1), f.at(0.9, wallH - 1), PAL.riv2);
+  }
+}
+
+/** A working threshold needs a cargo door, not a cottage front door. */
+export function drawFreightDoor(
+  ctx: CanvasRenderingContext2D, f: Face, t: number, wallH: number, skin: DetailSkin,
+  frontage: 'works' | 'warehouse' | 'wharf',
+): void {
+  const half = frontage === 'wharf' ? 0.27 : frontage === 'warehouse' ? 0.24 : 0.21;
+  const top = Math.max(3, wallH - (frontage === 'works' ? 14 : 12));
+  faceQuad(ctx, f, t - half, t + half, top, wallH - 1, skin.wallDark);
+  lineHard(ctx, f.at(t - half, top), f.at(t + half, wallH - 1), skin.timber);
+  lineHard(ctx, f.at(t + half, top), f.at(t - half, wallH - 1), skin.timber);
+  lineHard(ctx, f.at(t, top), f.at(t, wallH - 1), skin.outline);
+  lineHard(ctx, f.at(t - half - 0.02, wallH - 1), f.at(t + half + 0.02, wallH - 1), shadeHex(skin.wall, -0.2));
+  if (frontage !== 'works') {
+    const beamA = f.at(t - half - 0.06, Math.max(1, top - 2));
+    const beamB = f.at(t + half + 0.08, Math.max(1, top - 2));
+    lineHard(ctx, beamA, beamB, PAL.wood1);
+    const hook = f.at(t + half + 0.04, top + 1);
+    lineHard(ctx, hook, { x: hook.x, y: hook.y + 4 }, skin.outline);
+  } else {
+    const board = f.at(t + half + 0.08, top + 2);
+    ctx.fillStyle = PAL.buntCream;
+    ctx.fillRect(Math.round(board.x), Math.round(board.y), 2, 3);
+    ctx.fillStyle = PAL.buntRed;
+    ctx.fillRect(Math.round(board.x), Math.round(board.y) + 1, 2, 1);
+  }
+}
+
+/** A civic doorway gets a stone step and a brass notice, not another cottage door. */
+export function drawCivicThreshold(
+  ctx: CanvasRenderingContext2D, f: Face, t: number, wallH: number, skin: DetailSkin,
+): void {
+  const half = Math.min(0.18, 6 / Math.max(1, f.span));
+  const top = Math.max(3, wallH - 13);
+  faceQuad(ctx, f, t - half, t + half, top, wallH - 2, skin.wallDark);
+  lineHard(ctx, f.at(t - half, top), f.at(t + half, top), skin.trim ?? PAL.brass2);
+  lineHard(ctx, f.at(t - half - 0.04, wallH - 1), f.at(t + half + 0.04, wallH - 1), PAL.stone2);
+  lineHard(ctx, f.at(t - half - 0.08, wallH), f.at(t + half + 0.08, wallH), PAL.stone1);
+  const notice = f.at(t + half + 0.09, top + 3);
+  ctx.fillStyle = skin.trim ?? PAL.brass2;
+  ctx.fillRect(Math.round(notice.x), Math.round(notice.y), 2, 3);
+  ctx.fillStyle = PAL.buntCream;
+  ctx.fillRect(Math.round(notice.x), Math.round(notice.y), 2, 1);
+}
+
+/** Small, bounded roof repairs and failed tiles, never a second roof silhouette. */
+export function drawRoofPatina(
+  ctx: CanvasRenderingContext2D, quad: readonly Pt[], wear: 1 | 2, salt: number,
+  roofLit: string, roofShade: string, ridge: string,
+): void {
+  if (quad.length < 4) return;
+  const at = (u: number, v: number): Pt => {
+    const a = { x: quad[0].x + (quad[1].x - quad[0].x) * u, y: quad[0].y + (quad[1].y - quad[0].y) * u };
+    const b = { x: quad[3].x + (quad[2].x - quad[3].x) * u, y: quad[3].y + (quad[2].y - quad[3].y) * u };
+    return { x: a.x + (b.x - a.x) * v, y: a.y + (b.y - a.y) * v };
+  };
+  const chips = wear === 2 ? 4 : 2;
+  for (let i = 0; i < chips; i++) {
+    const u = 0.12 + ((salt + i * 19) % 71) / 100;
+    const v = 0.34 + ((salt + i * 11) % 38) / 100;
+    const p = at(u, v);
+    ctx.fillStyle = i % 2 === 0 ? shadeHex(roofShade, -0.1) : shadeHex(roofLit, 0.08);
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 1);
+  }
+  if (wear === 2) {
+    const a = at(0.26, 0.56);
+    const b = at(0.55, 0.56);
+    const c = at(0.55, 0.76);
+    const d = at(0.26, 0.76);
+    fillPolyHard(ctx, [a, b, c, d], shadeHex(roofLit, -0.08));
+    ditherPolyHard(ctx, [a, b, c, d], shadeHex(roofShade, -0.08), 5);
+    lineHard(ctx, a, b, ridge);
+  }
+}
+
+/**
  * A patched roof: one quadrant of a slope in a different colour, dithered in.
  * The working bank's mended tiles.
  */

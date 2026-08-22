@@ -22,7 +22,7 @@ import {
   drawCourses, drawDormer, drawBunting,
   drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
   drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
-  drawRoofPatch, drawEaveRail,
+  drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
 } from './detail';
 import type { DetailSkin, WallMaterial } from './detail';
 import { drawFinial, drawMooringMast } from './landmarks';
@@ -32,6 +32,7 @@ export type RoofShape =
   | 'gable' | 'hip' | 'pyramid' | 'flat' | 'mansard' | 'gambrel' | 'sawtooth' | 'dome';
 
 export type Finial = 'none' | 'spire' | 'dome' | 'cupola' | 'stack' | 'mast' | 'gasometer';
+export type Frontage = 'house' | 'shop' | 'works' | 'warehouse' | 'wharf' | 'civic';
 
 export interface HouseSkin {
   wallLit: string;
@@ -88,8 +89,13 @@ export interface HouseSpec {
    *  longer footprint axis, which is what makes a terrace read as a row. */
   ridgeAlongX?: boolean;
   material: WallMaterial;
+  /** What the visible threshold is for, distinct from the broad material family. */
+  frontage?: Frontage;
   polite: boolean;
   patched?: boolean;
+  /** Physical wear, derived from fabric and district conditions. */
+  roofWear?: 0 | 1 | 2;
+  facadeWear?: 0 | 1 | 2;
   washing?: boolean;
   cresting?: boolean;
   railings?: boolean;
@@ -181,6 +187,9 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
 
   const alongX = spec.ridgeAlongX ?? w >= d;
   const roofQuad = drawRoof(ctx, eave, spec, alongX);
+  if (roofQuad && spec.roofWear) {
+    drawRoofPatina(ctx, roofQuad, spec.roofWear, spec.salt ?? 0, skin.roofLit, skin.roofShade, skin.roofRidge);
+  }
   drawFinial(ctx, ground, eave, spec, alongX);
   drawFacade(ctx, eave, spec);
   if (spec.damage === 'flooded') drawFloodDamage(ctx, eave, spec);
@@ -533,6 +542,7 @@ function drawMaterials(
         break;
     }
     if (!spec.polite) drawSootStreaks(ctx, f, wallH, shadeHex(PAL.soot1, 0), salt ?? 0);
+    if (spec.facadeWear) drawFacadePatina(ctx, f, wallH, material, spec.facadeWear, spec.drainState ?? 0, salt ?? 0, ds);
   }
 }
 
@@ -575,7 +585,14 @@ function drawFacade(
   if (spec.shopfront && lit.span >= 10) {
     drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed);
   } else if (lit.span >= 8 && spec.material !== 'glazed') {
-    drawDoor(ctx, lit, 0.28 + ((salt % 5) / 12), spec.wallH, skin);
+    const t = 0.28 + ((salt % 5) / 12);
+    if (spec.frontage === 'works' || spec.frontage === 'warehouse' || spec.frontage === 'wharf') {
+      drawFreightDoor(ctx, lit, t, spec.wallH, skin, spec.frontage);
+    } else if (spec.frontage === 'civic') {
+      drawCivicThreshold(ctx, lit, t, spec.wallH, skin);
+    } else {
+      drawDoor(ctx, lit, t, spec.wallH, skin);
+    }
   }
   if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin);
   if (spec.bunting && lit.span >= 12) drawBunting(ctx, lit, spec.wallH);

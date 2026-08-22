@@ -379,6 +379,79 @@ function bakeUrn(variant: Variant): HTMLCanvasElement {
   return c;
 }
 
+function bakeDisplay(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 12;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  fillPolyHard(ctx, [{x:8,y:4},{x:15,y:7},{x:8,y:11},{x:1,y:7}], g(PAL.wood1));
+  ctx.fillStyle = g(PAL.wood2);
+  ctx.fillRect(3, 5, 10, 2);
+  ctx.fillStyle = g(PAL.buntRedHi);
+  ctx.fillRect(5, 2, 3, 3);
+  ctx.fillStyle = g(PAL.leaf3);
+  ctx.fillRect(10, 2, 3, 3);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+function bakeToolBench(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 17; c.height = 13;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  ctx.fillStyle = g(PAL.wood1);
+  ctx.fillRect(2, 5, 13, 3);
+  ctx.fillRect(4, 8, 2, 5);
+  ctx.fillRect(11, 8, 2, 5);
+  ctx.fillStyle = g(PAL.soot2);
+  lineHard(ctx, {x:4,y:4}, {x:8,y:1}, g(PAL.soot2));
+  lineHard(ctx, {x:9,y:2}, {x:12,y:5}, g(PAL.soot3));
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+function bakeWashTub(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 14; c.height = 11;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  fillPolyHard(ctx, [{x:2,y:4},{x:12,y:4},{x:10,y:10},{x:4,y:10}], g(PAL.wood1));
+  fillPolyHard(ctx, [{x:3,y:4},{x:11,y:4},{x:10,y:6},{x:4,y:6}], g(PAL.riv1));
+  ctx.fillStyle = g(PAL.buntCream);
+  ctx.fillRect(9, 1, 3, 4);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+function bakeRopeCoil(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 15; c.height = 10;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  fillEllipseHard(ctx, 7, 6, 6, 3, g(PAL.thatch1));
+  fillEllipseHard(ctx, 7, 6, 3, 1.5, g(PAL.dirt0));
+  ctx.fillStyle = g(PAL.wood2);
+  ctx.fillRect(11, 2, 1, 4);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+function bakeBench(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 13;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  ctx.fillStyle = g(PAL.wood2);
+  ctx.fillRect(2, 4, 12, 2);
+  ctx.fillRect(3, 7, 10, 2);
+  ctx.fillStyle = g(PAL.wood0);
+  ctx.fillRect(4, 9, 2, 4);
+  ctx.fillRect(10, 9, 2, 4);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
 /**
  * Street furniture: lamps, bollards, troughs, advertising columns, carts, and
  * a few wharf cranes. Sparse, hashed from the cell, never on a building.
@@ -398,6 +471,11 @@ export function buildStreetProps(
   const barrels = bakeBarrels(variant);
   const coal = bakeCoal(variant);
   const urn = bakeUrn(variant);
+  const display = bakeDisplay(variant);
+  const toolBench = bakeToolBench(variant);
+  const washTub = bakeWashTub(variant);
+  const ropeCoil = bakeRopeCoil(variant);
+  const bench = bakeBench(variant);
 
   for (let ty = 0; ty < district.height; ty++) {
     for (let tx = 0; tx < district.width; tx++) {
@@ -427,6 +505,26 @@ export function buildStreetProps(
           push(polite && t === Tile.Embankment ? lampArc : lampGas, 7, 25);
           continue;
         }
+      }
+      if (ward === 'merchant' && (t === Tile.Street || t === Tile.Square) && roll >= 20 && roll < 24) {
+        push(display, 8, 11);
+        continue;
+      }
+      if (ward === 'works' && (t === Tile.Street || t === Tile.Yard) && roll >= 20 && roll < 24) {
+        push(toolBench, 8, 12);
+        continue;
+      }
+      if (ward === 'courts' && (t === Tile.Street || t === Tile.Alley) && roll >= 20 && roll < 24) {
+        push(washTub, 7, 10);
+        continue;
+      }
+      if (ward === 'quayside' && (t === Tile.Wharf || t === Tile.Street) && roll >= 20 && roll < 24) {
+        push(ropeCoil, 7, 9);
+        continue;
+      }
+      if (ward === 'garden' && (t === Tile.Street || t === Tile.Embankment) && roll >= 20 && roll < 24) {
+        push(bench, 8, 12);
+        continue;
       }
       if (t === Tile.Street && roll >= 10 && roll < 13) {
         push(trough, 8, 9);

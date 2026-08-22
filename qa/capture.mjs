@@ -37,6 +37,9 @@ const SCENES = [
   { name: 'storm-quay', seed: 'weather-3', tick: 641, zoom: 2, ward: 'quayside' },
   { name: 'rain-night', seed: 'night-rain-5', tick: 1320, zoom: 2, ward: 'civic' },
   { name: 'storm-refuge', seed: 'weather-3', tick: 641, zoom: 3, shelter: true },
+  { name: 'merchant-frontage', seed: 'verdigris', tick: 641, zoom: 3, ward: 'merchant' },
+  { name: 'works-yard', seed: 'verdigris', tick: 641, zoom: 3, ward: 'works' },
+  { name: 'courts-patina', seed: 'verdigris', tick: 641, zoom: 3, ward: 'courts' },
 ];
 
 mkdirSync(OUT, { recursive: true });

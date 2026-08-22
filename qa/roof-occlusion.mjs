@@ -30,7 +30,7 @@ try {
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       drawHouse(ctx, ox, oy, {
         w: 2, d: 2, wallH, roofH, shape, chimneys: 0, windowRows: 0,
-        ridgeAlongX, material: 'glazed', polite: false, finial: 'none', finialH: 0,
+        ridgeAlongX, material: 'glazed', polite: false, roofWear: 2, finial: 'none', finialH: 0,
         skin: {
           wallLit: '#705030', wallShade: '#503020', gableLit: gable, gableShade: gable,
           roofLit: '#507090', roofShade: '#304050', roofRidge: '#d0e0f0', outline: '#101018',
