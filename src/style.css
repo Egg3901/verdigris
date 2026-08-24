@@ -460,6 +460,95 @@ button.brass[hidden] { display: none; }
 #toast.loss { border-color: var(--loss); }
 #toast.gain { border-color: var(--verd1); }
 
+/* The alderman's desk. A modal ledger earns the centre of the screen when it is
+   open, then gets out of the way so investigation still happens in the city. */
+#desk {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(360px * var(--px)), 92vw);
+  max-height: 86dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 8;
+  padding: calc(6px * var(--px));
+  font-size: var(--fs-small);
+}
+#desk .name {
+  font-family: var(--font-instrument);
+  font-size: var(--fs-body);
+  color: var(--brass0);
+  letter-spacing: 0.14em;
+}
+#desk .close {
+  all: unset;
+  position: absolute;
+  right: calc(5px * var(--px));
+  top: calc(3px * var(--px));
+  cursor: pointer;
+  font-size: var(--fs-body);
+  color: var(--brass-ink);
+}
+#desk .dstatus {
+  color: var(--verd1);
+  letter-spacing: 0.1em;
+  margin-top: calc(2px * var(--px));
+}
+#desk > .prose { margin: calc(3px * var(--px)) 0 calc(5px * var(--px)); }
+#desk .heading {
+  color: var(--brass-ink);
+  letter-spacing: 0.18em;
+  margin: calc(6px * var(--px)) 0 calc(2px * var(--px));
+  border-bottom: 1px solid rgba(107, 74, 18, 0.45);
+}
+#desk .dmatters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(80px * var(--px))), 1fr));
+  gap: calc(4px * var(--px));
+}
+#desk .dmatter {
+  border: 1px solid var(--brass-ink);
+  background: var(--parch3);
+  padding: calc(4px * var(--px));
+}
+#desk .dmatter[data-status="pending"] { border-color: var(--verd1); }
+#desk .dtitle {
+  display: flex;
+  justify-content: space-between;
+  gap: calc(4px * var(--px));
+  color: var(--brass0);
+  letter-spacing: 0.06em;
+}
+#desk .dstate { color: var(--verd1); font-size: var(--fs-small); flex: 0 0 auto; }
+#desk .dpetition { margin: calc(3px * var(--px)) 0; line-height: 1.4; }
+#desk .dcause, #desk .dtest, #desk .dway {
+  margin: calc(2px * var(--px)) 0;
+  color: var(--brass-ink);
+  line-height: 1.35;
+}
+#desk .dway { color: var(--verd1); }
+#desk .ddue { margin-top: calc(3px * var(--px)); letter-spacing: 0.1em; }
+#desk .dactions { display: flex; flex-wrap: wrap; align-items: center; gap: calc(3px * var(--px)); margin-top: calc(3px * var(--px)); }
+#desk .danswer { color: var(--verd1); font-style: italic; flex: 1 1 100%; }
+#desk .dmovement, #desk .dverdict {
+  display: grid;
+  grid-template-columns: calc(37px * var(--px)) calc(17px * var(--px)) 1fr auto;
+  gap: calc(3px * var(--px));
+  padding: calc(1px * var(--px)) 0;
+  border-bottom: 1px solid rgba(107, 74, 18, 0.2);
+}
+#desk .dverdict { grid-template-columns: calc(32px * var(--px)) 1fr auto; }
+#desk .dmetric { color: var(--brass0); letter-spacing: 0.08em; }
+#desk .dup { color: var(--verd1); }
+#desk .ddown, #desk .dverdict[data-status="failed"] .dstate,
+#desk .dverdict[data-status="declined"] .dstate { color: var(--loss); }
+#desk .dverdict[data-status="overtaken"] .dstate { color: var(--brass-ink); }
+#desk .dwhen { color: var(--brass-ink); font-variant-numeric: tabular-nums; }
+#desk .dempty { color: var(--brass-ink); font-style: italic; }
+
+#titleplate .budget button { margin-left: auto; }
+
 /* The vestry */
 #vestry {
   position: fixed;
@@ -721,6 +810,17 @@ button.brass[hidden] { display: none; }
     z-index: 1;
   }
   html[data-sheet] #zoomstepper { display: none; }
+
+  #desk {
+    width: auto;
+    left: var(--pad-left);
+    right: var(--pad-right);
+    top: var(--pad-top);
+    bottom: calc(var(--bar-h, 52px * var(--px)) + var(--pad-bottom) + 4px);
+    transform: none;
+    max-height: none;
+  }
+  #desk .dmatters { grid-template-columns: 1fr; }
 
   /* Anchored below the title plate rather than at a guessed offset: the plate is
      one line at 390px and two at 320px, so a fixed top always collides with one

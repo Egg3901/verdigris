@@ -56,6 +56,8 @@ import { civicGrievanceTarget, newCivicMemory, tickCivicRecoveryDaily } from './
 import type { CivicMemoryState } from './civic-memory';
 import { newOccasions, tickOccasions } from './occasions';
 import type { OccasionState } from './occasions';
+import { newMatters, openDailyMatters, tickMatters } from './matters';
+import type { MatterState } from './matters';
 
 export interface LogEvent {
   tick: number;
@@ -121,6 +123,8 @@ export interface City extends World {
   shelters: ShelterState;
   civic: CivicMemoryState;
   occasions: OccasionState;
+  /** The alderman's live agenda and its bounded outcome ledger. */
+  matters: MatterState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -157,6 +161,7 @@ export function newCity(seedStr: string): City {
     shelters: newShelters(),
     civic: newCivicMemory(world.buildings.length, world.households.length),
     occasions: newOccasions(),
+    matters: newMatters(),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -571,6 +576,7 @@ export function tickCity(city: City): void {
   tickTrams(city);
 
   if (mod % 60 === 0) tickHour(city);
+  tickMatters(city);
   if (mod === DAILY_MINUTE) tickDay(city);
 }
 
@@ -881,6 +887,7 @@ function tickDay(city: City): void {
   if (arrears > 0) {
     applyPressure(city.press, 'mood', -Math.min(40, arrears), 'firm', arrears, 'rent arrears', tick);
   }
+  openDailyMatters(city);
 }
 
 export function pushLog(city: City, text: string, kind: LogEvent['kind']): void {
@@ -1060,6 +1067,25 @@ export function hashWorld(city: City): number {
   }
   for (const k of Object.keys(city.press.pressures).sort()) {
     put(city.press.pressures[k as PressureKey].value);
+  }
+  put(city.matters.standing);
+  put(city.matters.nextId);
+  put(city.matters.revision);
+  for (const matter of city.matters.items) {
+    put(matter.id);
+    put(matter.kind === 'repair' ? 1 : matter.kind === 'labour' ? 2 : 3);
+    put(matter.status === 'open' ? 1 : matter.status === 'pending' ? 2
+      : matter.status === 'kept' ? 3 : matter.status === 'failed' ? 4
+        : matter.status === 'declined' ? 5 : 6);
+    put(matter.openedAt);
+    put(matter.dueAt);
+    put(matter.respondedAt);
+    put(matter.resolvedAt);
+    put(matter.target.id);
+    put(matter.subjectId);
+    put(matter.response ? matter.response.length : 0);
+    put(matter.partyIds.length);
+    for (const id of matter.partyIds) put(id);
   }
   for (const s of city.souls) {
     put(s.id);

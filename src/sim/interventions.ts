@@ -25,6 +25,7 @@ import type { InterventionKind, Target } from './types';
 import { canFileWorks, fileWorks } from './works';
 import { canCallDeputation, callDeputation } from './deputations';
 import { canOpenShelter, openShelter } from './shelters';
+import { noteMatterResponse } from './matters';
 
 export const DAILY_BUDGET = 3;
 
@@ -410,6 +411,7 @@ export function apply(city: City, kind: InterventionKind, target: Target): boole
   city.nudges.push({ tick: city.tick, kind, target });
   city.budgetLeft--;
   const text = def.apply(city, target);
+  noteMatterResponse(city, kind, target);
   applyPressure(city.press, 'suspicion', def.heat, 'intervention', target.id, def.label.toLowerCase(), city.tick);
   city.traced += def.heat > 55 ? 1 : 0;
   pushLog(city, text, kind === 'fundBunting' || kind === 'fileWorks' || kind === 'callDeputation' || kind === 'openShelter' ? 'gain' : 'loss');

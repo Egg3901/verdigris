@@ -22,6 +22,11 @@ import { weatherAt, weatherLabel } from '../sim/weather';
 import { shelterSummary } from '../sim/shelters';
 import { civicSummary } from '../sim/civic-memory';
 import { occasionSummary } from '../sim/occasions';
+import { activeMatters } from '../sim/matters';
+import { mountDesk } from './desk';
+import type { Desk } from './desk';
+import type { InterventionKind, Target } from '../sim/types';
+import { INTERVENTIONS } from '../sim/interventions';
 
 export interface ShellHooks {
   /** The selected building, for ordinances that need a street named. */
@@ -34,6 +39,8 @@ export interface ShellHooks {
   /** Advance by n game-minutes. Time is forward only, so this is the only verb. */
   onAdvance: (minutes: number) => void;
   onZoom: (step: ZoomStep) => void;
+  onFocusTarget: (target: Target) => void;
+  onDeclineMatter: (id: number) => void;
 }
 
 export interface Shell {
@@ -44,6 +51,7 @@ export interface Shell {
   toast: (text: string, kind?: 'info' | 'loss' | 'gain') => void;
   toggleHelp: () => void;
   toggleVestry: () => void;
+  toggleDesk: () => void;
   insets: () => { top: number; right: number; bottom: number; left: number };
   say: (text: string) => void;
   destroy: () => void;
@@ -63,6 +71,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   root.textContent = '';
   const a11y = document.getElementById('a11y') as HTMLElement | null;
+  let desk: Desk;
 
   // Pixel scale. Floored at 2 wherever text lives: Silkscreen is designed at 8px
   // and 8 CSS px is not readable by anyone. If the viewport cannot hold a panel,
@@ -107,9 +116,12 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   clock.setAttribute('aria-hidden', 'true');
   const counts = el('div', 'counts');
   const budgetRow = el('div', 'budget');
-  const budgetLabel = el('span', undefined, 'INTERVENTIONS');
+  const budgetLabel = el('span', undefined, 'INFLUENCE');
   const budgetTokens = el('span');
-  budgetRow.append(budgetLabel, budgetTokens);
+  const deskBtn = el('button', 'brass', 'DESK') as HTMLButtonElement;
+  deskBtn.setAttribute('aria-label', "Open the alderman's desk");
+  deskBtn.addEventListener('click', () => desk.toggle());
+  budgetRow.append(budgetLabel, budgetTokens, deskBtn);
   title.append(h1, rule, clock, counts, budgetRow);
 
   // Inspector.
@@ -191,7 +203,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   function syncSheets(): void {
     const cur = document.documentElement.getAttribute('data-sheet');
     verbSheetBtn.setAttribute('aria-expanded', String(cur === 'verbs'));
-    nudgeSheetBtn.setAttribute('aria-pressed', String(cur === 'verbs'));
+    nudgeSheetBtn.setAttribute('aria-pressed', String(cur === 'nudges'));
     nudgeSheetBtn.setAttribute('aria-expanded', String(cur === 'nudges'));
     verbSheetBtn.setAttribute('aria-pressed', String(cur === 'verbs'));
   }
@@ -244,7 +256,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   // useful than not knowing it exists. The refusal text is the teaching.
   const nudges = el('div', 'plate');
   nudges.id = 'nudges';
-  const nudgeHead = el('div', 'heading', 'INTERVENE');
+  const nudgeHead = el('div', 'heading', 'USE INFLUENCE');
   const nudgeHint = el('div', 'hint');
   nudges.append(nudgeHead, nudgeHint);
   const nudgeList: { verb: Verb; node: HTMLButtonElement; why: HTMLElement }[] = [];
@@ -295,12 +307,12 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   helpClose.setAttribute('aria-label', 'Close');
   helpClose.addEventListener('click', () => toggleHelp());
   const helpIntro = el('p', 'prose');
-  helpIntro.textContent = 'An 1890s district, from above. You do not build anything. '
-    + 'Tap a roof to see who is inside it, tap a name to follow that person, '
-    + 'and spend three interventions a day on the rest.';
+  helpIntro.textContent = "You are Verdigris's alderman. The city brings matters to your desk; "
+    + 'you inspect the people and places involved, then spend three measures of influence a day. '
+    + 'A promise is kept only when the city itself produces the result.';
   help.append(helpClose, el('div', 'name', 'VERDIGRIS'), helpIntro);
   const groups: [string, string][] = [
-    ['camera', 'LOOKING'], ['time', 'TIME'], ['verbs', 'VERBS'], ['nudges', 'INTERVENTIONS'],
+    ['camera', 'LOOKING'], ['time', 'TIME'], ['verbs', 'VERBS'], ['nudges', 'INFLUENCE'],
   ];
   for (const [g, label] of groups) {
     help.append(el('div', 'heading', label));
@@ -326,9 +338,9 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
    * small city, a clock, three grey buttons and a panel of eight refusals.
    *
    * Three sentences and a dismiss, shown once. Deliberately not a tutorial: the
-   * game is watching, and the only things a player has to be told are that the
-   * roofs are clickable, that the names inside are clickable, and that the
-   * budget exists.
+   * game begins at the desk, and the only things a player has to be told are how
+   * to inspect a matter, that influence is scarce, and that outcomes rather than
+   * button presses decide the verdict.
    */
   const firstRun = el('div', 'plate');
   firstRun.id = 'firstrun';
@@ -340,24 +352,25 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   firstRun.hidden = seen;
   firstRun.append(el('div', 'name', 'VERDIGRIS'));
   const fr = el('p', 'prose');
-  fr.textContent = 'An 1890s district, watched from above. Hundreds of people live here and '
-    + 'each of them has somewhere to be.';
+  fr.textContent = "You are Verdigris's alderman. Hundreds of people live in this district, "
+    + 'and some of their troubles will reach your desk.';
   firstRun.append(fr);
   const list = el('ul');
   for (const line of [
-    'Tap a roof to see who is inside it.',
-    'Tap a name in that list to follow that person through their day.',
-    'You get three interventions a day. You never build anything.',
+    'Read why a matter exists, then inspect the named people and place.',
+    'Spend three measures of influence a day, or decline and keep them for worse trouble.',
+    'The ledger judges what actually happened, not which button you pressed.',
   ]) {
     const li = el('li');
     li.append(el('span', undefined, line));
     list.append(li);
   }
   firstRun.append(list);
-  const frGo = el('button', 'brass', 'WATCH') as HTMLButtonElement;
+  const frGo = el('button', 'brass', 'TAKE THE CHAIR') as HTMLButtonElement;
   frGo.addEventListener('click', () => {
     firstRun.hidden = true;
     try { localStorage.setItem('verdigris.seen', '1'); } catch { /* private mode */ }
+    desk.open();
   });
   firstRun.append(frGo);
 
@@ -370,7 +383,12 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     vestryBtn.setAttribute('aria-expanded', String(!vestry.node.hidden));
   };
 
-  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, vestry.node, firstRun);
+  desk = mountDesk({
+    onFocus: hooks.onFocusTarget,
+    onDecline: hooks.onDeclineMatter,
+  });
+
+  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, vestry.node, desk.node, firstRun);
 
   measureBar();
   let insetsAt = -1e9;
@@ -440,6 +458,9 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
 
     drawDaybar(dayCtx, daybar, city);
     vestry.update(city);
+    desk.update(city);
+    const matterCount = activeMatters(city.matters).length;
+    deskBtn.textContent = `DESK ${matterCount} · ${city.matters.standing}`;
 
     paintIfChanged(city, sel);
 
@@ -534,7 +555,11 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     inspector.hidden = true;
   }
 
+  let prevNudgeKey = '';
   const nudgeReasons: Shell['nudgeReasons'] = (reasons) => {
+    const nudgeKey = [...reasons].map(([verb, reason]) => `${verb}:${reason ?? ''}`).join('|');
+    if (nudgeKey === prevNudgeKey) return;
+    prevNudgeKey = nudgeKey;
     // Generic "pick a target" refusals are collapsed into one line at the top of
     // the panel. Six near-identical italic sentences stacked under six rows is a
     // wall of no, not teaching, and it made the rows reflow under the cursor
@@ -546,11 +571,13 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       node.setAttribute('aria-disabled', String(!ok));
       const generic = reason === 'Pick somebody first.' || reason === 'Pick a building first.';
       if (generic) needsTarget++;
-      const shown = ok || generic ? '' : (reason ?? '');
+      const kind = NUDGE_VERBS[verb] as InterventionKind;
+      const shown = ok ? INTERVENTIONS[kind].blurb : generic ? '' : (reason ?? '');
+      node.title = INTERVENTIONS[kind].blurb;
       why.textContent = shown;
-      // Point at the reason so a screen reader is told WHY a row is disabled.
-      // This was an empty string, so the one thing the design is built around
-      // was the one thing assistive tech could not hear.
+      // The same description carries the mechanism while available and the
+      // refusal while unavailable, so pointer and screen-reader users get the
+      // same decision context.
       if (shown) node.setAttribute('aria-describedby', why.id);
       else node.removeAttribute('aria-describedby');
     }
@@ -565,6 +592,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     toast,
     toggleHelp,
     toggleVestry,
+    toggleDesk: desk.toggle,
     // Cached. This measured four panels with getBoundingClientRect, and it is
     // called from every pointermove during a drag, so it forced a synchronous
     // layout on every frame of every pan.

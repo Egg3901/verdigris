@@ -30,6 +30,7 @@ import type { DisasterKind } from './sim/disasters';
 import { startMarketDay } from './sim/occasions';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
 import { weatherAt } from './sim/weather';
+import { declineMatter } from './sim/matters';
 
 const params = new URLSearchParams(location.search);
 const SEED = params.get('seed') ?? 'verdigris';
@@ -234,6 +235,28 @@ shell = mountShell(shellRoot, {
   onScrubTo: scrubToMinuteOfDay,
   onAdvance: scrubForward,
   onZoom: setZoom,
+  onFocusTarget: (target) => {
+    if (target.kind === 'building') {
+      const b = city.buildings[target.id];
+      if (!b) return;
+      sel.buildingId = b.id;
+      sel.soulId = -1;
+      follow = -1;
+      if (cam.zoom < 2) setZoom(2);
+      centreOn(cam, viewW, viewH, isoX(b.ox, b.oy), isoY(b.ox, b.oy));
+      clampCamera(cam, viewW, viewH, shell.insets());
+      return;
+    }
+    if (target.kind === 'soul') {
+      const s = city.souls[target.id];
+      if (!s) return;
+      sel.soulId = s.id;
+      sel.buildingId = -1;
+    }
+  },
+  onDeclineMatter: (id) => {
+    if (declineMatter(city, id)) shell.toast('The petition was declined. Your influence remains; your standing does not.', 'loss');
+  },
 });
 
 // Input.

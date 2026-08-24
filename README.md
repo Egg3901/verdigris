@@ -1,6 +1,6 @@
 # Verdigris
 
-A living 1890s city district you watch from above.
+A living 1890s city district that brings its troubles to your desk.
 
 Named for the green patina on its brass. White stone, gold leaf, civic bunting,
 arc lamps, pneumatic post, one tram line, one dirigible mooring mast. Toned-down
@@ -11,9 +11,11 @@ and is quietly failing underneath. That is not flavour text: `rot` is a simulati
 variable that decides whether a repair that was ordered actually happened, and the
 courts behind the gold-leaf frontages are a spatial fact the generator produces.
 
-**You are an observer with light nudges.** You never place a building. You watch,
-advance time, click a building or a soul to read what is happening inside, follow
-someone, and spend three interventions a day.
+**You are Verdigris's alderman.** You never place a building. Named residents
+bring real conditions to your desk: a failing house, aggrieved hands, a public
+door needed before the rain. You inspect the people and place, follow them through
+the day, and spend three measures of influence. The ledger judges what the city
+actually did, not which button you pressed.
 
 ## Running it
 
@@ -76,6 +78,11 @@ Built and playing:
   produced it.
 - Eleven interventions, each with a second-order effect and a backfire that is
   a documented state condition rather than a dice roll.
+- The Alderman's Desk: a bounded daily agenda derived from live city state, with
+  named petitioners, inspectable places, visible causes, deadlines, a political
+  standing, and delayed verdicts. A filed repair counts only if the fabric is
+  actually made good; a strike counts only if it holds; a refuge counts only when
+  somebody vulnerable reaches it.
 - The Works Register: file a fabric, drain or gas case on a building. Pneumatic
   post access changes lead time; coin, rot and workshop state decide whether it
   is repaired, cosmetically skimmed or shelved. Survey marks, scaffold, blue
