@@ -2,14 +2,16 @@
 // This is intentionally one panel over the existing city, not a second game UI.
 import type { City } from '../sim/city';
 import { dayOf, formatClock } from '../sim/clock';
-import { activeMatters, matterDay } from '../sim/matters';
+import { activeMatters, canPressMatter, matterDay, matterInsight, regardFor } from '../sim/matters';
 import type { Matter } from '../sim/matters';
 import { recentCauses } from '../sim/pressures';
 import type { Target } from '../sim/types';
+import { fullName } from '../sim/souls';
 
 export interface DeskHooks {
   onFocus: (target: Target) => void;
   onDecline: (id: number) => void;
+  onPress: (id: number) => void;
 }
 
 export interface Desk {
@@ -45,6 +47,14 @@ function dueLabel(matter: Matter): string {
   return `DUE DAY ${matterDay(matter)}, ${formatClock(matter.dueAt)}`;
 }
 
+function remainingLabel(city: City, matter: Matter): string {
+  const end = matter.kind === 'labour' ? matter.respondedAt + 240 : matter.dueAt;
+  const left = Math.max(0, end - city.tick);
+  const hours = Math.floor(left / 60);
+  const minutes = left % 60;
+  return hours > 0 ? `${hours}H ${minutes}M TO VERDICT` : `${minutes}M TO VERDICT`;
+}
+
 export function mountDesk(hooks: DeskHooks): Desk {
   const root = el('div', 'plate');
   root.id = 'desk';
@@ -57,32 +67,55 @@ export function mountDesk(hooks: DeskHooks): Desk {
   close.setAttribute('aria-label', 'Close the desk');
   close.addEventListener('click', () => { root.hidden = true; });
   const title = el('div', 'name', "THE ALDERMAN'S DESK");
+  const peek = el('button', 'dpeek') as HTMLButtonElement;
+  peek.addEventListener('click', () => root.removeAttribute('data-peek'));
   const status = el('div', 'dstatus');
   const intro = el('p', 'prose', 'The city brings facts, not errands. Read the cause, inspect the place, then decide what your influence is worth.');
+  const meeting = el('div', 'dmeeting');
   const matters = el('div', 'dmatters');
   const movementHead = el('div', 'heading', 'WHY THE WARD MOVED');
   const movements = el('div', 'dmovements');
   const historyHead = el('div', 'heading', 'THE LEDGER');
   const history = el('div', 'dhistory');
-  root.append(close, title, status, intro, matters, movementHead, movements, historyHead, history);
+  root.append(peek, close, title, status, meeting, intro, matters, movementHead, movements, historyHead, history);
 
   let city: City | null = null;
   let prevKey = '';
 
   function renderMatter(matter: Matter): HTMLElement {
+    const current = city as City;
     const card = el('article', 'dmatter');
     card.setAttribute('data-status', matter.status);
     const head = el('div', 'dtitle');
     head.append(el('span', undefined, matter.title.toUpperCase()), el('span', 'dstate', matter.status.toUpperCase()));
     const petition = el('p', 'dpetition', matter.petition);
+    const people = el('div', 'dpeople');
+    for (const id of matter.partyIds) {
+      const soul = current.souls[id];
+      if (!soul) continue;
+      const regard = regardFor(current, id);
+      const label = regard > 0 ? 'PATRON' : regard < 0 ? 'ESTRANGED' : '';
+      const person = el('button', 'dperson', fullName(soul)) as HTMLButtonElement;
+      if (label) person.append(el('span', regard > 0 ? 'patron' : 'estranged', label));
+      person.setAttribute('aria-label', `${fullName(soul)}${label ? `, ${label.toLowerCase()}` : ''}. Inspect person.`);
+      person.addEventListener('click', () => {
+        root.setAttribute('data-peek', '1');
+        peek.textContent = `${matter.title.toUpperCase()} · RETURN TO DESK`;
+        hooks.onFocus({ kind: 'soul', id });
+      });
+      people.append(person);
+    }
     const cause = el('p', 'dcause', `WHY NOW · ${matter.cause}`);
+    const insightText = matterInsight(current, matter);
+    const insight = el('p', 'dintel', insightText ? `A WORD INSIDE · ${insightText}` : 'No petitioner trusts the office enough to say more.');
     const test = el('p', 'dtest', `PROMISE · ${matter.test}`);
     const wayIn = el('p', 'dway', WAY_IN[matter.kind]);
     const due = el('div', 'ddue', dueLabel(matter));
     const actions = el('div', 'dactions');
     const inspect = el('button', 'brass', 'INSPECT') as HTMLButtonElement;
     inspect.addEventListener('click', () => {
-      root.hidden = true;
+      root.setAttribute('data-peek', '1');
+      peek.textContent = `${matter.title.toUpperCase()} · RETURN TO DESK`;
       hooks.onFocus(matter.target);
     });
     actions.append(inspect);
@@ -92,20 +125,30 @@ export function mountDesk(hooks: DeskHooks): Desk {
       actions.append(decline);
     }
     if (matter.status === 'pending') {
-      actions.append(el('span', 'danswer', `Answered with ${RESPONSE[matter.response ?? ''] ?? 'influence'}. The city has not answered back yet.`));
+      actions.append(el('span', 'danswer', `Answered with ${RESPONSE[matter.response ?? ''] ?? 'influence'}. ${remainingLabel(current, matter)}.`));
+      const press = el('button', 'brass', 'PRESS · 1') as HTMLButtonElement;
+      const why = canPressMatter(current, matter.id);
+      press.setAttribute('aria-disabled', String(why !== null));
+      press.title = why ?? 'Spend one more influence to send a clerk after this promise.';
+      press.addEventListener('click', () => { if (!why) hooks.onPress(matter.id); });
+      actions.append(press);
     }
-    card.append(head, petition, cause, test, wayIn, due, actions);
+    card.append(head, petition, people, cause, insight, test, wayIn, due, actions);
     return card;
   }
 
   const update = (next: City): void => {
     city = next;
-    const key = `${Math.floor(next.tick / 60)}|${next.matters.revision}|${next.press.causeHead}|${next.traced}|${next.paperCredibility}`;
+    const key = `${Math.floor(next.tick / 10)}|${next.matters.revision}|${next.press.causeHead}|${next.traced}|${next.paperCredibility}|${next.budgetLeft}`;
     if (key === prevKey) return;
     prevKey = key;
     const active = activeMatters(next.matters);
     status.textContent = `DAY ${dayOf(next.tick)} · STANDING ${next.matters.standing}/1000 · ${active.length} MATTER${active.length === 1 ? '' : 'S'} BEFORE YOU`
       + `${next.traced ? ` · ${next.traced} HIGH-HANDED ACT${next.traced === 1 ? '' : 'S'} TRACED` : ''}`;
+    const lastMeeting = next.matters.meetings.at(-1);
+    meeting.textContent = lastMeeting
+      ? `LAST MEETING · ${lastMeeting.outcome.toUpperCase()} · ${lastMeeting.text} NEXT SITTING DAY ${dayOf(next.matters.nextMeetingAt)}.`
+      : `RATEPAYERS SIT ON DAY ${dayOf(next.matters.nextMeetingAt)}. Named patrons and opponents will test whether the chair keeps its daily influence.`;
 
     matters.textContent = '';
     if (!active.length) matters.append(el('p', 'dempty', 'Nothing new is before the desk. The district continues without asking permission.'));
@@ -136,7 +179,7 @@ export function mountDesk(hooks: DeskHooks): Desk {
       const row = el('div', 'dverdict');
       row.setAttribute('data-status', matter.status);
       row.append(
-        el('span', 'dstate', matter.status.toUpperCase()),
+        el('span', 'dstate', `${matter.status.toUpperCase()} ${matter.standingDelta > 0 ? '+' : ''}${matter.standingDelta || ''}`),
         el('span', undefined, matter.outcome),
         el('span', 'dwhen', `DAY ${dayOf(matter.resolvedAt)}`),
       );
@@ -146,6 +189,7 @@ export function mountDesk(hooks: DeskHooks): Desk {
 
   const open = () => {
     root.hidden = false;
+    root.removeAttribute('data-peek');
     if (city) update(city);
     close.focus();
   };

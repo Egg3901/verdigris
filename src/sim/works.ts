@@ -26,6 +26,8 @@ export interface WorkOrder {
   resolvedAt: number;
   workshopFirmId: number;
   pneumatic: boolean;
+  /** The alderman spent further influence to keep this exact case off the shelf. */
+  pressed: boolean;
 }
 
 export interface WorksState {
@@ -96,6 +98,7 @@ export function fileWorks(city: City, buildingId: number): WorkOrder {
     resolvedAt: -1,
     workshopFirmId: workshop?.id ?? -1,
     pneumatic,
+    pressed: false,
   };
   city.works.orders.push(order);
   city.works.revision++;
@@ -156,7 +159,7 @@ export function tickWorksHourly(city: City): WorksUpdate[] {
     if (!b) continue;
 
     if (order.status === 'filed' && city.tick >= order.startsAt) {
-      if (pressureOf(city.press, 'coin') < 340) {
+      if (pressureOf(city.press, 'coin') < 340 && !order.pressed) {
         order.status = 'shelved';
         order.resolvedAt = city.tick;
         city.works.revision++;
@@ -177,8 +180,8 @@ export function tickWorksHourly(city: City): WorksUpdate[] {
 
     if (order.status !== 'working' || city.tick < order.dueAt) continue;
     const workshop = city.firms[order.workshopFirmId];
-    const honest = pressureOf(city.press, 'rot') < 520;
-    const funded = pressureOf(city.press, 'coin') >= 360;
+    const honest = order.pressed || pressureOf(city.press, 'rot') < 520;
+    const funded = order.pressed || pressureOf(city.press, 'coin') >= 360;
     const crewWorking = Boolean(workshop && isRunning(workshop, city.tick));
     order.resolvedAt = city.tick;
     city.works.revision++;

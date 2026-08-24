@@ -27,6 +27,13 @@ import { mountDesk } from './desk';
 import type { Desk } from './desk';
 import type { InterventionKind, Target } from '../sim/types';
 import { INTERVENTIONS } from '../sim/interventions';
+import type { InterventionForecast } from '../sim/interventions';
+
+interface NudgeDecision {
+  reason: string | null;
+  forecast: InterventionForecast | null;
+  recommended: boolean;
+}
 
 export interface ShellHooks {
   /** The selected building, for ordinances that need a street named. */
@@ -41,11 +48,12 @@ export interface ShellHooks {
   onZoom: (step: ZoomStep) => void;
   onFocusTarget: (target: Target) => void;
   onDeclineMatter: (id: number) => void;
+  onPressMatter: (id: number) => void;
 }
 
 export interface Shell {
   update: (city: City, sel: Selection, zoom: ZoomStep, speedIndex: number, budget: number) => void;
-  nudgeReasons: (reasons: Map<string, string | null>) => void;
+  nudgeReasons: (reasons: Map<string, NudgeDecision>) => void;
   /** On-screen feedback. Refusals used to go only to the visually-hidden live
    *  region, so a sighted player who pressed a key twice got nothing at all. */
   toast: (text: string, kind?: 'info' | 'loss' | 'gain') => void;
@@ -56,8 +64,6 @@ export interface Shell {
   say: (text: string) => void;
   destroy: () => void;
 }
-
-const DAILY_BUDGET = 3;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, className?: string, text?: string,
@@ -386,6 +392,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   desk = mountDesk({
     onFocus: hooks.onFocusTarget,
     onDecline: hooks.onDeclineMatter,
+    onPress: hooks.onPressMatter,
   });
 
   root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, vestry.node, desk.node, firstRun);
@@ -398,6 +405,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   let lastTickerLen = 0;
   let lastInspectorPaint = -1;
   let prevBudget = -1;
+  let prevBudgetCap = -1;
   let prevZoom = -1;
   let prevSpeed = -1;
 
@@ -417,7 +425,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   const update: Shell['update'] = (city, sel, zoom, speedIndex, budget) => {
     const phase = phaseOf(city.tick);
     const weather = weatherAt(city.seed, city.tick);
-    const key = `${city.tick}|${zoom}|${speedIndex}|${budget}|${city.buildings.length}|${city.souls.length}`;
+    const key = `${city.tick}|${zoom}|${speedIndex}|${budget}|${city.matters.influenceCap}|${city.buildings.length}|${city.souls.length}`;
     if (key === prevKey) {
       // Selection and the vestry can change without the clock moving.
       paintIfChanged(city, sel);
@@ -430,13 +438,14 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     counts.textContent = `${city.buildings.length} ROOFS · ${city.souls.length} SOULS`;
     readout.textContent = `${formatClock(city.tick)} · ${phaseLabel(phase)} · ${weatherLabel(weather)}`;
 
-    if (budget !== prevBudget) {
+    if (budget !== prevBudget || city.matters.influenceCap !== prevBudgetCap) {
       prevBudget = budget;
+      prevBudgetCap = city.matters.influenceCap;
       budgetTokens.textContent = '';
-      for (let i = 0; i < DAILY_BUDGET; i++) {
+      for (let i = 0; i < city.matters.influenceCap; i++) {
         budgetTokens.append(el('span', i < budget ? 'token' : 'token spent'));
       }
-      budgetRow.setAttribute('aria-label', `${budget} of ${DAILY_BUDGET} interventions left today`);
+      budgetRow.setAttribute('aria-label', `${budget} of ${city.matters.influenceCap} interventions left today`);
     }
 
     if (zoom !== prevZoom) {
@@ -557,7 +566,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
 
   let prevNudgeKey = '';
   const nudgeReasons: Shell['nudgeReasons'] = (reasons) => {
-    const nudgeKey = [...reasons].map(([verb, reason]) => `${verb}:${reason ?? ''}`).join('|');
+    const nudgeKey = [...reasons].map(([verb, item]) =>
+      `${verb}:${item.reason ?? ''}:${item.forecast?.posture ?? ''}:${item.forecast?.text ?? ''}:${Number(item.recommended)}`).join('|');
     if (nudgeKey === prevNudgeKey) return;
     prevNudgeKey = nudgeKey;
     // Generic "pick a target" refusals are collapsed into one line at the top of
@@ -566,13 +576,19 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     // every time the selection changed.
     let needsTarget = 0;
     for (const { verb, node, why } of nudgeList) {
-      const reason = reasons.get(verb);
+      const decision = reasons.get(verb);
+      const reason = decision?.reason;
       const ok = reason === null;
       node.setAttribute('aria-disabled', String(!ok));
+      node.toggleAttribute('data-recommended', Boolean(decision?.recommended));
       const generic = reason === 'Pick somebody first.' || reason === 'Pick a building first.';
       if (generic) needsTarget++;
       const kind = NUDGE_VERBS[verb] as InterventionKind;
-      const shown = ok ? INTERVENTIONS[kind].blurb : generic ? '' : (reason ?? '');
+      const forecast = decision?.forecast;
+      const forecastText = forecast
+        ? `${forecast.exposure.toUpperCase()} · ${forecast.posture.toUpperCase()} · ${forecast.text}`
+        : '';
+      const shown = ok ? forecastText : generic ? '' : (reason ?? '');
       node.title = INTERVENTIONS[kind].blurb;
       why.textContent = shown;
       // The same description carries the mechanism while available and the
@@ -581,9 +597,10 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       if (shown) node.setAttribute('aria-describedby', why.id);
       else node.removeAttribute('aria-describedby');
     }
-    nudgeHint.textContent = needsTarget
-      ? 'Some of these need a target. Tap a roof, then a name inside it.'
-      : '';
+    const recommended = [...reasons.values()].some((item) => item.recommended);
+    nudgeHint.textContent = recommended
+      ? 'MATTER IN VIEW · marked measures answer this petition.'
+      : needsTarget ? 'Some of these need a target. Tap a roof, then a name inside it.' : '';
   };
 
   return {

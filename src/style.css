@@ -426,6 +426,12 @@ button.brass[hidden] { display: none; }
 #nudges button > span:first-child { flex: 1 1 auto; }
 #nudges button:hover:not([aria-disabled="true"]),
 #nudges button:focus-visible { background: var(--parch3); outline: 1px solid var(--verd1); }
+#nudges button[data-recommended] {
+  background: rgba(35, 97, 75, 0.12);
+  border-left: calc(2px * var(--px)) solid var(--verd1);
+  padding-left: calc(3px * var(--px));
+}
+#nudges button[data-recommended] > span:first-child::before { content: 'MATTER · '; color: var(--verd1); }
 #nudges button[aria-disabled="true"] { color: #5a5342; letter-spacing: 0.12em; cursor: default; }
 #nudges button[aria-disabled="true"] .key { visibility: hidden; }
 #nudges .why {
@@ -460,15 +466,16 @@ button.brass[hidden] { display: none; }
 #toast.loss { border-color: var(--loss); }
 #toast.gain { border-color: var(--verd1); }
 
-/* The alderman's desk. A modal ledger earns the centre of the screen when it is
-   open, then gets out of the way so investigation still happens in the city. */
+/* The alderman's desk is a rail, not a modal. The city keeps moving beside the
+   paperwork and INSPECT never destroys the decision context. */
 #desk {
   position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(calc(360px * var(--px)), 92vw);
-  max-height: 86dvh;
+  left: var(--pad-left);
+  top: calc(var(--pad-top) + 84px * var(--px));
+  bottom: calc(var(--pad-bottom) + 42px * var(--px));
+  transform: none;
+  width: min(calc(190px * var(--px)), 36vw);
+  max-height: none;
   overflow-y: auto;
   overscroll-behavior: contain;
   z-index: 8;
@@ -495,6 +502,13 @@ button.brass[hidden] { display: none; }
   letter-spacing: 0.1em;
   margin-top: calc(2px * var(--px));
 }
+#desk .dmeeting {
+  margin-top: calc(3px * var(--px));
+  padding: calc(3px * var(--px));
+  border: 1px solid rgba(107, 74, 18, 0.45);
+  color: var(--brass-ink);
+  line-height: 1.35;
+}
 #desk > .prose { margin: calc(3px * var(--px)) 0 calc(5px * var(--px)); }
 #desk .heading {
   color: var(--brass-ink);
@@ -504,7 +518,7 @@ button.brass[hidden] { display: none; }
 }
 #desk .dmatters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(80px * var(--px))), 1fr));
+  grid-template-columns: 1fr;
   gap: calc(4px * var(--px));
 }
 #desk .dmatter {
@@ -522,12 +536,26 @@ button.brass[hidden] { display: none; }
 }
 #desk .dstate { color: var(--verd1); font-size: var(--fs-small); flex: 0 0 auto; }
 #desk .dpetition { margin: calc(3px * var(--px)) 0; line-height: 1.4; }
-#desk .dcause, #desk .dtest, #desk .dway {
+#desk .dcause, #desk .dtest, #desk .dway, #desk .dintel {
   margin: calc(2px * var(--px)) 0;
   color: var(--brass-ink);
   line-height: 1.35;
 }
 #desk .dway { color: var(--verd1); }
+#desk .dintel { color: var(--verd1); font-style: italic; }
+#desk .dpeople { display: flex; flex-wrap: wrap; gap: calc(2px * var(--px)); }
+#desk .dperson {
+  all: unset;
+  cursor: pointer;
+  color: var(--brass0);
+  border: 1px solid rgba(107, 74, 18, 0.45);
+  padding: calc(1px * var(--px)) calc(2px * var(--px));
+}
+#desk .dperson:hover, #desk .dperson:focus-visible { background: var(--parch2); outline: 1px solid var(--verd1); }
+#desk .dperson span { margin-left: calc(2px * var(--px)); font-size: var(--fs-small); }
+#desk .dperson .patron { color: var(--verd1); }
+#desk .dperson .estranged { color: var(--loss); }
+#desk .dpeek { display: none; }
 #desk .ddue { margin-top: calc(3px * var(--px)); letter-spacing: 0.1em; }
 #desk .dactions { display: flex; flex-wrap: wrap; align-items: center; gap: calc(3px * var(--px)); margin-top: calc(3px * var(--px)); }
 #desk .danswer { color: var(--verd1); font-style: italic; flex: 1 1 100%; }
@@ -548,6 +576,11 @@ button.brass[hidden] { display: none; }
 #desk .dempty { color: var(--brass-ink); font-style: italic; }
 
 #titleplate .budget button { margin-left: auto; }
+
+/* Keep the selected address visible beside the paperwork on wide screens. */
+#shell:has(#desk:not([hidden])) #inspector {
+  margin-left: min(calc(198px * var(--px)), 38vw);
+}
 
 /* The vestry */
 #vestry {
@@ -821,6 +854,22 @@ button.brass[hidden] { display: none; }
     max-height: none;
   }
   #desk .dmatters { grid-template-columns: 1fr; }
+  #shell:has(#desk:not([hidden])) #inspector { margin-left: 0; }
+  #desk[data-peek] {
+    top: auto;
+    max-height: none;
+    padding: calc(3px * var(--px));
+  }
+  #desk[data-peek] > :not(.dpeek) { display: none; }
+  #desk[data-peek] .dpeek {
+    all: unset;
+    display: block;
+    width: 100%;
+    cursor: pointer;
+    color: var(--brass0);
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
 
   /* Anchored below the title plate rather than at a guessed offset: the plate is
      one line at 390px and two at 320px, so a fixed top always collides with one

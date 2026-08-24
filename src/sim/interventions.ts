@@ -26,6 +26,8 @@ import { canFileWorks, fileWorks } from './works';
 import { canCallDeputation, callDeputation } from './deputations';
 import { canOpenShelter, openShelter } from './shelters';
 import { noteMatterResponse } from './matters';
+import { DEFS } from './buildings';
+import { isRunning } from './firms';
 
 export const DAILY_BUDGET = 3;
 
@@ -33,6 +35,8 @@ export interface Nudge {
   tick: number;
   kind: InterventionKind;
   target: Target;
+  exposure: InterventionForecast['exposure'];
+  traced: boolean;
 }
 
 export interface InterventionDef {
@@ -45,6 +49,20 @@ export interface InterventionDef {
   /** null means allowed; a string is the reason it is not, shown in the UI. */
   can: (city: City, t: Target) => string | null;
   apply: (city: City, t: Target) => string;
+}
+
+export interface InterventionForecast {
+  posture: 'settled' | 'contested' | 'unclear';
+  exposure: 'public' | 'deniable';
+  text: string;
+}
+
+const PUBLIC_INTERVENTIONS = new Set<InterventionKind>([
+  'fundBunting', 'fileWorks', 'callDeputation', 'openShelter', 'quarantine',
+]);
+
+export function exposureOf(kind: InterventionKind): InterventionForecast['exposure'] {
+  return PUBLIC_INTERVENTIONS.has(kind) ? 'public' : 'deniable';
 }
 
 function building(city: City, t: Target) {
@@ -405,15 +423,96 @@ export function canApply(city: City, kind: InterventionKind, target: Target): st
   return def.can(city, target);
 }
 
+/**
+ * A clerk's risk note, derived from the same thresholds as the intervention.
+ * It names the known political shape without promising the exact outcome.
+ */
+export function forecastIntervention(city: City, kind: InterventionKind, target: Target): InterventionForecast {
+  const exposure = exposureOf(kind);
+  const note = (posture: InterventionForecast['posture'], text: string): InterventionForecast => ({ posture, exposure, text });
+
+  if (kind === 'rumour') {
+    const soul = city.souls[target.id];
+    const sceptic = soul && neighbourList(city, soul.id).some((id) => city.souls[id].credulity < 340);
+    return note(sceptic ? 'contested' : 'unclear', sceptic
+      ? 'A close sceptic is likely to answer the story.'
+      : 'The first listeners are hard to read.');
+  }
+  if (kind === 'cutGas') {
+    return note(pressureOf(city.press, 'suspicion') > 620 ? 'contested' : 'settled',
+      pressureOf(city.press, 'suspicion') > 620 ? 'The works are already watching this ward.' : 'No inspection is expected just now.');
+  }
+  if (kind === 'delayTram') {
+    const angry = city.souls.filter((s) => s.grievance > 700).length;
+    const tense = angry > city.souls.length * 0.18;
+    return note(tense ? 'contested' : 'settled', tense
+      ? 'The mill hands are near their limit.'
+      : 'The walk through the square should be orderly.');
+  }
+  if (kind === 'tipOff') {
+    const rotten = pressureOf(city.press, 'rot') > 560;
+    return note(rotten ? 'contested' : 'settled', rotten
+      ? 'A rotten constabulary may take the wrong person.'
+      : 'The constabulary is likely to follow the name given.');
+  }
+  if (kind === 'fundStrike') {
+    const poor = pressureOf(city.press, 'coin') < 320;
+    return note(poor ? 'contested' : 'settled', poor
+      ? 'An empty treasury makes a clearing attempt likely.'
+      : 'The hall can afford to let the gate stand.');
+  }
+  if (kind === 'plantStory') {
+    const claimId = target.kind === 'claim' ? target.id : city.souls[target.id]?.beliefs[0]?.claimId;
+    const claim = claimId === undefined ? undefined : city.claims.claims[claimId];
+    const exposed = claim?.truth === 0 && claim.generation === 0;
+    const hollow = pressureOf(city.press, 'rot') > 500;
+    return note(exposed || hollow ? 'contested' : 'unclear', exposed
+      ? 'This claim can be checked and may force a retraction.'
+      : hollow ? 'Any inquiry is likely to look hollow.' : 'The paper can carry it, but readers decide what follows.');
+  }
+  if (kind === 'quarantine') {
+    const b = building(city, target);
+    const confined = b ? city.souls.filter((s) => city.buildings[s.homeId]?.streetId === b.streetId) : [];
+    const sick = confined.filter((s) => s.health < 400).length;
+    const wrong = sick === 0 || sick > confined.length * 0.25;
+    return note(wrong ? 'contested' : 'settled', sick === 0
+      ? 'The clerk can find no sickness on this street.'
+      : sick > confined.length * 0.25 ? 'Too many sick people would be shut in together.' : 'The cordon has a narrow sanitary case.');
+  }
+  if (kind === 'fundBunting') {
+    return note('contested', 'The square gains cheer; repairs lose money.');
+  }
+  if (kind === 'fileWorks') {
+    const funded = pressureOf(city.press, 'coin') >= 360;
+    const honest = pressureOf(city.press, 'rot') < 520;
+    const workshop = city.firms.find((firm) => firm.kind === 'workshop');
+    const crew = Boolean(workshop && isRunning(workshop, city.tick));
+    return note(funded && honest && crew ? 'settled' : 'contested', funded && honest && crew
+      ? 'Money, clerks and a working crew are in place.'
+      : 'Money, clerks or the works crew may fail this case.');
+  }
+  if (kind === 'callDeputation') {
+    return note('unclear', 'The street must arrive together, and the hall must hear it.');
+  }
+  const b = building(city, target);
+  const served = Boolean(b
+    && (!DEFS[b.kind].needsGas || serviceAt(city.networks.gas, b.id))
+    && (!DEFS[b.kind].needsDrain || serviceAt(city.networks.drain, b.id)));
+  return note(served ? 'settled' : 'contested', served
+    ? 'The room has the services a refuge needs.'
+    : 'Heat or drains may fail the public room.');
+}
+
 export function apply(city: City, kind: InterventionKind, target: Target): boolean {
   if (canApply(city, kind, target)) return false;
   const def = INTERVENTIONS[kind];
-  city.nudges.push({ tick: city.tick, kind, target });
+  const traced = def.heat > 55;
+  city.nudges.push({ tick: city.tick, kind, target, exposure: exposureOf(kind), traced });
   city.budgetLeft--;
   const text = def.apply(city, target);
   noteMatterResponse(city, kind, target);
   applyPressure(city.press, 'suspicion', def.heat, 'intervention', target.id, def.label.toLowerCase(), city.tick);
-  city.traced += def.heat > 55 ? 1 : 0;
+  city.traced += traced ? 1 : 0;
   pushLog(city, text, kind === 'fundBunting' || kind === 'fileWorks' || kind === 'callDeputation' || kind === 'openShelter' ? 'gain' : 'loss');
   return true;
 }

@@ -10,13 +10,13 @@
 // case can still be skimmed, a strike can still be cleared, and a refuge only
 // counts if somebody physically reaches it.
 import type { City } from './city';
-import { dayOf } from './clock';
+import { DAILY_MINUTE, dayOf } from './clock';
 import { DEFS } from './buildings';
 import { fullName } from './souls';
 import { isRunning, isStruck } from './firms';
 import { pressureOf } from './pressures';
 import { serviceAt } from './networks';
-import { activeOrderFor, latestOrderFor, worksNeededAt } from './works';
+import { activeOrderFor, expediteFiledOrder, latestOrderFor, worksNeededAt } from './works';
 import { isWetWeather, weatherAt, weatherLabel, WEATHER_WATCH_MINUTES } from './weather';
 import type { BuildingId, FirmId, InterventionKind, SoulId, Target } from './types';
 
@@ -40,7 +40,29 @@ export interface Matter {
   cause: string;
   test: string;
   response: InterventionKind | null;
+  /** One further use of influence while the city is still deciding. */
+  pressedAt: number;
+  standingDelta: number;
   outcome: string;
+}
+
+export interface CivicRelation {
+  soulId: SoulId;
+  /** -2..2. Positive is a patron; negative is estranged. */
+  regard: number;
+  since: number;
+  lastMatterId: number;
+}
+
+export interface RatepayerMeeting {
+  tick: number;
+  outcome: 'carried' | 'divided' | 'lost';
+  standing: number;
+  supporterId: SoulId;
+  opponentId: SoulId;
+  exposedActs: number;
+  influenceCap: number;
+  text: string;
 }
 
 export interface MatterState {
@@ -48,6 +70,10 @@ export interface MatterState {
   nextId: number;
   /** Political standing, not a moral score. Kept local promises move it. */
   standing: number;
+  relations: CivicRelation[];
+  nextMeetingAt: number;
+  influenceCap: number;
+  meetings: RatepayerMeeting[];
   revision: number;
 }
 
@@ -55,9 +81,14 @@ const MAX_ACTIVE = 3;
 const KEPT_DELTA = 25;
 const FAILED_DELTA = -18;
 const DECLINED_DELTA = -6;
+export const MEETING_PERIOD = 7 * 1440;
+export const FIRST_MEETING_AT = MEETING_PERIOD + DAILY_MINUTE;
 
 export function newMatters(): MatterState {
-  return { items: [], nextId: 0, standing: 500, revision: 0 };
+  return {
+    items: [], nextId: 0, standing: 500, relations: [],
+    nextMeetingAt: FIRST_MEETING_AT, influenceCap: 3, meetings: [], revision: 0,
+  };
 }
 
 export function activeMatters(state: MatterState): Matter[] {
@@ -72,22 +103,26 @@ function recentlyHeard(state: MatterState, kind: MatterKind, targetId: number, t
   return state.items.some((m) => m.kind === kind && m.target.id === targetId && tick - m.openedAt < 3 * 1440);
 }
 
-function addMatter(city: City, matter: Omit<Matter, 'id' | 'status' | 'respondedAt' | 'resolvedAt' | 'response' | 'outcome'>): void {
-  city.matters.items.push({
+function addMatter(city: City, matter: Omit<Matter, 'id' | 'status' | 'respondedAt' | 'resolvedAt' | 'response' | 'pressedAt' | 'standingDelta' | 'outcome'>): Matter {
+  const added: Matter = {
     ...matter,
     id: city.matters.nextId++,
     status: 'open',
     respondedAt: -1,
     resolvedAt: -1,
     response: null,
+    pressedAt: -1,
+    standingDelta: 0,
     outcome: '',
-  });
+  };
+  city.matters.items.push(added);
   // The ledger is bounded. Resolved entries are history, not an unbounded save.
   if (city.matters.items.length > 24) {
     const firstResolved = city.matters.items.findIndex((m) => !['open', 'pending'].includes(m.status));
     if (firstResolved >= 0) city.matters.items.splice(firstResolved, 1);
   }
   city.matters.revision++;
+  return added;
 }
 
 function residentParties(city: City, buildingId: BuildingId, limit = 3): SoulId[] {
@@ -108,7 +143,7 @@ function names(city: City, ids: SoulId[]): string {
 
 function openRepair(city: City): boolean {
   const candidate = city.buildings
-    .filter((b) => b.householdIds.length > 0 && worksNeededAt(city, b.id) && !activeOrderFor(city, b.id))
+    .filter((b) => b.householdIds.length > 0 && worksNeededAt(city, b.id))
     .filter((b) => !hasActive(city.matters, 'repair', b.id)
       && !recentlyHeard(city.matters, 'repair', b.id, city.tick))
     .sort((a, b) => a.fabric - b.fabric || b.householdIds.length - a.householdIds.length || a.id - b.id)[0];
@@ -117,7 +152,7 @@ function openRepair(city: City): boolean {
   const need = worksNeededAt(city, candidate.id) ?? 'fabric';
   const street = city.streets[candidate.streetId]?.name ?? city.squareName;
   const defect = need === 'fabric' ? 'failing fabric' : need === 'drain' ? 'failed drains' : 'a failed gas main';
-  addMatter(city, {
+  const matter = addMatter(city, {
     kind: 'repair',
     openedAt: city.tick,
     dueAt: city.tick + 2 * 1440,
@@ -129,6 +164,16 @@ function openRepair(city: City): boolean {
     cause: `Fabric ${candidate.fabric}/1000; treasury ${pressureOf(city.press, 'coin')}/1000; civic rot ${pressureOf(city.press, 'rot')}/1000.`,
     test: 'A real repair must be completed. A number, scaffold or fresh paint is not enough.',
   });
+  // Competence is not punished. If the address was already in the register,
+  // the new petition attaches to that exact live order instead of demanding a
+  // duplicate button press.
+  const order = activeOrderFor(city, candidate.id);
+  if (order) {
+    matter.status = 'pending';
+    matter.respondedAt = order.filedAt;
+    matter.response = 'fileWorks';
+    matter.subjectId = order.id;
+  }
   return true;
 }
 
@@ -228,8 +273,9 @@ function resolve(city: City, matter: Matter, status: Extract<MatterStatus, 'kept
   matter.status = status;
   matter.resolvedAt = city.tick;
   matter.outcome = outcome;
-  city.matters.standing = Math.max(0, Math.min(1000,
-    city.matters.standing + (status === 'kept' ? KEPT_DELTA : FAILED_DELTA)));
+  matter.standingDelta = status === 'kept' ? KEPT_DELTA : FAILED_DELTA;
+  city.matters.standing = Math.max(0, Math.min(1000, city.matters.standing + matter.standingDelta));
+  for (const soulId of matter.partyIds) adjustRegard(city, soulId, status === 'kept' ? 1 : -1, matter.id);
   city.matters.revision++;
   city.log.push({ tick: city.tick, text: outcome, kind: status === 'kept' ? 'gain' : 'loss' });
   if (city.log.length > 200) city.log.splice(0, city.log.length - 200);
@@ -242,6 +288,28 @@ function overtake(city: City, matter: Matter, outcome: string): void {
   city.matters.revision++;
   city.log.push({ tick: city.tick, text: outcome, kind: 'info' });
   if (city.log.length > 200) city.log.splice(0, city.log.length - 200);
+}
+
+function adjustRegard(city: City, soulId: SoulId, delta: number, matterId: number): void {
+  if (!city.souls[soulId]) return;
+  let relation = city.matters.relations.find((item) => item.soulId === soulId);
+  if (!relation) {
+    relation = { soulId, regard: 0, since: city.tick, lastMatterId: matterId };
+    city.matters.relations.push(relation);
+  }
+  const before = relation.regard;
+  relation.regard = Math.max(-2, Math.min(2, relation.regard + delta));
+  relation.lastMatterId = matterId;
+  if (before === 0 && relation.regard !== 0) relation.since = city.tick;
+  // The relationship ledger is bounded, preferring people who still care.
+  if (city.matters.relations.length > 40) {
+    city.matters.relations.sort((a, b) => Math.abs(b.regard) - Math.abs(a.regard) || b.since - a.since || a.soulId - b.soulId);
+    city.matters.relations.length = 40;
+  }
+}
+
+export function regardFor(city: City, soulId: SoulId): number {
+  return city.matters.relations.find((item) => item.soulId === soulId)?.regard ?? 0;
 }
 
 /** Match an intervention to a petition. The eventual verdict still comes from state. */
@@ -273,9 +341,100 @@ export function declineMatter(city: City, id: number): boolean {
   matter.status = 'declined';
   matter.resolvedAt = city.tick;
   matter.outcome = `${matter.title} was declined without an answer.`;
-  city.matters.standing = Math.max(0, city.matters.standing + DECLINED_DELTA);
+  matter.standingDelta = DECLINED_DELTA;
+  city.matters.standing = Math.max(0, city.matters.standing + matter.standingDelta);
+  if (matter.partyIds[0] !== undefined) adjustRegard(city, matter.partyIds[0], -1, matter.id);
   city.matters.revision++;
   city.log.push({ tick: city.tick, text: matter.outcome, kind: 'loss' });
+  if (city.log.length > 200) city.log.splice(0, city.log.length - 200);
+  return true;
+}
+
+export function canPressMatter(city: City, id: number): string | null {
+  const matter = city.matters.items.find((item) => item.id === id);
+  if (!matter || matter.status !== 'pending') return 'Only a pending promise can be pressed.';
+  if (matter.pressedAt >= 0) return 'This matter has already been pressed.';
+  if (city.budgetLeft <= 0) return 'No influence remains today.';
+  return null;
+}
+
+/** Spend one further influence to lean on the institution already holding it. */
+export function pressMatter(city: City, id: number): boolean {
+  if (canPressMatter(city, id)) return false;
+  const matter = city.matters.items.find((item) => item.id === id) as Matter;
+  city.budgetLeft--;
+  matter.pressedAt = city.tick;
+  if (matter.kind === 'repair') {
+    const order = city.works.orders[matter.subjectId];
+    if (order) {
+      order.pressed = true;
+      expediteFiledOrder(city, order.id, city.tick + 60);
+    }
+  } else if (matter.kind === 'labour') {
+    const firm = city.firms[matter.subjectId as FirmId];
+    if (firm) firm.strikeUntil = Math.max(firm.strikeUntil, matter.respondedAt + 1440);
+  } else {
+    const shelter = city.shelters.current;
+    if (shelter?.providerId === matter.target.id) shelter.endsAt += 180;
+  }
+  matter.outcome = 'A clerk has been sent after it. The extra attention will be noticed.';
+  city.matters.revision++;
+  city.log.push({ tick: city.tick, text: `${matter.title}: the alderman pressed the matter.`, kind: 'info' });
+  if (city.log.length > 200) city.log.splice(0, city.log.length - 200);
+  return true;
+}
+
+/**
+ * Every seventh dawn, named ratepayers test whether the chair can still move
+ * the ward. Losing narrows next week's influence, but the chair and the city
+ * remain in play and the vote can reverse at the next meeting.
+ */
+export function holdRatepayerMeeting(city: City): boolean {
+  if (city.tick < city.matters.nextMeetingAt) return false;
+  const previous = city.matters.meetings.at(-1)?.tick ?? 0;
+  const mobilisedThisTerm = (item: CivicRelation): boolean => {
+    const matter = city.matters.items.find((candidate) => candidate.id === item.lastMatterId);
+    const heardAt = matter ? Math.max(matter.openedAt, matter.resolvedAt) : -1;
+    return heardAt >= previous && city.souls[item.soulId]?.age >= 18;
+  };
+  const supporters = city.matters.relations
+    .filter((item) => item.regard > 0 && mobilisedThisTerm(item))
+    .sort((a, b) => b.regard - a.regard || a.since - b.since || a.soulId - b.soulId);
+  const opponents = city.matters.relations
+    .filter((item) => item.regard < 0 && mobilisedThisTerm(item))
+    .sort((a, b) => a.regard - b.regard || a.since - b.since || a.soulId - b.soulId);
+  const support = supporters.reduce((sum, item) => sum + item.regard, 0);
+  const opposition = opponents.reduce((sum, item) => sum + Math.abs(item.regard), 0);
+  const exposedActs = city.nudges.filter((nudge) =>
+    nudge.tick >= previous && nudge.tick < city.tick && nudge.exposure === 'deniable' && nudge.traced).length;
+  const margin = city.matters.standing - 500 + (support - opposition) * 20 - exposedActs * 45;
+  const outcome: RatepayerMeeting['outcome'] = margin >= 60 ? 'carried' : margin <= -60 ? 'lost' : 'divided';
+  const influenceCap = outcome === 'carried' ? 4 : outcome === 'lost' ? 2 : 3;
+  const supporterId = supporters[0]?.soulId ?? -1;
+  const opponentId = opponents[0]?.soulId ?? -1;
+  const supporter = supporterId >= 0 ? fullName(city.souls[supporterId]) : 'No established patron';
+  const opponent = opponentId >= 0 ? fullName(city.souls[opponentId]) : 'No established opponent';
+  const standingAfter = Math.round((city.matters.standing * 4 + 500) / 5);
+  const dividedText = supporterId < 0 && opponentId < 0
+    ? 'No named ratepayer could carry the room. The chair keeps three measures each day.'
+    : `${supporter} and ${opponent} left the room divided. The chair keeps three measures each day.`;
+  const verdict = outcome === 'carried'
+    ? `${supporter} spoke for the chair. The ratepayers carried confidence; four measures may be moved each day.`
+    : outcome === 'lost'
+      ? `${opponent} spoke against the chair. Confidence was lost; only two measures may be moved each day.`
+      : dividedText;
+  const text = `${verdict} Older business recedes; standing opens at ${standingAfter}/1000.`;
+  city.matters.meetings.push({
+    tick: city.tick, outcome, standing: city.matters.standing,
+    supporterId, opponentId, exposedActs, influenceCap, text,
+  });
+  if (city.matters.meetings.length > 8) city.matters.meetings.shift();
+  city.matters.influenceCap = influenceCap;
+  city.matters.standing = standingAfter;
+  do city.matters.nextMeetingAt += MEETING_PERIOD;
+  while (city.matters.nextMeetingAt <= city.tick);
+  city.matters.revision++;
+  city.log.push({ tick: city.tick, text, kind: outcome === 'carried' ? 'gain' : outcome === 'lost' ? 'loss' : 'info' });
   if (city.log.length > 200) city.log.splice(0, city.log.length - 200);
   return true;
 }
@@ -309,11 +468,13 @@ export function tickMatters(city: City): void {
     }
     if (matter.kind === 'labour' && matter.status === 'pending') {
       const firm = city.firms[matter.subjectId as FirmId];
-      if (firm && firm.strikeUntil > matter.respondedAt + 240) {
+      const contestAt = matter.respondedAt + 240;
+      if (city.tick < contestAt) continue;
+      if (firm && firm.strikeUntil > contestAt) {
         resolve(city, matter, 'kept', `${matter.title}: the stoppage held, and the hands know who backed it.`);
         continue;
       }
-      if (city.tick > matter.respondedAt) {
+      if (city.tick >= contestAt) {
         resolve(city, matter, 'failed', `${matter.title}: the picket was cleared before it could hold.`);
         continue;
       }
@@ -333,4 +494,29 @@ export function tickMatters(city: City): void {
 
 export function matterDay(matter: Matter): number {
   return dayOf(matter.dueAt);
+}
+
+export function matterInsight(city: City, matter: Matter): string {
+  const patron = matter.partyIds.find((id) => regardFor(city, id) > 0);
+  if (patron === undefined) return '';
+  const who = fullName(city.souls[patron]);
+  if (matter.kind === 'repair') {
+    const b = city.buildings[matter.target.id];
+    const pneumatic = Boolean(b && b.postSeg >= 0 && serviceAt(city.networks.post, b.id));
+    const sound = pressureOf(city.press, 'coin') >= 360 && pressureOf(city.press, 'rot') < 520;
+    return `${who} says the case will travel ${pneumatic ? 'by pneumatic post' : 'by hand'}; ${sound ? 'the money and the hall look sound' : 'either the money or the hall looks doubtful'}.`;
+  }
+  if (matter.kind === 'labour') {
+    return `${who} says the first four hours will decide it; ${pressureOf(city.press, 'coin') < 320 ? 'the hall is ready to clear the gate' : 'the hall can afford to let the hands stand'}.`;
+  }
+  const b = city.buildings[matter.target.id];
+  const gas = b && (!DEFS[b.kind].needsGas || serviceAt(city.networks.gas, b.id));
+  const drains = b && (!DEFS[b.kind].needsDrain || serviceAt(city.networks.drain, b.id));
+  return `${who} has looked at the room: heat ${gas ? 'served' : 'failed'}, drains ${drains ? 'served' : 'failed'}.`;
+}
+
+export function recommendedFor(matter: Matter): InterventionKind[] {
+  if (matter.kind === 'repair') return ['fileWorks', 'callDeputation', 'fundBunting'];
+  if (matter.kind === 'labour') return ['fundStrike', 'tipOff', 'rumour', 'plantStory'];
+  return ['openShelter', 'quarantine', 'delayTram'];
 }

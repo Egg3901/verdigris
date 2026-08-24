@@ -23,14 +23,15 @@ import { verbForKey, NUDGE_VERBS } from './ui/keys';
 import type { Verb } from './ui/keys';
 import { soulPos } from './sim/souls';
 import { describeBuilding } from './sim/prose';
-import { INTERVENTIONS, canApply, apply as applyNudge } from './sim/interventions';
+import { INTERVENTIONS, canApply, forecastIntervention, apply as applyNudge } from './sim/interventions';
+import type { InterventionForecast } from './sim/interventions';
 import { enact as enactOrdinance, repeal as repealOrdinance } from './sim/ordinances';
 import { startDisaster } from './sim/disasters';
 import type { DisasterKind } from './sim/disasters';
 import { startMarketDay } from './sim/occasions';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
 import { weatherAt } from './sim/weather';
-import { declineMatter } from './sim/matters';
+import { activeMatters, declineMatter, pressMatter, recommendedFor } from './sim/matters';
 
 const params = new URLSearchParams(location.search);
 const SEED = params.get('seed') ?? 'verdigris';
@@ -118,19 +119,43 @@ function targetFor(kind: InterventionKind): Target | null {
   return null;
 }
 
+interface NudgeDecision {
+  reason: string | null;
+  forecast: InterventionForecast | null;
+  recommended: boolean;
+}
+
+let nudgeDecisionKey = '';
+let nudgeDecisionCache = new Map<string, NudgeDecision>();
+
 /** Why each nudge is or is not available right now, for the greyed-out menu. */
-function nudgeReasons(): Map<string, string | null> {
-  const out = new Map<string, string | null>();
+function nudgeReasons(): Map<string, NudgeDecision> {
+  const key = `${city.tick}|${city.budgetLeft}|${city.press.causeHead}|${city.matters.revision}|${sel.buildingId}|${sel.soulId}`;
+  if (key === nudgeDecisionKey) return nudgeDecisionCache;
+  const out = new Map<string, NudgeDecision>();
   for (const [verb, kindStr] of Object.entries(NUDGE_VERBS)) {
     const kind = kindStr as InterventionKind;
     const target = targetFor(kind);
     if (!target) {
       const wants = INTERVENTIONS[kind].targets;
-      out.set(verb, wants.includes('soul') ? 'Pick somebody first.' : 'Pick a building first.');
+      out.set(verb, {
+        reason: wants.includes('soul') ? 'Pick somebody first.' : 'Pick a building first.',
+        forecast: null,
+        recommended: false,
+      });
       continue;
     }
-    out.set(verb, canApply(city, kind, target));
+    const matter = activeMatters(city.matters).find((item) =>
+      (sel.buildingId >= 0 && item.target.id === sel.buildingId)
+      || (sel.soulId >= 0 && item.partyIds.includes(sel.soulId)));
+    out.set(verb, {
+      reason: canApply(city, kind, target),
+      forecast: forecastIntervention(city, kind, target),
+      recommended: Boolean(matter && recommendedFor(matter).includes(kind)),
+    });
   }
+  nudgeDecisionKey = key;
+  nudgeDecisionCache = out;
   return out;
 }
 
@@ -252,10 +277,18 @@ shell = mountShell(shellRoot, {
       if (!s) return;
       sel.soulId = s.id;
       sel.buildingId = -1;
+      follow = -1;
+      if (cam.zoom < 2) setZoom(2);
+      const p = soulPos(city.graph, s, fracMin());
+      centreOn(cam, viewW, viewH, isoX(p.cx, p.cy), isoY(p.cx, p.cy));
+      clampCamera(cam, viewW, viewH, shell.insets());
     }
   },
   onDeclineMatter: (id) => {
     if (declineMatter(city, id)) shell.toast('The petition was declined. Your influence remains; your standing does not.', 'loss');
+  },
+  onPressMatter: (id) => {
+    if (pressMatter(city, id)) shell.toast('A clerk has been sent after it. One influence spent.', 'gain');
   },
 });
 

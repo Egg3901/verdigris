@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newCity, warp, hashWorld } from '../city';
-import { INTERVENTIONS, canApply, apply, DAILY_BUDGET } from '../interventions';
-import { pressureOf } from '../pressures';
+import { INTERVENTIONS, canApply, apply, DAILY_BUDGET, forecastIntervention } from '../interventions';
+import { applyPressure, pressureOf } from '../pressures';
 import { serviceAt } from '../networks';
 import type { InterventionKind } from '../types';
 
@@ -68,6 +68,21 @@ describe('interventions', () => {
         if (why !== null) expect(typeof why).toBe('string');
       }
     }
+  });
+
+  it('forecasts the same state threshold that decides a strike backfire', () => {
+    const c = newCity('verdigris');
+    warp(c, 180);
+    const mill = c.buildings[firstOfKind(c, 'mill')];
+    expect(forecastIntervention(c, 'fundStrike', { kind: 'building', id: mill.id })).toMatchObject({
+      exposure: 'deniable',
+      posture: 'settled',
+    });
+    applyPressure(c.press, 'coin', 300 - pressureOf(c.press, 'coin'), 'seed', 0, 'test treasury', c.tick);
+    expect(forecastIntervention(c, 'fundStrike', { kind: 'building', id: mill.id })).toMatchObject({
+      exposure: 'deniable',
+      posture: 'contested',
+    });
   });
 
   it('a nudge actually changes the world, and the change persists', () => {

@@ -14,8 +14,10 @@ courts behind the gold-leaf frontages are a spatial fact the generator produces.
 **You are Verdigris's alderman.** You never place a building. Named residents
 bring real conditions to your desk: a failing house, aggrieved hands, a public
 door needed before the rain. You inspect the people and place, follow them through
-the day, and spend three measures of influence. The ledger judges what the city
-actually did, not which button you pressed.
+the day, and spend a small number of measures of influence. The ledger judges
+what the city actually did, not which button you pressed. Every seventh dawn,
+named patrons and opponents put your record before the ratepayers; their vote
+changes how much influence the chair can move during the following week.
 
 ## Running it
 
@@ -80,9 +82,19 @@ Built and playing:
   a documented state condition rather than a dice roll.
 - The Alderman's Desk: a bounded daily agenda derived from live city state, with
   named petitioners, inspectable places, visible causes, deadlines, a political
-  standing, and delayed verdicts. A filed repair counts only if the fabric is
-  actually made good; a strike counts only if it holds; a refuge counts only when
-  somebody vulnerable reaches it.
+  standing, persistent patrons and opponents, and delayed verdicts. A filed
+  repair counts only if the fabric is actually made good; a strike faces a real
+  four-hour clearing contest; a refuge counts only when somebody vulnerable
+  reaches it. Pending promises can be pressed at further political cost, and
+  work filed before a petition receives its proper credit.
+- The ratepayers' sitting: every seventh day, a named supporter and opponent test
+  the chair's standing and exposed clandestine record. Confidence grants four
+  daily measures next week, a divided room keeps three, and a loss narrows the
+  chair to two. No result ends play, and the next sitting can reverse it.
+- Intervention forecasts taken from the same deterministic predicates as the
+  sim. Each available move is marked public or deniable and settled, contested
+  or unclear; a selected petition marks relevant measures without choosing one
+  for the player.
 - The Works Register: file a fabric, drain or gas case on a building. Pneumatic
   post access changes lead time; coin, rot and workshop state decide whether it
   is repaired, cosmetically skimmed or shelved. Survey marks, scaffold, blue

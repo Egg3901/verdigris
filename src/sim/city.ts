@@ -56,7 +56,7 @@ import { civicGrievanceTarget, newCivicMemory, tickCivicRecoveryDaily } from './
 import type { CivicMemoryState } from './civic-memory';
 import { newOccasions, tickOccasions } from './occasions';
 import type { OccasionState } from './occasions';
-import { newMatters, openDailyMatters, tickMatters } from './matters';
+import { holdRatepayerMeeting, newMatters, openDailyMatters, tickMatters } from './matters';
 import type { MatterState } from './matters';
 
 export interface LogEvent {
@@ -847,7 +847,8 @@ function recomputeBaselines(city: City): void {
 
 function tickDay(city: City): void {
   const tick = city.tick;
-  city.budgetLeft = DAILY_BUDGET;
+  holdRatepayerMeeting(city);
+  city.budgetLeft = city.matters.influenceCap;
   tickOrdinancesDaily(city);
   tickCivicRecoveryDaily(city);
   decayBeliefsDaily(city.claims, city.souls);
@@ -1069,6 +1070,8 @@ export function hashWorld(city: City): number {
     put(city.press.pressures[k as PressureKey].value);
   }
   put(city.matters.standing);
+  put(city.matters.nextMeetingAt);
+  put(city.matters.influenceCap);
   put(city.matters.nextId);
   put(city.matters.revision);
   for (const matter of city.matters.items) {
@@ -1081,11 +1084,30 @@ export function hashWorld(city: City): number {
     put(matter.dueAt);
     put(matter.respondedAt);
     put(matter.resolvedAt);
+    put(matter.pressedAt);
+    put(matter.standingDelta);
     put(matter.target.id);
     put(matter.subjectId);
     put(matter.response ? matter.response.length : 0);
     put(matter.partyIds.length);
     for (const id of matter.partyIds) put(id);
+  }
+  put(city.matters.relations.length);
+  for (const relation of city.matters.relations) {
+    put(relation.soulId);
+    put(relation.regard);
+    put(relation.since);
+    put(relation.lastMatterId);
+  }
+  put(city.matters.meetings.length);
+  for (const meeting of city.matters.meetings) {
+    put(meeting.tick);
+    put(meeting.outcome === 'carried' ? 2 : meeting.outcome === 'lost' ? 0 : 1);
+    put(meeting.standing);
+    put(meeting.supporterId);
+    put(meeting.opponentId);
+    put(meeting.exposedActs);
+    put(meeting.influenceCap);
   }
   for (const s of city.souls) {
     put(s.id);
@@ -1131,6 +1153,7 @@ export function hashWorld(city: City): number {
     put(order.startsAt);
     put(order.dueAt);
     put(order.resolvedAt);
+    put(order.pressed ? 1 : 0);
   }
   put(city.laws.enforcement);
   put(city.laws.active);
