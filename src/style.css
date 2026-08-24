@@ -536,6 +536,11 @@ button.brass[hidden] { display: none; }
 }
 #desk .dstate { color: var(--verd1); font-size: var(--fs-small); flex: 0 0 auto; }
 #desk .dpetition { margin: calc(3px * var(--px)) 0; line-height: 1.4; }
+#desk .dvisit {
+  color: var(--verd1);
+  letter-spacing: 0.08em;
+  margin: calc(2px * var(--px)) 0;
+}
 #desk .dcause, #desk .dtest, #desk .dway, #desk .dintel {
   margin: calc(2px * var(--px)) 0;
   color: var(--brass-ink);
@@ -853,6 +858,26 @@ button.brass[hidden] { display: none; }
     transform: none;
     max-height: none;
   }
+  #vestry, #help {
+    left: var(--pad-left);
+    right: var(--pad-right);
+    top: var(--pad-top);
+    bottom: calc(var(--bar-h, 52px * var(--px)) + var(--pad-bottom) + 4px);
+    transform: none;
+    width: auto;
+    max-height: none;
+  }
+  #firstrun {
+    left: var(--pad-left);
+    right: var(--pad-right);
+    top: var(--pad-top);
+    bottom: var(--pad-bottom);
+    transform: none;
+    width: auto;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
   #desk .dmatters { grid-template-columns: 1fr; }
   #shell:has(#desk:not([hidden])) #inspector { margin-left: 0; }
   #desk[data-peek] {
@@ -900,6 +925,7 @@ button.brass[hidden] { display: none; }
     display: flex;
     align-items: center;
   }
+  #sheetbar button { min-width: 44px; box-sizing: border-box; justify-content: center; }
   /* Rows that WRAP get their touch target from padding. A min-height on a
      wrapped row adds the full 44px under every line, which turned four people in
      a pub into a full screen of inspector. */
@@ -909,6 +935,18 @@ button.brass[hidden] { display: none; }
     padding-bottom: calc(5px * var(--px));
   }
   #nudges .why { padding-bottom: calc(2px * var(--px)); }
+  #desk .close, #vestry .close, #help .close, #inspector .close {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #desk .dperson, #desk .dpeek {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

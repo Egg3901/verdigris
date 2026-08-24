@@ -117,12 +117,30 @@ export function checkIncidents(city: City, tick: number): void {
 function fire(city: City, def: IncidentDef, tick: number): void {
   const place = pickPlace(city, def);
   const seen = place >= 0 ? witnessesOf(city, place) : [];
+  let subjects = seen;
+  if (def.id === 'outbreak') {
+    const household = city.households
+      .filter((item) => item.memberIds.length >= 2)
+      .map((item) => ({
+        item,
+        health: Math.round(item.memberIds.reduce((sum, id) => sum + city.souls[id].health, 0) / item.memberIds.length),
+      }))
+      .sort((a, b) => a.health - b.health || a.item.id - b.item.id)[0]?.item;
+    if (household) {
+      subjects = household.memberIds.slice(0, 6);
+      for (const id of subjects) {
+        const soul = city.souls[id];
+        soul.health = Math.max(0, soul.health - 160);
+        if (soul.health < 500) soul.activity = 'ailing';
+      }
+    }
+  }
   const incident: Incident = {
     id: city.incidents.next++,
     defId: def.id,
     tick,
     placeId: place,
-    soulIds: seen.slice(0, 12),
+    soulIds: subjects.slice(0, 12),
     severity: Math.abs(500 - pressureOf(city.press, def.key)),
     because: explain(city.press, def.key, 5),
   };
@@ -137,14 +155,13 @@ function fire(city: City, def: IncidentDef, tick: number): void {
     : def.id === 'collapse' ? 'collapse'
       : def.id === 'inquiry' ? 'graft'
         : def.id === 'walkout' ? 'closure' : 'sabotage';
-  if (seen.length) {
-    const claim = seedClaim(city.claims, claimKind, seen[0], -1, place, 1, tick);
-    for (const id of seen) implant(city.claims, city.souls[id], claim, 640, -1, tick);
+  if (incident.soulIds.length) {
+    const claim = seedClaim(city.claims, claimKind, incident.soulIds[0], -1, place, 1, tick);
+    for (const id of incident.soulIds) implant(city.claims, city.souls[id], claim, 640, -1, tick);
   }
 
   switch (def.id) {
     case 'outbreak':
-      for (const s of city.souls) if (s.health < 500) s.activity = 'ailing';
       applyPressure(city.press, 'mood', -70, 'incident', incident.id, def.label, tick);
       break;
     case 'walkout':

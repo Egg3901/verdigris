@@ -56,8 +56,10 @@ import { civicGrievanceTarget, newCivicMemory, tickCivicRecoveryDaily } from './
 import type { CivicMemoryState } from './civic-memory';
 import { newOccasions, tickOccasions } from './occasions';
 import type { OccasionState } from './occasions';
-import { holdRatepayerMeeting, newMatters, openDailyMatters, tickMatters } from './matters';
+import { holdRatepayerMeeting, newMatters, openDailyMatters, scheduleRatepayerSitting, tickMatters } from './matters';
 import type { MatterState } from './matters';
+import { newCivicVisits, tickCivicVisits } from './civic-visits';
+import type { CivicVisitState } from './civic-visits';
 
 export interface LogEvent {
   tick: number;
@@ -125,6 +127,8 @@ export interface City extends World {
   occasions: OccasionState;
   /** The alderman's live agenda and its bounded outcome ledger. */
   matters: MatterState;
+  /** Named civic journeys: petitions, public meetings, support and opposition. */
+  civicVisits: CivicVisitState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -162,6 +166,7 @@ export function newCity(seedStr: string): City {
     civic: newCivicMemory(world.buildings.length, world.households.length),
     occasions: newOccasions(),
     matters: newMatters(),
+    civicVisits: newCivicVisits(),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -557,6 +562,8 @@ export function tickCity(city: City): void {
   tickDeputation(city);
   tickShelters(city);
   tickOccasions(city);
+  const civicUpdate = tickCivicVisits(city);
+  if (civicUpdate.meetingPresent) holdRatepayerMeeting(city, civicUpdate.meetingPresent);
 
   // 4. Needs, sliced ten ways by id so the cost is flat and the phase is stable
   //    across a save.
@@ -847,8 +854,8 @@ function recomputeBaselines(city: City): void {
 
 function tickDay(city: City): void {
   const tick = city.tick;
-  holdRatepayerMeeting(city);
   city.budgetLeft = city.matters.influenceCap;
+  scheduleRatepayerSitting(city);
   tickOrdinancesDaily(city);
   tickCivicRecoveryDaily(city);
   decayBeliefsDaily(city.claims, city.souls);
@@ -1076,7 +1083,8 @@ export function hashWorld(city: City): number {
   put(city.matters.revision);
   for (const matter of city.matters.items) {
     put(matter.id);
-    put(matter.kind === 'repair' ? 1 : matter.kind === 'labour' ? 2 : 3);
+    put(matter.kind === 'repair' ? 1 : matter.kind === 'labour' ? 2 : matter.kind === 'refuge' ? 3
+      : matter.kind === 'sanitation' ? 4 : matter.kind === 'inquiry' ? 5 : 6);
     put(matter.status === 'open' ? 1 : matter.status === 'pending' ? 2
       : matter.status === 'kept' ? 3 : matter.status === 'failed' ? 4
         : matter.status === 'declined' ? 5 : 6);
@@ -1085,6 +1093,9 @@ export function hashWorld(city: City): number {
     put(matter.respondedAt);
     put(matter.resolvedAt);
     put(matter.pressedAt);
+    put(matter.presentedAt);
+    put(matter.baseline);
+    put(matter.evidenceId);
     put(matter.standingDelta);
     put(matter.target.id);
     put(matter.subjectId);
@@ -1098,6 +1109,7 @@ export function hashWorld(city: City): number {
     put(relation.regard);
     put(relation.since);
     put(relation.lastMatterId);
+    put(relation.lastActAt);
   }
   put(city.matters.meetings.length);
   for (const meeting of city.matters.meetings) {
@@ -1108,6 +1120,30 @@ export function hashWorld(city: City): number {
     put(meeting.opponentId);
     put(meeting.exposedActs);
     put(meeting.influenceCap);
+    put(meeting.attendeeIds.length);
+    for (const id of meeting.attendeeIds) put(id);
+  }
+  put(city.civicVisits.nextId);
+  put(city.civicVisits.nextAvailableAt);
+  put(city.civicVisits.revision);
+  put(city.civicVisits.visits.length);
+  for (const visit of city.civicVisits.visits) {
+    put(visit.id);
+    put(visit.kind === 'petition' ? 1 : visit.kind === 'support' ? 2 : visit.kind === 'opposition' ? 3 : 4);
+    put(visit.matterId);
+    put(visit.destinationId);
+    put(visit.nodeId);
+    put(visit.startsAt);
+    put(visit.resolvesAt);
+    put(visit.endsAt);
+    put(visit.resolvedAt);
+    put(visit.endedAt);
+    put(visit.status === 'scheduled' ? 1 : visit.status === 'travelling' ? 2
+      : visit.status === 'gathered' ? 3 : visit.status === 'resolved' ? 4 : 5);
+    put(visit.actorIds.length);
+    for (const id of visit.actorIds) put(id);
+    put(visit.arrivedIds.length);
+    for (const id of visit.arrivedIds) put(id);
   }
   for (const s of city.souls) {
     put(s.id);

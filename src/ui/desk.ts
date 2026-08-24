@@ -7,6 +7,7 @@ import type { Matter } from '../sim/matters';
 import { recentCauses } from '../sim/pressures';
 import type { Target } from '../sim/types';
 import { fullName } from '../sim/souls';
+import { pendingMeetingVisit, visitForMatter } from '../sim/civic-visits';
 
 export interface DeskHooks {
   onFocus: (target: Target) => void;
@@ -35,12 +36,19 @@ const RESPONSE: Record<string, string> = {
   callDeputation: 'a public deputation',
   fundStrike: 'a strike fund',
   openShelter: 'a storm refuge',
+  quarantine: 'a street cordon',
+  plantStory: 'a printed account',
+  tipOff: 'a constabulary tip',
+  fundBunting: 'a public show of support',
 };
 
 const WAY_IN: Record<Matter['kind'], string> = {
   repair: 'WAYS IN · File a works case. If the number stalls, bring the street to Civic Hall.',
   labour: 'WAYS IN · Fund the strike, or decline and keep your influence for another promise.',
   refuge: 'WAYS IN · Wait for the rain, inspect this public building, then open the refuge.',
+  sanitation: 'WAYS IN · Quarantine the street, or repair the failed drain when there is one.',
+  inquiry: 'WAYS IN · Hold a named witness, or put a credible account into the paper.',
+  turnout: 'WAYS IN · Bring friends with bunting, or remove a named opponent before the sitting.',
 };
 
 function dueLabel(matter: Matter): string {
@@ -89,6 +97,14 @@ export function mountDesk(hooks: DeskHooks): Desk {
     const head = el('div', 'dtitle');
     head.append(el('span', undefined, matter.title.toUpperCase()), el('span', 'dstate', matter.status.toUpperCase()));
     const petition = el('p', 'dpetition', matter.petition);
+    const visit = visitForMatter(current, matter.id);
+    const visitText = !visit ? ''
+      : visit.status === 'scheduled' ? `PETITIONERS DUE AT CIVIC HALL · ${formatClock(visit.startsAt)}`
+        : visit.status === 'travelling' ? `PETITIONERS ON THE ROAD · ${visit.arrivedIds.length}/${visit.actorIds.length} ARRIVED`
+          : visit.status === 'gathered' || visit.status === 'resolved'
+            ? `AT CIVIC HALL · ${visit.arrivedIds.length}/${visit.actorIds.length} PRESENT`
+            : matter.presentedAt >= 0 ? `PRESENTED IN PERSON · ${formatClock(matter.presentedAt)}` : 'THE LETTER ARRIVED; ITS AUTHORS DID NOT';
+    const visitLine = el('div', 'dvisit', visitText);
     const people = el('div', 'dpeople');
     for (const id of matter.partyIds) {
       const soul = current.souls[id];
@@ -133,22 +149,27 @@ export function mountDesk(hooks: DeskHooks): Desk {
       press.addEventListener('click', () => { if (!why) hooks.onPress(matter.id); });
       actions.append(press);
     }
-    card.append(head, petition, people, cause, insight, test, wayIn, due, actions);
+    card.append(head, petition, visitLine, people, cause, insight, test, wayIn, due, actions);
     return card;
   }
 
   const update = (next: City): void => {
     city = next;
-    const key = `${Math.floor(next.tick / 10)}|${next.matters.revision}|${next.press.causeHead}|${next.traced}|${next.paperCredibility}|${next.budgetLeft}`;
+    const key = `${Math.floor(next.tick / 10)}|${next.matters.revision}|${next.civicVisits.revision}|${next.press.causeHead}|${next.traced}|${next.paperCredibility}|${next.budgetLeft}`;
     if (key === prevKey) return;
     prevKey = key;
     const active = activeMatters(next.matters);
     status.textContent = `DAY ${dayOf(next.tick)} · STANDING ${next.matters.standing}/1000 · ${active.length} MATTER${active.length === 1 ? '' : 'S'} BEFORE YOU`
       + `${next.traced ? ` · ${next.traced} HIGH-HANDED ACT${next.traced === 1 ? '' : 'S'} TRACED` : ''}`;
+    const gathering = pendingMeetingVisit(next);
     const lastMeeting = next.matters.meetings.at(-1);
-    meeting.textContent = lastMeeting
-      ? `LAST MEETING · ${lastMeeting.outcome.toUpperCase()} · ${lastMeeting.text} NEXT SITTING DAY ${dayOf(next.matters.nextMeetingAt)}.`
-      : `RATEPAYERS SIT ON DAY ${dayOf(next.matters.nextMeetingAt)}. Named patrons and opponents will test whether the chair keeps its daily influence.`;
+    meeting.textContent = gathering
+      ? gathering.status === 'scheduled'
+        ? `RATEPAYERS CALLED · ${gathering.actorIds.length} DUE IN THE SQUARE AT ${formatClock(gathering.startsAt)} · VOTE ${formatClock(next.matters.nextMeetingAt)}.`
+        : `RATEPAYERS GATHERING · ${gathering.arrivedIds.length}/${gathering.actorIds.length} IN THE SQUARE · VOTE ${formatClock(next.matters.nextMeetingAt)}.`
+      : lastMeeting
+        ? `LAST MEETING · ${lastMeeting.outcome.toUpperCase()} · ${lastMeeting.text} NEXT SITTING DAY ${dayOf(next.matters.nextMeetingAt)}.`
+        : `RATEPAYERS SIT ON DAY ${dayOf(next.matters.nextMeetingAt)}. Named patrons and opponents will test whether the chair keeps its daily influence.`;
 
     matters.textContent = '';
     if (!active.length) matters.append(el('p', 'dempty', 'Nothing new is before the desk. The district continues without asking permission.'));

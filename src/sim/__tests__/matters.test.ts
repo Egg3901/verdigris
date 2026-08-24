@@ -3,10 +3,13 @@ import { newCity, tickCity, warp } from '../city';
 import { apply } from '../interventions';
 import {
   activeMatters, canPressMatter, declineMatter, holdRatepayerMeeting, matterInsight,
-  MEETING_PERIOD, pressMatter, regardFor, tickMatters,
+  MEETING_PERIOD, openDailyMatters, pressMatter, regardFor, tickMatters,
 } from '../matters';
 import { latestOrderFor } from '../works';
 import { applyPressure, pressureOf } from '../pressures';
+import { disconnectBuilding } from '../networks';
+import { implant, seedClaim } from '../claims';
+import { visitForMatter } from '../civic-visits';
 
 function setCoin(city: ReturnType<typeof newCity>, value: number): void {
   applyPressure(city.press, 'coin', value - pressureOf(city.press, 'coin'), 'seed', 0, 'test treasury', city.tick);
@@ -19,6 +22,7 @@ describe("the alderman's matters", () => {
     const matters = activeMatters(city.matters);
     expect(matters.length).toBeGreaterThanOrEqual(2);
     expect(matters.length).toBeLessThanOrEqual(3);
+    expect(matters.some((matter) => matter.kind === 'inquiry')).toBe(true);
     expect(matters.some((matter) => matter.kind === 'repair')).toBe(true);
     expect(matters.some((matter) => matter.kind === 'labour')).toBe(true);
     for (const matter of matters) {
@@ -26,6 +30,116 @@ describe("the alderman's matters", () => {
       expect(matter.cause.length).toBeGreaterThan(20);
       expect(matter.dueAt).toBeGreaterThan(city.tick);
     }
+  });
+
+  it('sends named petitioners to Civic Hall without gating the live matter', () => {
+    const city = newCity('verdigris');
+    warp(city, 180);
+    const matter = activeMatters(city.matters)[0];
+    const visit = visitForMatter(city, matter.id)!;
+    expect(matter.status).toBe('open');
+    expect(visit.status).toBe('scheduled');
+    warp(city, visit.startsAt - city.tick);
+    expect(visit.status).toBe('travelling');
+    warp(city, 45);
+    expect(visit.arrivedIds.length).toBeGreaterThan(0);
+    expect(matter.presentedAt).toBeGreaterThanOrEqual(visit.startsAt);
+  });
+
+  it('acknowledges a verdict reached while petitioners are still on the way', () => {
+    const city = newCity('verdigris');
+    warp(city, 180);
+    const matter = activeMatters(city.matters).find((item) => item.kind === 'repair')!;
+    const visit = visitForMatter(city, matter.id)!;
+    expect(apply(city, 'fileWorks', matter.target)).toBe(true);
+    const order = latestOrderFor(city, matter.target.id)!;
+    order.status = 'completed';
+    order.resolvedAt = city.tick;
+    tickMatters(city);
+    expect(matter.status).toBe('kept');
+    warp(city, visit.resolvesAt - city.tick);
+    expect(city.log.some((event) => event.text.includes('came to Civic Hall after their promise was kept'))).toBe(true);
+  });
+
+  it('lets a patron physically speak for the chair after a kept promise', () => {
+    const city = newCity('verdigris');
+    warp(city, 180);
+    const matter = activeMatters(city.matters).find((item) => item.kind === 'repair')!;
+    expect(apply(city, 'fileWorks', matter.target)).toBe(true);
+    const order = latestOrderFor(city, matter.target.id)!;
+    order.status = 'completed';
+    tickMatters(city);
+    const support = city.civicVisits.visits.find((visit) => visit.kind === 'support' && visit.matterId === matter.id)!;
+    warp(city, 1200);
+    expect(support.arrivedIds.length).toBe(1);
+    expect(city.matters.relations.find((item) => item.soulId === support.actorIds[0])?.lastActAt)
+      .toBe(support.resolvedAt);
+    expect(city.log.some((entry) => entry.text.includes('spoke for the chair'))).toBe(true);
+  });
+
+  it('lets an estranged petitioner carry opposition into a public house', () => {
+    const city = newCity('verdigris');
+    warp(city, 180);
+    const matter = activeMatters(city.matters)[0];
+    expect(declineMatter(city, matter.id)).toBe(true);
+    const opposition = city.civicVisits.visits.find((visit) => visit.kind === 'opposition' && visit.matterId === matter.id)!;
+    warp(city, 1200);
+    expect(opposition.arrivedIds.length).toBe(1);
+    expect(city.claims.claims.some((claim) => claim.kind === 'graft'
+      && claim.subjectB === opposition.actorIds[0] && claim.plantedBy === -1)).toBe(true);
+    expect(city.log.some((entry) => entry.text.includes('spoke against the chair'))).toBe(true);
+  });
+
+  it('opens and truthfully resolves a street sanitation matter', () => {
+    const city = newCity('verdigris');
+    warp(city, 179);
+    const home = city.buildings.find((building) => building.householdIds.length > 0 && building.drainSeg >= 0)!;
+    const residents = city.souls.filter((soul) => city.buildings[soul.homeId]?.streetId === home.streetId);
+    expect(residents.length).toBeGreaterThanOrEqual(2);
+    for (const soul of residents) soul.health = 900;
+    residents[0].health = 420;
+    residents[1].health = 430;
+    disconnectBuilding(city.networks.drain, home.id);
+    home.drainSeg = -1;
+    city.incidents.live.length = 0;
+    city.incidents.latched.add('outbreak');
+    tickCity(city);
+    const matter = activeMatters(city.matters).find((item) => item.kind === 'sanitation')!;
+    expect(matter).toBeTruthy();
+    expect(matter.baseline).toBe(2);
+    expect(apply(city, 'quarantine', matter.target)).toBe(true);
+    warp(city, 360);
+    expect(matter.status).toBe('kept');
+    expect(matter.outcome).toContain('cordon held');
+  });
+
+  it('opens an inquiry from witnessed city history and accepts a credible printed account', () => {
+    const city = newCity('verdigris');
+    const hall = city.buildingsByKind.get('townhall')![0];
+    const witnesses = city.souls.filter((soul) => soul.age >= 18 && soul.depth === 'principal').slice(0, 3);
+    const claim = seedClaim(city.claims, 'graft', witnesses[0].id, -1, hall, 1, city.tick);
+    for (const soul of witnesses) implant(city.claims, soul, claim, 700, witnesses[0].id, city.tick);
+    city.incidents.live.push({
+      id: city.incidents.next++, defId: 'inquiry', tick: city.tick, placeId: hall,
+      soulIds: witnesses.map((soul) => soul.id), severity: 200, because: [],
+    });
+    openDailyMatters(city);
+    const matter = activeMatters(city.matters).find((item) => item.kind === 'inquiry')!;
+    expect(matter).toBeTruthy();
+    expect(apply(city, 'plantStory', { kind: 'soul', id: witnesses[0].id })).toBe(true);
+    warp(city, 60);
+    expect(matter.status).toBe('kept');
+    expect(matter.outcome).toContain('credible account');
+  });
+
+  it('holds the weekly vote with people who actually reached the square', () => {
+    const city = newCity('verdigris');
+    warp(city, city.matters.nextMeetingAt);
+    const meeting = city.matters.meetings.at(-1)!;
+    expect(meeting).toBeTruthy();
+    expect(meeting.attendeeIds.length).toBeGreaterThanOrEqual(2);
+    expect(city.events.events.some((event) => event.kind === 'ratepayersMet')).toBe(true);
+    expect(city.matters.items.some((matter) => matter.kind === 'turnout')).toBe(true);
   });
 
   it('judges a repair by the works outcome, not by filing the form', () => {
@@ -221,6 +335,7 @@ describe("the alderman's matters", () => {
     city.tick = city.matters.nextMeetingAt;
     holdRatepayerMeeting(city);
     expect(city.matters.meetings.at(-1)?.outcome).toBe('divided');
+    expect(city.matters.influenceCap).toBe(3);
     expect(regardFor(city, matter.partyIds[0])).toBe(1);
   });
 

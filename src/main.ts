@@ -524,6 +524,7 @@ function loop(now: number): void {
   if (wantVariant !== scene.variant || buntingNow !== buntingShown
     || scene.worksRevision !== city.works.revision
     || scene.deputationRevision !== city.deputations.revision
+    || scene.civicVisitRevision !== city.civicVisits.revision
     || scene.disasterRevision !== city.disasters.revision
     || scene.weatherRevision !== weatherAt(city.seed, city.tick).revision
     || scene.shelterRevision !== city.shelters.revision

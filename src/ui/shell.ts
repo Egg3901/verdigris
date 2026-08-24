@@ -28,6 +28,7 @@ import type { Desk } from './desk';
 import type { InterventionKind, Target } from '../sim/types';
 import { INTERVENTIONS } from '../sim/interventions';
 import type { InterventionForecast } from '../sim/interventions';
+import { civicVisitSummary } from '../sim/civic-visits';
 
 interface NudgeDecision {
   reason: string | null;
@@ -126,7 +127,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   const budgetTokens = el('span');
   const deskBtn = el('button', 'brass', 'DESK') as HTMLButtonElement;
   deskBtn.setAttribute('aria-label', "Open the alderman's desk");
-  deskBtn.addEventListener('click', () => desk.toggle());
+  deskBtn.addEventListener('click', () => toggleDesk());
   budgetRow.append(budgetLabel, budgetTokens, deskBtn);
   title.append(h1, rule, clock, counts, budgetRow);
 
@@ -186,6 +187,12 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     const b = el('button', 'brass', label) as HTMLButtonElement;
     b.setAttribute('aria-expanded', 'false');
     b.addEventListener('click', () => {
+      // A phone has room for one working surface. Leaving the desk or vestry
+      // above this sheet made the bottom button appear to work while every
+      // action behind it was untappable.
+      desk.node.hidden = true;
+      vestry.node.hidden = true;
+      help.hidden = true;
       const cur = document.documentElement.getAttribute('data-sheet');
       if (cur === id) document.documentElement.removeAttribute('data-sheet');
       else document.documentElement.setAttribute('data-sheet', id);
@@ -196,6 +203,11 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   };
   const verbSheetBtn = mkSheet('verbs', 'LOOK');
   const nudgeSheetBtn = mkSheet('nudges', 'ACT');
+  const deskSheetBtn = el('button', 'brass', 'DESK') as HTMLButtonElement;
+  deskSheetBtn.id = 'desk-sheet';
+  deskSheetBtn.setAttribute('aria-label', "Open the alderman's desk");
+  deskSheetBtn.addEventListener('click', () => toggleDesk());
+  sheetbar.append(deskSheetBtn);
   const vestryBtn = el('button', 'brass', 'VESTRY') as HTMLButtonElement;
   vestryBtn.setAttribute('aria-label', 'The vestry: pass and rescind ordinances');
   vestryBtn.addEventListener('click', () => toggleVestry());
@@ -314,7 +326,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   helpClose.addEventListener('click', () => toggleHelp());
   const helpIntro = el('p', 'prose');
   helpIntro.textContent = "You are Verdigris's alderman. The city brings matters to your desk; "
-    + 'you inspect the people and places involved, then spend three measures of influence a day. '
+    + 'you inspect the people and places involved, then spend a few measures of influence each day. '
     + 'A promise is kept only when the city itself produces the result.';
   help.append(helpClose, el('div', 'name', 'VERDIGRIS'), helpIntro);
   const groups: [string, string][] = [
@@ -332,6 +344,12 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     help.append(ul);
   }
   const toggleHelp = () => {
+    if (help.hidden) {
+      document.documentElement.removeAttribute('data-sheet');
+      syncSheets();
+      desk.node.hidden = true;
+      vestry.node.hidden = true;
+    }
     help.hidden = !help.hidden;
     if (!help.hidden) helpClose.focus();
   };
@@ -385,6 +403,12 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     selectedBuilding: hooks.selectedBuilding,
   });
   const toggleVestry = () => {
+    if (vestry.node.hidden) {
+      document.documentElement.removeAttribute('data-sheet');
+      syncSheets();
+      desk.node.hidden = true;
+      help.hidden = true;
+    }
     vestry.node.hidden = !vestry.node.hidden;
     vestryBtn.setAttribute('aria-expanded', String(!vestry.node.hidden));
   };
@@ -394,6 +418,16 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     onDecline: hooks.onDeclineMatter,
     onPress: hooks.onPressMatter,
   });
+  const toggleDesk = () => {
+    if (desk.node.hidden) {
+      document.documentElement.removeAttribute('data-sheet');
+      syncSheets();
+      vestry.node.hidden = true;
+      help.hidden = true;
+    }
+    desk.toggle();
+    deskSheetBtn.setAttribute('aria-expanded', String(!desk.node.hidden));
+  };
 
   root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, vestry.node, desk.node, firstRun);
 
@@ -558,7 +592,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       const shelter = shelterSummary(city, b.id);
       const civic = civicSummary(city, b.id);
       const occasion = occasionSummary(city, b.id);
-      insMore.textContent = [more > 0 ? `…and ${more} more` : '', civic, shelter, occasion, disaster, works, deputation].filter(Boolean).join('\n');
+      const civicVisit = civicVisitSummary(city, b.id);
+      insMore.textContent = [more > 0 ? `…and ${more} more` : '', civicVisit, civic, shelter, occasion, disaster, works, deputation].filter(Boolean).join('\n');
       return;
     }
     inspector.hidden = true;
@@ -609,7 +644,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     toast,
     toggleHelp,
     toggleVestry,
-    toggleDesk: desk.toggle,
+    toggleDesk,
     // Cached. This measured four panels with getBoundingClientRect, and it is
     // called from every pointermove during a drag, so it forced a synchronous
     // layout on every frame of every pan.

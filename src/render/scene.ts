@@ -34,6 +34,7 @@ import { buildMarketProps, buildProps, buildSquareProps, buildStreetProps, textu
 import type { Prop } from './props';
 import { worksStageFor } from '../sim/works';
 import { isDeputationActive } from '../sim/deputations';
+import { activePublicVisit } from '../sim/civic-visits';
 import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters';
 import type { WardKind } from '../sim/gen/wards';
 import { weatherAt } from '../sim/weather';
@@ -59,6 +60,7 @@ export interface Scene {
   variant: Variant;
   worksRevision: number;
   deputationRevision: number;
+  civicVisitRevision: number;
   disasterRevision: number;
   weatherRevision: number;
   shelterRevision: number;
@@ -386,7 +388,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     damage,
     // The flags the player paid for, on whatever fronts the square.
     bunting: city.buntingUntil > city.tick && nearSquare(city, b),
-    deputationBanner: b.kind === 'townhall' && isDeputationActive(city),
+    deputationBanner: b.kind === 'townhall' && (isDeputationActive(city) || Boolean(activePublicVisit(city))),
     shelterOpen: isShelterActive(city) && city.shelters.current?.providerId === b.id,
     chimneys: finial === 'mast' || shape === 'flat' || shape === 'pyramid' || shape === 'dome' ? 0
       : b.kind === 'mill' || b.kind === 'foundry' ? 1
@@ -780,6 +782,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   return {
     cartRoutes: buildCartRoutes(city), variant,
     worksRevision: city.works.revision, deputationRevision: city.deputations.revision,
+    civicVisitRevision: city.civicVisits.revision,
     disasterRevision: city.disasters.revision,
     weatherRevision: weather.revision,
     shelterRevision: city.shelters.revision,

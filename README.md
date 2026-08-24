@@ -13,11 +13,13 @@ courts behind the gold-leaf frontages are a spatial fact the generator produces.
 
 **You are Verdigris's alderman.** You never place a building. Named residents
 bring real conditions to your desk: a failing house, aggrieved hands, a public
-door needed before the rain. You inspect the people and place, follow them through
-the day, and spend a small number of measures of influence. The ledger judges
+door needed before the rain, sickness behind doors, or a disputed public account.
+You inspect the people and place, follow them through the day, and spend a small
+number of measures of influence. The ledger judges
 what the city actually did, not which button you pressed. Every seventh dawn,
-named patrons and opponents put your record before the ratepayers; their vote
-changes how much influence the chair can move during the following week.
+named patrons and opponents physically come to the square and put your record
+before the ratepayers; their vote changes how much influence the chair can move
+during the following week.
 
 ## Running it
 
@@ -85,12 +87,21 @@ Built and playing:
   standing, persistent patrons and opponents, and delayed verdicts. A filed
   repair counts only if the fabric is actually made good; a strike faces a real
   four-hour clearing contest; a refuge counts only when somebody vulnerable
-  reaches it. Pending promises can be pressed at further political cost, and
-  work filed before a petition receives its proper credit.
+  reaches it; sanitation is judged by sickness on the named street; an inquiry
+  needs a detention that still holds or an account that remains credible; and
+  turnout is judged by the actual weekly vote. Pending promises can be pressed
+  at further political cost, and work filed before a petition receives its
+  proper credit.
+- Street politics: petitioners walk to Civic Hall without delaying an actionable
+  case. Kept promises send a named patron to speak at the newspaper; broken or
+  declined promises send a named opponent to a public house. Their support or
+  opposition changes the ward only after the person reaches the destination.
 - The ratepayers' sitting: every seventh day, a named supporter and opponent test
-  the chair's standing and exposed clandestine record. Confidence grants four
-  daily measures next week, a divided room keeps three, and a loss narrows the
-  chair to two. No result ends play, and the next sitting can reverse it.
+  the chair's standing and exposed clandestine record. Up to eight named adults
+  travel to a fixed 8AM vote, and only those who reach the square count.
+  Confidence grants four daily measures next week, a divided room keeps three,
+  and a loss narrows the chair to two. No result ends play, and the next sitting
+  can reverse it.
 - Intervention forecasts taken from the same deterministic predicates as the
   sim. Each available move is marked public or deniable and settled, contested
   or unclear; a selected petition marks relevant measures without choosing one
@@ -116,6 +127,9 @@ Built and playing:
   one depth merge for buildings, props, people, trams, and carts, pixel-exact
   ID-buffer picking and discrete zoom.
 - The full UI shell, and a keyboard equivalent for every verb.
+- A single-surface phone shell with persistent LOOK, ACT, DESK, VESTRY and HELP
+  routes, dynamic bottom-bar clearance, stepped pinch zoom, coarse-pointer person
+  picking, and 44px decision and close targets.
 
 Measured behaviour: undisturbed, the district settles at an average facade of 610
 against an average fabric of 520. Fourteen days of funding the bunting takes

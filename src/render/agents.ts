@@ -8,6 +8,7 @@ import { soulPos } from '../sim/souls';
 import type { Soul } from '../sim/souls';
 import { isDeputationActive } from '../sim/deputations';
 import { isOccasionActive } from '../sim/occasions';
+import { activePublicVisit } from '../sim/civic-visits';
 import { PAL } from './palette';
 import { isoX, isoY, depthKey, LAYER_AGENT } from './iso';
 
@@ -77,9 +78,10 @@ function fillAgent(
 export function collectAgents(city: City, fracMin: number, out: AgentDraw[]): number {
   let n = 0;
   const deputation = isDeputationActive(city) ? city.deputations.current : null;
-  const occasion = !deputation && isOccasionActive(city) ? city.occasions.current : null;
-  const squareNode = deputation?.squareNode ?? occasion?.squareNode ?? -1;
-  const attendeeIds = deputation?.attendeeIds ?? occasion?.attendeeIds ?? [];
+  const civic = !deputation ? activePublicVisit(city) : null;
+  const occasion = !deputation && !civic && isOccasionActive(city) ? city.occasions.current : null;
+  const squareNode = deputation?.squareNode ?? civic?.nodeId ?? occasion?.squareNode ?? -1;
+  const attendeeIds = deputation?.attendeeIds ?? civic?.actorIds ?? occasion?.attendeeIds ?? [];
 
   for (const s of city.souls) {
     if (s.inId >= 0 || s.atNode < 0) continue;
@@ -96,10 +98,10 @@ export function collectAgents(city: City, fracMin: number, out: AgentDraw[]): nu
     n++;
   }
 
-  if ((deputation || occasion) && squareNode >= 0) {
+  if ((deputation || civic || occasion) && squareNode >= 0) {
     const baseX = city.graph.cx[squareNode];
     const baseY = city.graph.cy[squareNode];
-    const formation = deputation ? DEPUTATION_WEDGE : MARKET_FAN;
+    const formation = deputation || civic?.kind === 'petition' ? DEPUTATION_WEDGE : MARKET_FAN;
     for (let i = 0; i < attendeeIds.length && i < formation.length; i++) {
       const s = city.souls[attendeeIds[i]];
       if (!s || s.inId >= 0 || s.activity !== 'gathering' || s.atNode !== squareNode || s.toNode >= 0) continue;
