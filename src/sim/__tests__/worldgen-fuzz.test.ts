@@ -34,7 +34,9 @@ describe('large procedural district corpus', () => {
 
     expect(maxNodes).toBeLessThan(CAPS.nodes);
     expect(maxBuildings).toBeLessThanOrEqual(CAPS.buildings);
-    expect([...bridgeCounts].sort()).toEqual([2, 3]);
+    // Garden boroughs can drop to a single crossing; crossing towns still
+    // produce two or three. The corpus must show the full archetype spread.
+    expect([...bridgeCounts].sort()).toEqual([1, 2, 3]);
     expect(squarePositions.size).toBeGreaterThan(12);
     expect(gateCounts.size).toBeGreaterThan(2);
     expect(coastAreas.size).toBeGreaterThan(12);
