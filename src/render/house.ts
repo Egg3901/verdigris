@@ -74,6 +74,10 @@ export interface HouseSpec {
   boarded?: boolean;
   /** Structural loss replaces the house silhouette instead of sitting on it. */
   damage?: 'none' | 'collapsed' | 'burning' | 'flooded';
+  /** A fire has passed through and the shell still stands: charred walls, a holed
+   *  roof and empty window sockets, until the fabric is made good. Distinct from
+   *  `burning`, which is the live event, and `collapsed`, which is total loss. */
+  scorched?: boolean;
   /** Flags up. The player paid for these. */
   bunting?: boolean;
   /** A temporary cloth notice across the Civic Hall frontage. */
@@ -205,6 +209,7 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
     drawRoofPatch(ctx, roofQuad, shadeHex(skin.roofShade, -0.08));
   }
   if (roofQuad && spec.damage === 'burning') drawBurnedRoof(ctx, roofQuad, spec);
+  if (roofQuad && spec.scorched) drawCharredRoof(ctx, roofQuad, spec);
   if (spec.shelterOpen) drawShelterEntrance(ctx, eave, roofQuad, spec);
 
   if (spec.washing && lit.span >= 10) drawWashingLine(ctx, lit, wallH, spec.salt ?? 0);
@@ -311,6 +316,32 @@ function drawCollapsedHouse(
   lineHard(ctx, remnant.E, { x: remnant.E.x + 1, y: remnant.E.y - 4 }, PAL.wood0);
   lineHard(ctx, ground.W, ground.S, spec.skin.outline);
   lineHard(ctx, ground.S, ground.E, spec.skin.outline);
+}
+
+/**
+ * A cold, static burnt-out roof: the fire is out, most of the covering is gone,
+ * and what is left is a soot void spanned by a few surviving rafters. No embers,
+ * no flame; this is the scar the district lives with until it rebuilds.
+ */
+function drawCharredRoof(ctx: CanvasRenderingContext2D, roof: Pt[], spec: HouseSpec): void {
+  const topA = lerp(roof[0], roof[1], 0.16);
+  const topB = lerp(roof[0], roof[1], 0.84);
+  const lowB = lerp(roof[3], roof[2], 0.82);
+  const lowA = lerp(roof[3], roof[2], 0.18);
+  const hole = [topA, topB, lowB, lowA];
+  fillPolyHard(ctx, hole, PAL.soot0);
+  ditherPolyHard(ctx, hole, PAL.soot1, 4);
+  // A few charred rafters left spanning the gap, ridge to eave.
+  const rafters = Math.max(2, Math.min(4, Math.round(spec.w + spec.d)));
+  for (let i = 1; i < rafters; i++) {
+    const t = i / rafters;
+    const a = lerp(topA, topB, t);
+    const b = lerp(lowA, lowB, t);
+    lineHard(ctx, a, b, (i + (spec.salt ?? 0)) % 2 === 0 ? PAL.wood0 : PAL.soot1);
+  }
+  // One surviving purlin across them, and a broken ridge.
+  lineHard(ctx, lerp(topA, lowA, 0.5), lerp(topB, lowB, 0.5), PAL.soot1);
+  lineHard(ctx, topA, lerp(topA, topB, 0.4), PAL.soot2);
 }
 
 /** Broken tiles and a soot-black opening keep the flame attached to real damage. */

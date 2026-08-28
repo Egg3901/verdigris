@@ -105,7 +105,7 @@ export function generateWorld(seedStr: string): World {
       fabric: def.baseFabric, facade: def.baseFacade, storeys: def.storeys,
       gasSeg: -1, drainSeg: -1, postSeg: -1,
       firmId: -1, householdIds: [], occupants: [],
-      grudges: [], lastIncidentTick: -1, heat: 0, peeked: false,
+      grudges: [], lastIncidentTick: -1, heat: 0, peeked: false, burntAt: -1,
     });
   }
 

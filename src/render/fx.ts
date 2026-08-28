@@ -48,22 +48,25 @@ export function collectHazards(
   const frame = Math.floor((city.tick + fracMin) * 0.28);
   for (const event of city.disasters.events) {
     if (event.kind !== 'fire' || !isDisasterActive(city, event)) continue;
-    const b = city.buildings[event.buildingId];
-    if (!b) continue;
-    const anchors = b.w * b.d > 2 ? 2 : 1;
-    const sx = b.ox + b.w - 1;
-    const sy = b.oy + b.d - 1;
-    const roofY = isoY(sx, sy) - b.storeys * 8 - 11;
-    for (let i = 0; i < anchors; i++) {
-      const wx = isoX(sx, sy) + (anchors === 1 ? 0 : i === 0 ? -7 : 7);
-      if (wx < tl.wx - 12 || wx > br.wx + 12 || roofY < tl.wy - 24 || roofY > br.wy + 8) continue;
-      const slot = out[n] ?? (out[n] = { wx: 0, wy: 0, depth: 0, phase: 0, wide: false });
-      slot.wx = wx;
-      slot.wy = roofY;
-      slot.depth = depthKey(sx, sy, LAYER_OVERHEAD);
-      slot.phase = frame + (mix(city.seed, 184, event.id, i) % 4);
-      slot.wide = anchors === 2;
-      n++;
+    // Every address the fire has reached burns, not only the one it started at.
+    for (let bi = 0; bi < event.affectedBuildingIds.length; bi++) {
+      const b = city.buildings[event.affectedBuildingIds[bi]];
+      if (!b) continue;
+      const anchors = b.w * b.d > 2 ? 2 : 1;
+      const sx = b.ox + b.w - 1;
+      const sy = b.oy + b.d - 1;
+      const roofY = isoY(sx, sy) - b.storeys * 8 - 11;
+      for (let i = 0; i < anchors; i++) {
+        const wx = isoX(sx, sy) + (anchors === 1 ? 0 : i === 0 ? -7 : 7);
+        if (wx < tl.wx - 12 || wx > br.wx + 12 || roofY < tl.wy - 24 || roofY > br.wy + 8) continue;
+        const slot = out[n] ?? (out[n] = { wx: 0, wy: 0, depth: 0, phase: 0, wide: false });
+        slot.wx = wx;
+        slot.wy = roofY;
+        slot.depth = depthKey(sx, sy, LAYER_OVERHEAD);
+        slot.phase = frame + (mix(city.seed, 184, event.id, bi * 3 + i) % 4);
+        slot.wide = anchors === 2;
+        n++;
+      }
     }
   }
   for (let i = 0; i < n - 1; i++) {
@@ -307,23 +310,25 @@ export function drawSmoke(
   // deterministic puff language. It remains an atmospheric pass above roofs.
   for (const event of city.disasters.events) {
     if (event.kind !== 'fire' || !isDisasterActive(city, event)) continue;
-    const b = city.buildings[event.buildingId];
-    if (!b) continue;
-    const sx = b.ox + b.w - 1;
-    const sy = b.oy + b.d - 1;
-    const wx = isoX(sx, sy);
-    const wy = isoY(sx, sy) - b.storeys * 8 - 19;
-    if (wx < tl.wx - 48 || wx > br.wx + 48 || wy < tl.wy - 96 || wy > br.wy + 40) continue;
-    const puffs = b.w * b.d > 2 ? 10 : 7;
-    for (let i = 0; i < puffs; i++) {
-      const age = (t * 0.07 + i / puffs) % 1;
-      const drift = (((mix(city.seed, 185, event.id, i) >>> 0) % 9) - 4) * 0.7;
-      const px = Math.round(wx + drift * age * 5 + weather.windX * age * 18);
-      const py = Math.round(wy - age * 62);
-      const r = Math.max(1, Math.round((1 - age) * 3));
-      ctx.fillStyle = shades[Math.min(2, Math.floor(age * 3))];
-      ctx.fillRect(px - r, py - r, r * 2, Math.max(1, r * 2 - 1));
-      calls++;
+    for (let bi = 0; bi < event.affectedBuildingIds.length; bi++) {
+      const b = city.buildings[event.affectedBuildingIds[bi]];
+      if (!b) continue;
+      const sx = b.ox + b.w - 1;
+      const sy = b.oy + b.d - 1;
+      const wx = isoX(sx, sy);
+      const wy = isoY(sx, sy) - b.storeys * 8 - 19;
+      if (wx < tl.wx - 48 || wx > br.wx + 48 || wy < tl.wy - 96 || wy > br.wy + 40) continue;
+      const puffs = b.w * b.d > 2 ? 10 : 7;
+      for (let i = 0; i < puffs; i++) {
+        const age = (t * 0.07 + i / puffs) % 1;
+        const drift = (((mix(city.seed, 185, event.id, bi * 11 + i) >>> 0) % 9) - 4) * 0.7;
+        const px = Math.round(wx + drift * age * 5 + weather.windX * age * 18);
+        const py = Math.round(wy - age * 62);
+        const r = Math.max(1, Math.round((1 - age) * 3));
+        ctx.fillStyle = shades[Math.min(2, Math.floor(age * 3))];
+        ctx.fillRect(px - r, py - r, r * 2, Math.max(1, r * 2 - 1));
+        calls++;
+      }
     }
   }
   return calls;

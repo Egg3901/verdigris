@@ -371,6 +371,24 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     ? 'collapsed'
     : damageEvent?.kind === 'fire' && isDisasterActive(city, damageEvent) ? 'burning'
       : damageEvent?.kind === 'flood' && isDisasterActive(city, damageEvent) ? 'flooded' : 'none';
+  // The fire has moved on but the shell still stands: a charred husk until the
+  // fabric is genuinely rebuilt. Live flame and total collapse both win over it.
+  const scorched = b.burntAt >= 0 && damage !== 'collapsed' && damage !== 'burning';
+  if (scorched) {
+    // Char the whole skin toward soot: the paint is gone, the near tiles are gone,
+    // the glass is knocked out. Chimney and outline are left, so the silhouette
+    // still reads as a specific building rather than a black blob.
+    skin.wallLit = gradeHex(PAL.soot2, variant);
+    skin.wallShade = gradeHex(PAL.soot1, variant);
+    skin.gableLit = gradeHex(PAL.soot2, variant);
+    skin.gableShade = gradeHex(PAL.soot1, variant);
+    skin.roofLit = gradeHex(PAL.soot2, variant);
+    skin.roofShade = gradeHex(PAL.soot1, variant);
+    skin.roofRidge = gradeHex(PAL.soot3, variant);
+    skin.trim = undefined;
+    skin.window = gradeHex(PAL.soot0, variant);
+    skin.windowLit = false;
+  }
 
   return {
     w: b.w, d: b.d, wallH, roofH,
@@ -384,10 +402,12 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // The rot, on the building rather than only in the prose. A building whose
     // fabric has genuinely failed gets its windows boarded. The working bank
     // fails earlier.
-    boarded: b.fabric < (polite ? 260 : 340),
+    boarded: scorched || b.fabric < (polite ? 260 : 340),
     damage,
-    // The flags the player paid for, on whatever fronts the square.
-    bunting: city.buntingUntil > city.tick && nearSquare(city, b),
+    scorched,
+    // The flags the player paid for, on whatever fronts the square. Never over a
+    // burnt-out shell: the district does not dress a ruin.
+    bunting: !scorched && city.buntingUntil > city.tick && nearSquare(city, b),
     deputationBanner: b.kind === 'townhall' && (isDeputationActive(city) || Boolean(activePublicVisit(city))),
     shelterOpen: isShelterActive(city) && city.shelters.current?.providerId === b.id,
     chimneys: finial === 'mast' || shape === 'flat' || shape === 'pyramid' || shape === 'dome' ? 0
@@ -408,8 +428,8 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     frontage,
     polite,
     patched: !polite && dwelling && ((salt >>> 9) % (wardKind === 'courts' ? 2 : 3) === 0),
-    roofWear,
-    facadeWear,
+    roofWear: scorched ? 2 : roofWear,
+    facadeWear: scorched ? 2 : facadeWear,
     washing: !polite && dwelling && ((salt >>> 11) % (wardKind === 'courts' ? 2 : 3) === 0),
     cresting: fam.cresting === true || ((wardKind === 'garden' || polite) && b.kind === 'villa'),
     railings: (polite || wardKind === 'garden' || wardKind === 'civic')

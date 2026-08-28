@@ -723,6 +723,13 @@ function tickHour(city: City): void {
       && ((b.id + Math.trunc(tick / 360)) % 5 === 0);
     if (repaired) b.fabric = clamp(b.fabric + 6);
     if (b.facade > 0 && (b.id + Math.trunc(tick / 60)) % 96 === 0) b.facade = clamp(b.facade - 1);
+    // A burnt-out shell stops being one only when its fabric is genuinely made
+    // good. Rebuilt from either slow repair or a filed works order, it sheds the
+    // scar and the compositor is told to re-flatten it.
+    if (b.burntAt >= 0 && b.fabric >= 520) {
+      b.burntAt = -1;
+      city.disasters.revision++;
+    }
   }
 
   for (const f of city.firms) {

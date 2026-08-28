@@ -152,4 +152,8 @@ export interface Building {
   heat: number;
   /** Set by the peek verb. Render swaps in the roof-cut sprite. */
   peeked: boolean;
+  /** Tick a fire last damaged this building, or -1. The scar outlives the event:
+   *  a burnt-out shell stays charred until its fabric is genuinely made good, so
+   *  a fire leaves a mark on the district that a repair has to earn back. */
+  burntAt: number;
 }

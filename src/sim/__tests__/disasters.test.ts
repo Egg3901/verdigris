@@ -6,6 +6,7 @@ import { apply } from '../interventions';
 import { servedCount, serviceAt } from '../networks';
 import { latestOrderFor } from '../works';
 import { weatherAt } from '../weather';
+import { cellKey } from '../district';
 
 type City = ReturnType<typeof newCity>;
 
@@ -248,6 +249,76 @@ describe('physical disasters', () => {
     warp(floodCity, 60);
     expect(floodCity.disasters.events.at(-1)?.kind).toBe('flood');
     expect(floodCity.disasters.events.at(-1)?.buildingId).toBe(floodId);
+  });
+
+  it('carries fire to a touching building and brands every shell it reaches', () => {
+    const city = atWorkday();
+    // Advance to a dry watch boundary, so the whole active window shares fair
+    // weather and the fire is free to jump.
+    for (let i = 0; i < 200
+      && !(city.tick % 360 === 0 && weatherAt(city.seed, city.tick).precipitation === 0); i++) {
+      warp(city, 60);
+    }
+    // A dry, rotten quarter: low fabric everywhere and rot pinned high.
+    for (const b of city.buildings) if (b.firmId >= 0) b.fabric = 300;
+    city.press.pressures.rot.value = 950;
+    city.press.pressures.rot.baseline = 950;
+
+    // A fire origin whose cells physically touch another non-landmark building.
+    const d = city.district;
+    let origin = -1;
+    for (const b of city.buildings) {
+      if (!(b.firmId >= 0 && b.householdIds.length === 0 && !DEFS[b.kind].landmark
+        && b.gasSeg >= 0 && serviceAt(city.networks.gas, b.id))) continue;
+      let touches = false;
+      for (const k of b.cells) {
+        const x = k % d.width;
+        const y = (k - x) / d.width;
+        for (let dy = -1; dy <= 1 && !touches; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height) continue;
+            const nb = d.buildingId[cellKey(d, nx, ny)];
+            if (nb >= 0 && nb !== b.id && !DEFS[city.buildings[nb].kind].landmark) { touches = true; break; }
+          }
+        }
+      }
+      if (touches) { origin = b.id; break; }
+    }
+    if (origin < 0) throw new Error('no touching building pair in this district');
+
+    const fire = startDisaster(city, 'fire', origin);
+    if (!fire) throw new Error('fire did not start');
+    warp(city, fire.containedAt - city.tick);
+
+    expect(fire.affectedBuildingIds.length).toBeGreaterThan(1);
+    for (const id of fire.affectedBuildingIds) {
+      expect(city.buildings[id].burntAt).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('keeps a burnt-out shell charred until its fabric is made good', () => {
+    const city = atWorkday();
+    const id = fireTarget(city);
+    // A poor building, so the damage leaves it well below the recovery threshold.
+    city.buildings[id].fabric = 300;
+    const fire = startDisaster(city, 'fire', id);
+    if (!fire) throw new Error('fire did not start');
+    expect(city.buildings[id].burntAt).toBeGreaterThanOrEqual(0);
+
+    // The event ends but the scar does not: the shell is still charred.
+    warp(city, fire.clearsAt - city.tick);
+    expect(disasterAt(city, id)).toBeNull();
+    expect(city.buildings[id].burntAt).toBeGreaterThanOrEqual(0);
+
+    // Rebuild the fabric, and within the hour the scar clears and the compositor
+    // is told to re-flatten the address.
+    city.buildings[id].fabric = 900;
+    const rev = city.disasters.revision;
+    warp(city, 60);
+    expect(city.buildings[id].burntAt).toBe(-1);
+    expect(city.disasters.revision).toBeGreaterThan(rev);
   });
 
   it('requires rain for a natural flood and dry weather for a natural fire', () => {

@@ -12,6 +12,7 @@ import { applyPressure, pressureOf } from './pressures';
 import { mix, Stream } from './rng';
 import type { BuildingId, SoulId } from './types';
 import { weatherAt } from './weather';
+import { cellKey } from './district';
 import { openCivicDisaster } from './civic-memory';
 
 export type DisasterKind = 'fire' | 'flood' | 'collapse';
@@ -172,6 +173,9 @@ export function startDisaster(city: City, kind: DisasterKind, buildingId?: numbe
   b.fabric = Math.max(0, b.fabric - damage);
   b.facade = Math.max(0, Math.round(b.facade * (kind === 'collapse' ? 0.35 : kind === 'fire' ? 0.65 : 0.82)));
   b.lastIncidentTick = startedAt;
+  // A fire brands the building. The scar outlives the event and is only cleared
+  // when the fabric is genuinely made good.
+  if (kind === 'fire') b.burntAt = startedAt;
   for (const id of affectedBuildingIds) {
     if (id === b.id) continue;
     const other = city.buildings[id];
@@ -202,9 +206,129 @@ export function startDisaster(city: City, kind: DisasterKind, buildingId?: numbe
   return event;
 }
 
+/** The largest number of addresses a single fire may reach. A fire that ate the
+ *  whole district would be a reset, not a disaster; the point is a legible scar
+ *  across a corner of a quarter, not a crater. */
+const FIRE_MAX_SPREAD = 5;
+
+/** Char an occupied building the fire has jumped to: damage the fabric, drive the
+ *  people out to safety, and brand it. Mirrors the primary-ignition bookkeeping
+ *  in startDisaster without opening a second event. */
+function igniteFromSpread(city: City, event: Disaster, buildingId: number): void {
+  const b = city.buildings[buildingId];
+  if (!b) return;
+  b.fabric = Math.max(0, b.fabric - 150);
+  b.facade = Math.max(0, Math.round(b.facade * 0.6));
+  b.lastIncidentTick = city.tick;
+  b.burntAt = city.tick;
+  event.affectedBuildingIds.push(buildingId);
+  const unsafe = new Set(event.affectedBuildingIds);
+  const civicHall = city.buildings.find((building) => building.kind === 'townhall' && !unsafe.has(building.id))?.id ?? -1;
+  for (const id of b.occupants.slice()) {
+    const s = city.souls[id];
+    if (!s || s.inId !== b.id || event.evacuatedIds.includes(id)) continue;
+    event.evacuatedIds.push(id);
+    s.grievance = Math.min(1000, s.grievance + 130);
+    s.health = Math.max(0, s.health - 70);
+    const refuge = !unsafe.has(s.homeId) ? s.homeId : civicHall;
+    if (refuge >= 0) sendTo(city, s, refuge, 'commuting', 'visiting');
+  }
+  const firm = city.firms[b.firmId];
+  if (firm) firm.closedUntil = Math.max(firm.closedUntil, event.containedAt);
+  applyPressure(city.press, 'mood', -60, 'incident', event.id, 'the fire spread', city.tick);
+  pushLog(city, `The fire spreads to ${b.name}.`, 'loss');
+}
+
+/** Can this building catch from a neighbouring blaze? Stone civic landmarks
+ *  resist; timber and shabby fabric go up. */
+function canCatch(city: City, buildingId: number): boolean {
+  const b = city.buildings[buildingId];
+  if (!b) return false;
+  if (DEFS[b.kind].landmark && b.fabric > 300) return false;
+  if (b.fabric <= 0) return false;
+  if (disasterAt(city, buildingId)) return false;
+  return b.fabric < 760;
+}
+
+/**
+ * Wind-driven fire spread.
+ *
+ * Once an hour, an active fire may jump to ONE adjacent building. Adjacency is
+ * physical: a candidate qualifies only if one of its cells touches a burning
+ * cell, so the fire creeps along a terrace and across a court rather than
+ * teleporting. Dryness, rot and the downwind direction raise the odds; rain
+ * stops it dead. Everything is a pure function of (seed, hour, ids), so a replay
+ * burns the same houses in the same order.
+ */
+function spreadFire(city: City, event: Disaster): void {
+  if (event.status !== 'active') return;
+  if (event.affectedBuildingIds.length >= FIRE_MAX_SPREAD) return;
+  const weather = weatherAt(city.seed, city.tick);
+  if (weather.precipitation > 0) return;
+  const rot = pressureOf(city.press, 'rot');
+  const d = city.district;
+
+  // The burning frontier, as a set of cells.
+  const hot = new Set<number>();
+  for (const id of event.affectedBuildingIds) {
+    const b = city.buildings[id];
+    if (!b) continue;
+    for (const k of b.cells) hot.add(k);
+  }
+
+  const hour = Math.trunc(city.tick / 60);
+  let chosen = -1;
+  let bestScore = -1;
+  let bestTie = 0xffffffff;
+  const affected = new Set(event.affectedBuildingIds);
+  for (const b of city.buildings) {
+    if (affected.has(b.id) || !canCatch(city, b.id)) continue;
+    // Touching a burning cell? Chebyshev-1 against the hot set.
+    let touches = false;
+    let downwind = false;
+    for (const k of b.cells) {
+      const x = k % d.width;
+      const y = (k - x) / d.width;
+      for (let dy = -1; dy <= 1 && !touches; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height) continue;
+          if (!hot.has(cellKey(d, nx, ny))) continue;
+          touches = true;
+          // Caught cell sits downwind of the burning cell it touched.
+          if (weather.windX !== 0 && Math.sign(x - nx) === Math.sign(weather.windX)) downwind = true;
+          break;
+        }
+      }
+    }
+    if (!touches) continue;
+    // Score: dry rotten shabby fabric downwind is the worst case.
+    const score = rot + Math.max(0, 640 - b.fabric) + (downwind ? 260 : 0)
+      + (DEFS[b.kind].needsGas && serviceAt(city.networks.gas, b.id) ? 120 : 0);
+    const tie = mix(city.seed, Stream.Disaster, hour, b.id) >>> 0;
+    if (score > bestScore || (score === bestScore && tie < bestTie)) {
+      chosen = b.id;
+      bestScore = score;
+      bestTie = tie;
+    }
+  }
+  if (chosen < 0) return;
+  // A gate, so a fire in damp still air can burn out without taking the street.
+  // The drier and more rotten the quarter, the more surely it jumps.
+  const roll = (mix(city.seed, Stream.Disaster, hour * 131 + 7, event.id) >>> 0) % 1000;
+  const chance = Math.min(900, 240 + rot + Math.max(0, bestScore - rot - 300));
+  if (roll >= chance) return;
+  igniteFromSpread(city, event, chosen);
+  city.disasters.revision++;
+}
+
 /** Advance cleanup, then permit only one naturally arising failure this hour. */
 export function tickDisastersHourly(city: City): void {
   const st = city.disasters;
+  for (const event of st.events) {
+    if (event.kind === 'fire') spreadFire(city, event);
+  }
   for (const event of st.events) {
     if (event.status === 'active' && city.tick >= event.containedAt) {
       event.status = 'contained';
