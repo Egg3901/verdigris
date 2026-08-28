@@ -5,6 +5,7 @@
 import type { City } from './city';
 import { pushLog, sendTo } from './city';
 import { DEFS } from './buildings';
+import type { Building } from './buildings';
 import { seedClaim, implant } from './claims';
 import { emit, witnessesOf } from './events';
 import { breakSegment, serviceAt } from './networks';
@@ -116,7 +117,7 @@ function nearbyFloodBuildings(city: City, buildingId: number): number[] {
     .filter((b) => Math.abs(b.doorX - target.doorX) + Math.abs(b.doorY - target.doorY) <= 5)
     .sort((a, b) => (Math.abs(a.doorX - target.doorX) + Math.abs(a.doorY - target.doorY))
       - (Math.abs(b.doorX - target.doorX) + Math.abs(b.doorY - target.doorY)) || a.id - b.id)
-    .slice(0, 8)
+    .slice(0, 4)
     .map((b) => b.id);
 }
 
@@ -323,11 +324,95 @@ function spreadFire(city: City, event: Disaster): void {
   city.disasters.revision++;
 }
 
+/** A flood is bounded, like a fire, so it soaks a low corner rather than the map.
+ *  It starts small at the breach and rises to this over the hours it runs. */
+const FLOOD_MAX_SPREAD = 12;
+
+/** River distance for a building's door: how far its ground sits from the channel
+ *  centre, as a proxy for how low it lies. Smaller means wetter. */
+function riverReach(city: City, b: Building): number {
+  const riverY = city.river.centre[b.doorX];
+  if (riverY < 0) return 999;
+  return Math.abs(b.doorY - riverY) - city.river.halfWidth[b.doorX];
+}
+
+/** Water reaches another building: soak the fabric, drive people to dry ground. */
+function floodInto(city: City, event: Disaster, buildingId: number): void {
+  const b = city.buildings[buildingId];
+  if (!b) return;
+  b.fabric = Math.max(0, b.fabric - 25);
+  b.lastIncidentTick = city.tick;
+  event.affectedBuildingIds.push(buildingId);
+  const unsafe = new Set(event.affectedBuildingIds);
+  const civicHall = city.buildings.find((building) => building.kind === 'townhall' && !unsafe.has(building.id))?.id ?? -1;
+  for (const id of b.occupants.slice()) {
+    const s = city.souls[id];
+    if (!s || s.inId !== b.id || event.evacuatedIds.includes(id)) continue;
+    event.evacuatedIds.push(id);
+    s.grievance = Math.min(1000, s.grievance + 90);
+    s.health = Math.max(0, s.health - 35);
+    const refuge = !unsafe.has(s.homeId) ? s.homeId : civicHall;
+    if (refuge >= 0) sendTo(city, s, refuge, 'commuting', 'visiting');
+  }
+  applyPressure(city.press, 'sanitation', -20, 'incident', event.id, 'the water spread', city.tick);
+  pushLog(city, `Flood water reaches ${b.name}.`, 'loss');
+}
+
+/**
+ * Rising flood water.
+ *
+ * While the rain holds, the water creeps once an hour to ONE more building that
+ * touches the flooded ground, preferring whatever lies lowest (nearest the
+ * channel). When the rain stops it stops spreading and the event runs down to
+ * containment. Deterministic from (seed, hour, ids), like the fire.
+ */
+function spreadFlood(city: City, event: Disaster): void {
+  if (event.status !== 'active') return;
+  if (event.affectedBuildingIds.length >= FLOOD_MAX_SPREAD) return;
+  const weather = weatherAt(city.seed, city.tick);
+  if (weather.precipitation === 0) return;
+
+  // Water crosses streets and yards, so the flooded frontier is measured by door
+  // proximity rather than building contact: a candidate is reachable if its door
+  // sits within a few tiles of an already-flooded door. Fire needs touching
+  // roofs; a flood only needs low ground between here and there.
+  const affected = new Set(event.affectedBuildingIds);
+  const hour = Math.trunc(city.tick / 60);
+  let chosen = -1;
+  let bestScore = -1e9;
+  let bestTie = 0xffffffff;
+  for (const b of city.buildings) {
+    if (affected.has(b.id) || b.fabric <= 0) continue;
+    let near = false;
+    for (const id of event.affectedBuildingIds) {
+      const w = city.buildings[id];
+      if (w && Math.abs(w.doorX - b.doorX) + Math.abs(w.doorY - b.doorY) <= 3) { near = true; break; }
+    }
+    if (!near) continue;
+    // Lower ground floods first: a smaller river reach scores higher.
+    const score = 400 - riverReach(city, b) * 30 + Math.max(0, 600 - b.fabric);
+    const tie = mix(city.seed, Stream.Disaster, hour, b.id) >>> 0;
+    if (score > bestScore || (score === bestScore && tie < bestTie)) {
+      chosen = b.id;
+      bestScore = score;
+      bestTie = tie;
+    }
+  }
+  if (chosen < 0) return;
+  // Harder rain drives the water on more surely.
+  const roll = (mix(city.seed, Stream.Disaster, hour * 149 + 3, event.id) >>> 0) % 1000;
+  const chance = weather.precipitation === 2 ? 820 : 520;
+  if (roll >= chance) return;
+  floodInto(city, event, chosen);
+  city.disasters.revision++;
+}
+
 /** Advance cleanup, then permit only one naturally arising failure this hour. */
 export function tickDisastersHourly(city: City): void {
   const st = city.disasters;
   for (const event of st.events) {
     if (event.kind === 'fire') spreadFire(city, event);
+    else if (event.kind === 'flood') spreadFlood(city, event);
   }
   for (const event of st.events) {
     if (event.status === 'active' && city.tick >= event.containedAt) {

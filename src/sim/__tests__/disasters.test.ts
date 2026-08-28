@@ -298,6 +298,36 @@ describe('physical disasters', () => {
     }
   });
 
+  it('rises through the hours while the rain holds, and does so deterministically', () => {
+    // A watch-aligned rainy start, so the whole active window shares wet weather
+    // and the water is free to climb the street.
+    const make = () => {
+      const c = atWorkday();
+      for (let i = 0; i < 200
+        && !(c.tick % 360 === 0 && weatherAt(c.seed, c.tick).precipitation > 0); i++) {
+        warp(c, 60);
+      }
+      const id = floodTarget(c);
+      const event = startDisaster(c, 'flood', id);
+      if (!event) throw new Error('flood did not start');
+      return { c, start: event.affectedBuildingIds.length };
+    };
+    const a = make();
+    const b = make();
+
+    warp(a.c, 300);
+    warp(b.c, 180);
+    warp(b.c, 120);
+    // Same seed, same target, same creep: the split warp lands on the same world.
+    expect(hashWorld(a.c)).toBe(hashWorld(b.c));
+
+    const flood = a.c.disasters.events.find((event) => event.kind === 'flood');
+    if (!flood) throw new Error('flood missing');
+    // It grew beyond the breach, and it stayed inside its cap.
+    expect(flood.affectedBuildingIds.length).toBeGreaterThan(a.start);
+    expect(flood.affectedBuildingIds.length).toBeLessThanOrEqual(12);
+  });
+
   it('keeps a burnt-out shell charred until its fabric is made good', () => {
     const city = atWorkday();
     const id = fireTarget(city);
