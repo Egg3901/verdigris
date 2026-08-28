@@ -10,7 +10,7 @@ import { PAL, gradeHex, shadeHex, isDarkVariant } from './palette';
 import type { Variant } from './palette';
 import { minuteOfDay } from '../sim/clock';
 import { TILE_W, TILE_H, isoX, isoY, depthKey, worldBounds, LAYER_AGENT, LAYER_OVERHEAD } from './iso';
-import { fillPolyHard, lineHard, ditherPolyHard } from './raster';
+import { fillPolyHard, lineHard, ditherPolyHard, applyDitherVeil } from './raster';
 import { mix, Stream } from '../sim/rng';
 import { stepToward } from '../sim/graph';
 import { Tile } from '../sim/types';
@@ -29,6 +29,8 @@ export interface VehicleDraw {
   depth: number;
   /** Tram body axis. Carts do not need an orientation at this resolution. */
   along: boolean;
+  /** Dither veil 0..16: barges slip gradually into a bridge's shadow. */
+  veil: number;
 }
 
 /** A fire sits on its source roof but remains part of the world depth order. */
@@ -188,7 +190,8 @@ export function collectVehicles(
     const wy = isoY(cx, cy) + dy;
     // Include the tram pole and cart body above their ground point in the cull.
     if (wx < tl.wx - 12 || wx > br.wx + 12 || wy < tl.wy - 24 || wy > br.wy + 4) return;
-    const slot = out[n] ?? (out[n] = { kind: 0, cartKind: 0, wx: 0, wy: 0, depth: 0, along: false });
+    const slot = out[n] ?? (out[n] = { kind: 0, cartKind: 0, wx: 0, wy: 0, depth: 0, along: false, veil: 16 });
+    slot.veil = 16;
     slot.kind = kind;
     slot.cartKind = cartKind;
     slot.wx = wx;
@@ -253,8 +256,18 @@ export function collectVehicles(
         const bi = Math.min(x1 - 1, Math.floor(bx));
         const f = bx - bi;
         const by = riv.centre[bi] + (riv.centre[bi + 1] - riv.centre[bi]) * f;
-        if (riv.bridges.some((bridge) => Math.abs(bx - bridge.x) < (bridge.stone ? 1.4 : 1.1))) continue;
+        // Slipping under a bridge is gradual: the boat dissolves into the
+        // deck's shadow over its last tile of approach instead of popping.
+        let veil = 16;
+        for (const bridge of riv.bridges) {
+          const clearing = bridge.stone ? 1.4 : 1.1;
+          const dist = Math.abs(bx - bridge.x);
+          if (dist < clearing) { veil = 0; break; }
+          if (dist < clearing + 1.2) veil = Math.min(veil, Math.round((16 * (dist - clearing)) / 1.2));
+        }
+        if (veil <= 0) continue;
         add(2, (i % 3) as VehicleDraw['cartKind'], bx, by, ph <= span, surfaceY);
+        out[n - 1].veil = veil;
       }
     }
   }
@@ -273,10 +286,33 @@ export function collectVehicles(
   return n;
 }
 
+let BARGE_SCRATCH: HTMLCanvasElement | null = null;
+function bargeScratch(): HTMLCanvasElement {
+  if (!BARGE_SCRATCH) {
+    BARGE_SCRATCH = document.createElement('canvas');
+    BARGE_SCRATCH.width = 32;
+    BARGE_SCRATCH.height = 24;
+  }
+  return BARGE_SCRATCH;
+}
+
 /** Draw one vehicle from the merged depth list. */
 export function drawVehicle(ctx: CanvasRenderingContext2D, vehicle: VehicleDraw, variant: Variant): number {
   const x = Math.round(vehicle.wx);
   const y = Math.round(vehicle.wy);
+  if (vehicle.kind === 2 && vehicle.veil < 16) {
+    // Near a bridge the barge is drawn to a scratch canvas, veiled by ordered
+    // dither, and blitted, so it slides into the shadow of the arch.
+    const scratch = bargeScratch();
+    const sctx = scratch.getContext('2d') as CanvasRenderingContext2D;
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.clearRect(0, 0, scratch.width, scratch.height);
+    sctx.setTransform(1, 0, 0, 1, 16 - x, 12 - y);
+    drawVehicle(sctx, { ...vehicle, veil: 16 }, variant);
+    applyDitherVeil(sctx, scratch.width, scratch.height, vehicle.veil);
+    ctx.drawImage(scratch, x - 16, y - 12);
+    return 9;
+  }
   if (vehicle.kind === 2) {
     // A working river barge: low freeboard, so it clears every arch on the
     // river. The cargo tells the boats apart; the tiller man stands aft.
