@@ -940,7 +940,20 @@ function chimneys(ctx: CanvasRenderingContext2D, r0: Pt, r1: Pt, spec: HouseSpec
     ctx.fillRect(x - 1, y - h, 3, h);
     ctx.fillStyle = shadeHex(brick, 0.15);
     ctx.fillRect(x - 1, y - h, 1, h);
+    // Terracotta pots on the cap: one or two, the London-brown skyline detail
+    // that turns a brick stub into a chimney. The lit pot keeps a bright edge.
     ctx.fillStyle = spec.skin.outline;
     ctx.fillRect(x - 1, y - h - 1, 3, 1);
+    // Terracotta pots on the cap: one or two, the London-brown skyline detail
+    // that turns a brick stub into a chimney. Sit clear of the flaunching line.
+    const pots = 1 + (((i + (spec.salt ?? 0)) >>> 1) & 1);
+    const pot = spec.polite ? PAL.tileRed2 : PAL.ochre1;
+    for (let p = 0; p < pots; p++) {
+      const px = x - 1 + p * 2;
+      ctx.fillStyle = pot;
+      ctx.fillRect(px, y - h - 3, 1, 2);
+      ctx.fillStyle = shadeHex(pot, 0.18);
+      ctx.fillRect(px, y - h - 3, 1, 1);
+    }
   }
 }

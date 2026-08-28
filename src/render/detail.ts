@@ -59,8 +59,25 @@ export function drawDoor(
 ): void {
   const halfW = Math.min(0.16, 5 / Math.max(1, f.span));
   const top = Math.max(3, wallH - 11);
-  faceQuad(ctx, f, t - halfW, t + halfW, top, wallH - 1, skin.wallDark);
+  // The door leaf, a shade off the surround so a painted door reads as joinery
+  // rather than as the same dark hole as an unlit window.
+  const leaf = shadeHex(skin.wallDark, -0.06);
+  faceQuad(ctx, f, t - halfW, t + halfW, top, wallH - 1, leaf);
   faceQuad(ctx, f, t - halfW, t + halfW, top, top + 1, skin.timber);
+  // A fanlight over the head: the lintel light every terrace door carries. Warm
+  // when the lamps are lit, a dark glaze by day.
+  const fan = skin.glassLit ? PAL.litWindow : shadeHex(PAL.darkWindow, 0.08);
+  faceQuad(ctx, f, t - halfW + 0.01, t + halfW - 0.01, top + 1, top + 2, fan);
+  // A centre stile splits the leaf into two panels, and the west jamb catches a
+  // hair of light.
+  lineHard(ctx, f.at(t, top + 3), f.at(t, wallH - 2), shadeHex(leaf, -0.14));
+  lineHard(ctx, f.at(t - halfW, top + 1), f.at(t - halfW, wallH - 1), shadeHex(skin.wall, 0.1));
+  // The brass knob, on the lit face only, where the west light finds it.
+  if (f.lit && f.span >= 12) {
+    const k = f.at(t + halfW - 0.03, wallH - 5);
+    ctx.fillStyle = skin.trim ?? PAL.brass2;
+    ctx.fillRect(Math.round(k.x), Math.round(k.y), 1, 1);
+  }
   // A step, so the door meets the pavement instead of hovering above it.
   faceQuad(ctx, f, t - halfW - 0.02, t + halfW + 0.02, wallH - 1, wallH, shadeHex(skin.wall, -0.2));
 }
@@ -117,6 +134,10 @@ export function drawWindowGrid(
   if (usable < 6 || rows < 1) return;
   const stepY = Math.max(7, Math.floor(usable / rows));
 
+  // The painted frame: sash timber, lighter than the glass so the opening reads
+  // as a window rather than a hole. Warm on the working bank, near-white on the
+  // polite one where the joinery is kept up.
+  const frame = shadeHex(skin.wall, 0.16);
   for (let r = 0; r < rows; r++) {
     const h = 4 + r * stepY;
     if (h + 5 > bottom) break;
@@ -124,13 +145,37 @@ export function drawWindowGrid(
       const t = (c + 0.5) / cols;
       // Not every pane is lit, or a lit town reads as a string of fairy lights.
       const dark = skin.glassLit && ((hash + r * 7 + c * 13) % 3 === 0);
-      const glass = skin.glassLit && !dark ? skin.glass : shadeHex(PAL.darkWindow, f.lit ? 0.06 : 0);
+      const lit = skin.glassLit && !dark;
+      const glass = lit ? skin.glass : shadeHex(PAL.darkWindow, f.lit ? 0.06 : 0);
       const halfW = Math.min(0.12, 3 / Math.max(1, f.span));
       faceQuad(ctx, f, t - halfW, t + halfW, h, h + 4, glass);
+      // The meeting rail: the one horizontal bar that divides upper and lower
+      // sash. A single line, but it is the mark that says "sash window" at a
+      // scale too small to carry a full glazing grid.
+      lineHard(ctx, f.at(t - halfW, h + 2), f.at(t + halfW, h + 2), frame);
+      // A cool reflection catch in the top corner of the lit face by day; a warm
+      // inner sill-glow at night. Either way the flat pane gets a second value.
+      if (!lit) {
+        if (f.lit) {
+          const g = f.at(t - halfW, h);
+          ctx.fillStyle = PAL.arc0;
+          ctx.fillRect(Math.round(g.x), Math.round(g.y), 1, 1);
+        }
+      } else {
+        const g = f.at(t + halfW - 0.01, h + 3);
+        ctx.fillStyle = PAL.litWindow2;
+        ctx.fillRect(Math.round(g.x), Math.round(g.y), 1, 1);
+      }
       // Lintel above, sill below: two one-pixel lines that do most of the work of
       // making a hole in a wall look like a window.
       lineHard(ctx, f.at(t - halfW, h - 1), f.at(t + halfW, h - 1), skin.wallDark);
       lineHard(ctx, f.at(t - halfW - 0.01, h + 4), f.at(t + halfW + 0.01, h + 4), shadeHex(skin.wall, 0.14));
+      // A projecting sill catches the west light: one bright pip on the lit face.
+      if (f.lit && f.span >= 16) {
+        const s = f.at(t - halfW, h + 4);
+        ctx.fillStyle = shadeHex(skin.wall, 0.24);
+        ctx.fillRect(Math.round(s.x) - 1, Math.round(s.y), 1, 1);
+      }
     }
   }
 }
@@ -273,6 +318,16 @@ export function drawAshlarFace(
       const t = (i + stagger) / blocks;
       if (t <= 0.04 || t >= 0.96) continue;
       lineHard(ctx, f.at(t, h), f.at(t, Math.min(wallH - 1, h + course - 1)), mortar);
+    }
+  }
+  // Quoins: alternating dressed corner stones down the leading edge. A hair
+  // brighter than the wall, they give a stone building its weight and mark the
+  // corner the eye already reads as the silhouette. Lit face only.
+  if (f.lit && f.span >= 10) {
+    const quoin = shadeHex(hilite, 0.06);
+    for (let h = 2; h < wallH - 2; h += course * 2) {
+      faceQuad(ctx, f, 0.0, 0.06, h, Math.min(wallH - 1, h + course), quoin);
+      lineHard(ctx, f.at(0.06, h), f.at(0.06, Math.min(wallH - 1, h + course)), mortar);
     }
   }
 }
