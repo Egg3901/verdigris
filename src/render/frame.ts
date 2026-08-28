@@ -22,7 +22,7 @@ import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, dr
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
-import { lineHard } from './raster';
+import { lineHard, fillPolyHard, ditherPolyHard } from './raster';
 import { houseCorners } from './house';
 import { soulPos } from '../sim/souls';
 import { weatherAt } from '../sim/weather';
@@ -89,6 +89,17 @@ export function drawFrame(
   let hi = 0;
   const statics = scene.statics;
   const props = scene.props;
+
+  // Per-frame window lighting. Panes are baked dark; here each one is lit on its
+  // own schedule, so rooms come on through the evening and go dark as the night
+  // wears on, individually, rather than the whole town switching at once.
+  const nm = nightWindowMinute((minuteOfDay(city.tick) + fracMin) % 1440);
+  const litWindows = nm >= 0;
+  const flickFrame = Math.floor((city.tick + fracMin) * 3);
+  const warmA = gradeHex(PAL.litWindow, scene.variant, true);
+  const warmB = gradeHex(PAL.litWindow2, scene.variant, true);
+  const spill = gradeHex(PAL.gas1, scene.variant, true);
+
   while (si < statics.length || ai < agentCount || pi < props.length || vi < vehicleCount || hi < hazardCount) {
     const sDepth = si < statics.length ? statics[si].depth : Infinity;
     const pDepth = pi < props.length ? props[pi].depth : Infinity;
@@ -113,6 +124,29 @@ export function drawFrame(
       ctx.drawImage(s.sprite, Math.round(x), Math.round(y));
       stats.calls++;
       stats.statics++;
+      // Light this building's windows, drawn immediately after its sprite so they
+      // sit at the right depth and are occluded by whatever stands in front.
+      if (litWindows && s.windows.length) {
+        const bx = Math.round(x);
+        const by = Math.round(y);
+        for (const w of s.windows) {
+          const glow = windowGlow(w.hash, nm, flickFrame);
+          if (glow === 0) continue;
+          const a0 = { x: bx + w.ax, y: by + w.ay };
+          const b0 = { x: bx + w.bx, y: by + w.by };
+          fillPolyHard(ctx, [a0, b0, { x: b0.x, y: b0.y + 4 }, { x: a0.x, y: a0.y + 4 }],
+            (w.hash % 6 === 0) ? warmB : warmA);
+          if (glow === 1) {
+            ditherPolyHard(ctx, [
+              { x: a0.x, y: a0.y + 4 }, { x: b0.x, y: b0.y + 4 },
+              { x: b0.x, y: b0.y + 7 }, { x: a0.x, y: a0.y + 7 },
+            ], spill, 5);
+            ctx.fillStyle = warmB;
+            ctx.fillRect(Math.round(b0.x) - 1, Math.round(b0.y) + 1, 1, 1);
+          }
+          stats.calls++;
+        }
+      }
     } else if (vDepth <= aDepth && vDepth <= hDepth) {
       stats.calls += drawVehicle(ctx, vehiclePool[vi++], scene.variant);
     } else if (aDepth <= hDepth) {
@@ -167,4 +201,42 @@ export function drawFrame(
     console.warn(`draw-call budget breached: ${stats.calls} > ${CALL_BUDGET}`);
   }
   return stats;
+}
+
+/**
+ * Minutes into the night, or -1 by day. The night runs from 6pm (0) round to
+ * 6:30am (750), so a window schedule can be expressed as one rising number
+ * without wrapping at midnight.
+ */
+function nightWindowMinute(m: number): number {
+  if (m >= 1140) return m - 1140;
+  if (m < 450) return m + 300;
+  return -1;
+}
+
+/**
+ * Whether a window is lit, and how: 0 dark, 1 lit, 2 lit but guttering. Each
+ * pane lights at its own hour and goes dark at its own, a few wake in the small
+ * hours, and all of them flicker like the lamp or candle behind them. Purely a
+ * function of the pane hash and the clock, so it is stable frame to frame and
+ * the same on every machine.
+ */
+function windowGlow(hash: number, nm: number, flickFrame: number): 0 | 1 | 2 {
+  const onset = hash % 240;                 // lit up between 6 and 10pm
+  const sleep = onset + 90 + ((hash >>> 8) % 450); // dark 1.5 to 9 hours later
+  let lit = nm >= onset && nm < sleep;
+  let edge = Math.min(Math.abs(nm - onset), Math.abs(nm - sleep));
+  if (!lit && (hash & 7) === 0) {
+    // A few rooms wake briefly in the small hours.
+    const wake = 600 + ((hash >>> 5) % 120);
+    const until = wake + 25 + ((hash >>> 3) % 45);
+    if (nm >= wake && nm < until) { lit = true; edge = Math.min(Math.abs(nm - wake), Math.abs(nm - until)); }
+  }
+  if (!lit) return 0;
+  const flick = mix(hash, flickFrame) % 100;
+  // Through the switching minute the pane blinks as the light is lit or put out.
+  if (edge < 3 && flick < 50) return 0;
+  // A steady gaslight gutter, and the spill drops out with it.
+  if (flick < 7) return 2;
+  return 1;
 }

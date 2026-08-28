@@ -7,7 +7,7 @@ import './style.css';
 import { newCity, tickCity, warp, hashWorld, soulsOutdoors } from './sim/city';
 import type { City } from './sim/city';
 import { MAX_TICKS_PER_FRAME, MIN_PER_DAY, SPEEDS, minuteOfDay } from './sim/clock';
-import { buildScene, refreshBuilding, debugSkin, lightPhase } from './render/scene';
+import { buildScene, refreshBuilding, debugSkin } from './render/scene';
 import { renderPalette, variantFor } from './render/palette';
 import type { Scene } from './render/scene';
 import { drawFrame } from './render/frame';
@@ -559,8 +559,7 @@ function loop(now: number): void {
     || scene.disasterRevision !== city.disasters.revision
     || scene.weatherRevision !== weatherAt(city.seed, city.tick).revision
     || scene.shelterRevision !== city.shelters.revision
-    || scene.occasionRevision !== city.occasions.revision
-    || scene.lightPhase !== lightPhase(minuteOfDay(city.tick))) {
+    || scene.occasionRevision !== city.occasions.revision) {
     buntingShown = buntingNow;
     scene = buildScene(city, wantVariant);
   }

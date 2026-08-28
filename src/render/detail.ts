@@ -46,12 +46,21 @@ export interface DetailSkin {
   timber: string;
   glass: string;
   glassLit: boolean;
-  /** Share of windows lit right now, 0..1. */
-  litFraction?: number;
-  /** Night phase, mixed into the per-window hash so the lit set shifts. */
-  lightPhase?: number;
   trim?: string;
   outline: string;
+}
+
+/**
+ * One window pane, recorded at bake time so the per-frame lamplighter can light
+ * it in place. The top edge runs (ax,ay) to (bx,by) in sprite coordinates; the
+ * pane is four pixels tall below that. The hash drives its own on/off schedule.
+ */
+export interface WindowLight {
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  hash: number;
 }
 
 /**
@@ -130,7 +139,7 @@ export function drawSign(
  */
 export function drawWindowGrid(
   ctx: CanvasRenderingContext2D, f: Face, wallH: number, rows: number, skin: DetailSkin,
-  skipGround: boolean, hash: number,
+  skipGround: boolean, hash: number, lights?: WindowLight[],
 ): void {
   const cols = Math.max(1, Math.round(f.span / 13));
   const bottom = skipGround ? wallH - 15 : wallH - 3;
@@ -142,56 +151,36 @@ export function drawWindowGrid(
   // as a window rather than a hole. Warm on the working bank, near-white on the
   // polite one where the joinery is kept up.
   const frame = shadeHex(skin.wall, 0.16);
-  // Which panes are lit is decided per pane against the phase's lit fraction, so
-  // a house is lit and emptied one window at a time as the night wears on rather
-  // than glowing whole and holding it till dawn.
-  const litFraction = skin.litFraction ?? 0;
-  const phase = skin.lightPhase ?? 0;
-  const lightingOn = skin.glassLit && litFraction > 0;
+  // The panes are always baked DARK. Whether one is lit is decided per frame, not
+  // here, so a room can turn its light on and off on its own schedule. What this
+  // records is WHERE each pane is, so the per-frame pass can light it in place.
   const cold = shadeHex(PAL.darkWindow, f.lit ? 0.06 : 0);
   for (let r = 0; r < rows; r++) {
     const h = 4 + r * stepY;
     if (h + 5 > bottom) break;
     for (let c = 0; c < cols; c++) {
       const t = (c + 0.5) / cols;
-      // A stable per-pane roll, shifted by the phase so the pattern changes bake
-      // to bake. A pane is lit when its roll falls under the fraction awake.
-      const key = ((hash + r * 71 + c * 131 + phase * 907) >>> 0) % 1000;
-      const lit = lightingOn && key < litFraction * 1000;
-      // A few lit rooms burn warmer than the rest, for life.
-      const glass = lit ? (key % 6 === 0 ? PAL.litWindow2 : skin.glass) : cold;
       const halfW = Math.min(0.12, 3 / Math.max(1, f.span));
-      faceQuad(ctx, f, t - halfW, t + halfW, h, h + 4, glass);
+      faceQuad(ctx, f, t - halfW, t + halfW, h, h + 4, cold);
       // The meeting rail: the one horizontal bar that divides upper and lower
       // sash. A single line, but it is the mark that says "sash window".
       lineHard(ctx, f.at(t - halfW, h + 2), f.at(t + halfW, h + 2), frame);
-      if (!lit) {
-        // A cool reflection catch in a dark pane, on the lit face by day.
-        if (f.lit && !lightingOn) {
-          const g = f.at(t - halfW, h);
-          ctx.fillStyle = PAL.arc0;
-          ctx.fillRect(Math.round(g.x), Math.round(g.y), 1, 1);
-        }
-      } else {
-        // A lit pane spills warm light: a bright inner corner, and a soft wash
-        // down the wall below the sill, so the window reads as a light source.
-        const g = f.at(t + halfW - 0.01, h + 3);
-        ctx.fillStyle = PAL.litWindow2;
+      // A cool reflection catch in the top corner, on the lit face.
+      if (f.lit) {
+        const g = f.at(t - halfW, h);
+        ctx.fillStyle = PAL.arc0;
         ctx.fillRect(Math.round(g.x), Math.round(g.y), 1, 1);
-        ditherPolyHard(ctx, [
-          f.at(t - halfW, h + 4), f.at(t + halfW, h + 4),
-          f.at(t + halfW - 0.01, h + 7), f.at(t - halfW + 0.01, h + 7),
-        ], PAL.gas1, 5);
       }
       // Lintel above, sill below: two one-pixel lines that do most of the work of
       // making a hole in a wall look like a window.
       lineHard(ctx, f.at(t - halfW, h - 1), f.at(t + halfW, h - 1), skin.wallDark);
       lineHard(ctx, f.at(t - halfW - 0.01, h + 4), f.at(t + halfW + 0.01, h + 4), shadeHex(skin.wall, 0.14));
-      // A projecting sill catches the west light: one bright pip on the lit face.
-      if (f.lit && f.span >= 16) {
-        const s = f.at(t - halfW, h + 4);
-        ctx.fillStyle = shadeHex(skin.wall, 0.24);
-        ctx.fillRect(Math.round(s.x) - 1, Math.round(s.y), 1, 1);
+      // Record the pane for the per-frame lamplighter: its top edge in sprite
+      // coordinates, and a stable hash for its own on/off schedule.
+      if (lights) {
+        const a = f.at(t - halfW, h);
+        const b = f.at(t + halfW, h);
+        lights.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, hash: (hash + r * 71 + c * 131) >>> 0 });
       }
     }
   }

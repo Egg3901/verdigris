@@ -24,7 +24,7 @@ import {
   drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
 } from './detail';
-import type { DetailSkin, WallMaterial } from './detail';
+import type { DetailSkin, WallMaterial, WindowLight } from './detail';
 import { drawFinial, drawMooringMast } from './landmarks';
 import type { Corners } from './landmarks';
 
@@ -98,12 +98,6 @@ export interface HouseSpec {
   /** A furnace burns inside: warm light leaks from the ground floor and a wide
    *  charging door, day and night. Mills and foundries. */
   furnace?: boolean;
-  /** Share of windows lit, 0 to 1, decided per window against a stable hash so
-   *  the house lights and empties one window at a time through the night. */
-  litFraction?: number;
-  /** Night-lighting phase, folded into the per-window hash so the lit set shifts
-   *  from one bake to the next rather than the same panes always burning. */
-  lightPhase?: number;
   polite: boolean;
   patched?: boolean;
   /** Physical wear, derived from fabric and district conditions. */
@@ -173,7 +167,9 @@ const lerp = (a: Pt, b: Pt, t: number): Pt => ({
 /**
  * Draw a house. ox, oy is where the SOUTH corner tile's diamond centre sits.
  */
-export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number, spec: HouseSpec): void {
+export function drawHouse(
+  ctx: CanvasRenderingContext2D, ox: number, oy: number, spec: HouseSpec, lights?: WindowLight[],
+): void {
   const { w, d, wallH, skin } = spec;
   const ground = houseCorners(ox, oy, w, d, 0);
   const eave = houseCorners(ox, oy, w, d, wallH);
@@ -207,7 +203,7 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
     drawRoofPatina(ctx, roofQuad, spec.roofWear, spec.salt ?? 0, skin.roofLit, skin.roofShade, skin.roofRidge);
   }
   drawFinial(ctx, ground, eave, spec, alongX);
-  drawFacade(ctx, eave, spec);
+  drawFacade(ctx, eave, spec, lights);
   if (spec.damage === 'flooded') drawFloodDamage(ctx, eave, spec);
   if (spec.drainState) drawRainwaterGoods(ctx, eave, spec);
   if (spec.rainStrength) drawRainRunoff(ctx, eave, roofQuad, spec);
@@ -659,8 +655,6 @@ function detailSkin(spec: HouseSpec): DetailSkin {
     timber: shadeHex(spec.skin.wallShade, -0.3),
     glass: spec.skin.window ?? PAL.darkWindow,
     glassLit: spec.skin.windowLit === true,
-    litFraction: spec.litFraction ?? 0,
-    lightPhase: spec.lightPhase ?? 0,
     trim: spec.skin.trim,
     outline: spec.skin.outline,
   };
@@ -675,6 +669,7 @@ function drawFacade(
   ctx: CanvasRenderingContext2D,
   eave: { W: Pt; N: Pt; E: Pt; S: Pt },
   spec: HouseSpec,
+  lights?: WindowLight[],
 ): void {
   const skin = detailSkin(spec);
   const salt = spec.salt ?? 0;
@@ -684,7 +679,7 @@ function drawFacade(
   for (const f of [lit, shade]) {
     if (f.span < 8) continue;
     if (spec.material !== 'glazed') {
-      drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true, salt + (f.lit ? 0 : 5));
+      drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true, salt + (f.lit ? 0 : 5), lights);
     }
     if (spec.boarded) drawBoarded(ctx, f, spec.wallH, skin);
   }
