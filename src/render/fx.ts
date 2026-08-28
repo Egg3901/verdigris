@@ -96,15 +96,39 @@ export function drawHazard(ctx: CanvasRenderingContext2D, hazard: HazardDraw, va
   const leanA = ((p % 3) - 1) * 2;
   const leanB = (((p >> 1) % 3) - 1);
   const flick = p % 4;
-  const H = (hazard.wide ? 26 : 20) + flick * 2;
-  const halfW = hazard.wide ? 9 : 7;
+  const H = (hazard.wide ? 36 : 28) + flick * 3;
+  const halfW = hazard.wide ? 11 : 8;
+  const red = gradeHex(PAL.buntRed, variant);
+  const redHi = gradeHex(PAL.buntRedHi, variant);
+  const hot = gradeHex(PAL.brass2, variant, true);
+  const core = gradeHex(PAL.gas2, variant, true);
+  const white = gradeHex(PAL.litWindow2, variant, true);
 
-  // A hot pool of light on the roof under the flame, so the fire sits IN the
-  // building rather than floating above it. Ordered dither keeps it on-palette.
+  // A broad hot pool of light on the roof under the fire, denser at the centre,
+  // so the flame sits IN the building and throws light onto what it stands on.
   ditherPolyHard(ctx, [
-    { x: x - halfW - 2, y: y + 2 }, { x: x + halfW + 2, y: y + 2 },
-    { x: x + halfW, y: y - 4 }, { x: x - halfW, y: y - 4 },
-  ], gradeHex(PAL.brass2, variant, true), 6);
+    { x: x - halfW - 4, y: y + 3 }, { x: x + halfW + 4, y: y + 3 },
+    { x: x + halfW + 1, y: y - 5 }, { x: x - halfW - 1, y: y - 5 },
+  ], hot, 5);
+  ditherPolyHard(ctx, [
+    { x: x - halfW, y: y + 1 }, { x: x + halfW, y: y + 1 },
+    { x: x + halfW - 2, y: y - 4 }, { x: x - halfW + 2, y: y - 4 },
+  ], core, 7);
+
+  // Two flanking tongues, so the fire is a mass of flame rather than one spike.
+  for (const s of [-1, 1]) {
+    const fx = x + s * (halfW - 2);
+    const fh = H * (0.5 + (((p >> 2) + (s > 0 ? 1 : 0)) % 2) * 0.14);
+    fillPolyHard(ctx, [
+      { x: fx - 3, y }, { x: fx - 1 + leanA * s, y: y - fh * 0.6 },
+      { x: fx + leanA * s, y: y - fh }, { x: fx + 2 + leanA * s, y: y - fh * 0.55 },
+      { x: fx + 3, y },
+    ], red);
+    fillPolyHard(ctx, [
+      { x: fx - 1, y }, { x: fx + leanB, y: y - fh * 0.55 },
+      { x: fx + 1 + leanB, y: y - fh * 0.35 }, { x: fx + 2, y },
+    ], redHi);
+  }
 
   // Outer envelope: dark, wide, ragged, the sooty edge of the fire.
   fillPolyHard(ctx, [
@@ -112,35 +136,37 @@ export function drawHazard(ctx: CanvasRenderingContext2D, hazard: HazardDraw, va
     { x: x - 3 + leanA, y: y - H * 0.72 }, { x: x - 1 + leanA, y: y - H },
     { x: x + 3 + leanA, y: y - H * 0.66 }, { x: x + halfW - 1, y: y - H * 0.36 },
     { x: x + halfW, y },
-  ], gradeHex(PAL.buntRed, variant));
+  ], red);
   // Mid body.
   fillPolyHard(ctx, [
     { x: x - halfW + 2, y }, { x: x - 2 + leanB, y: y - H * 0.5 },
-    { x: x - 1 + leanA, y: y - H * 0.82 }, { x: x + 1 + leanA, y: y - H * 0.62 },
+    { x: x - 1 + leanA, y: y - H * 0.86 }, { x: x + 1 + leanA, y: y - H * 0.64 },
     { x: x + 3 + leanB, y: y - H * 0.42 }, { x: x + halfW - 2, y },
-  ], gradeHex(PAL.buntRedHi, variant));
+  ], redHi);
   // Inner flame, bright.
   fillPolyHard(ctx, [
-    { x: x - 3, y }, { x: x - 2 + leanB, y: y - H * 0.4 },
-    { x: x + leanB, y: y - H * 0.66 }, { x: x + 2 + leanB, y: y - H * 0.38 },
-    { x: x + 3, y },
-  ], gradeHex(PAL.brass2, variant, true));
-  // White-hot core, low in the flame where it is hottest.
+    { x: x - 4, y }, { x: x - 2 + leanB, y: y - H * 0.44 },
+    { x: x + leanB, y: y - H * 0.7 }, { x: x + 2 + leanB, y: y - H * 0.4 },
+    { x: x + 4, y },
+  ], hot);
+  // White-hot core, tall and narrow up the heart of the flame.
   fillPolyHard(ctx, [
-    { x: x - 1, y }, { x: x - 1 + leanB, y: y - H * 0.34 },
-    { x: x + 1 + leanB, y: y - H * 0.5 }, { x: x + 2, y: y - H * 0.28 },
-    { x: x + 1, y },
-  ], gradeHex(PAL.gas2, variant, true));
+    { x: x - 2, y }, { x: x - 1 + leanB, y: y - H * 0.4 },
+    { x: x + leanB, y: y - H * 0.58 }, { x: x + 2 + leanB, y: y - H * 0.36 },
+    { x: x + 2, y },
+  ], core);
+  ctx.fillStyle = white;
+  ctx.fillRect(x, y - Math.round(H * 0.22), 1, Math.round(H * 0.22));
 
-  // Embers: a few sparks flung up into the smoke, positions hashed off the phase.
+  // Embers: sparks flung up into the smoke, positions hashed off the phase.
   ctx.fillStyle = gradeHex(PAL.brass3, variant, true);
-  for (let i = 0; i < 3; i++) {
-    const e = (p * 7 + i * 5) % 13;
-    const ex = x + ((e % 5) - 2) + leanA;
-    const ey = y - H - 2 - (e % 6);
+  for (let i = 0; i < 6; i++) {
+    const e = (p * 7 + i * 5) % 17;
+    const ex = x + ((e % 7) - 3) + leanA;
+    const ey = y - H - 2 - (e % 9);
     ctx.fillRect(ex, ey, 1, 1);
   }
-  return 9;
+  return 12;
 }
 
 /**
@@ -391,12 +417,20 @@ export function drawWeatherFx(
   const weather = weatherAt(city.seed, city.tick);
   if (weather.precipitation === 0) return 0;
   const storm = weather.precipitation === 2;
-  const count = storm ? 118 : 66;
+  const t = city.tick + fracMin;
+  // Shifting intensity: the rain gusts and eases rather than falling at one flat
+  // rate. Two slow sines beat against each other, so it swells and slackens
+  // without ever settling into an obvious loop. Deterministic from the tick.
+  const gust = 0.5 + 0.55 * (0.5 + 0.5 * Math.sin(t * 0.019))
+    + 0.35 * (0.5 + 0.5 * Math.sin(t * 0.051 + 1.7));
+  const base = storm ? 120 : 64;
+  const count = Math.round(base * gust);
   const spanX = Math.max(1, Math.floor(br.wx - tl.wx));
   const spanY = Math.max(1, Math.floor(br.wy - tl.wy));
-  const frame = Math.floor((city.tick + fracMin) * (storm ? 2 : 1.4));
+  const frame = Math.floor(t * (storm ? 2 : 1.4));
   const dark = gradeHex(PAL.riv2, variant);
   const glint = gradeHex(PAL.rivGlint, variant);
+  const d = city.district;
   let calls = 0;
   for (let i = 0; i < count * 5 && calls < count; i++) {
     // The lane is fixed for the whole watch. Only y advances, so rain falls
@@ -407,7 +441,7 @@ export function drawWeatherFx(
     const y = Math.floor(tl.wy + (((h >>> 12) + fall) % spanY));
     const tx = Math.round(x / TILE_W + y / TILE_H);
     const ty = Math.round(y / TILE_H - x / TILE_W);
-    if (!insideIsland(city.district, tx, ty)) continue;
+    if (!insideIsland(d, tx, ty)) continue;
     const len = storm ? 6 + (h & 1) : 4 + (h & 1);
     const lean = weather.windX * (storm ? 3 : 2);
     const bright = storm ? (h % 5) < 2 : (h & 3) === 0;
@@ -415,22 +449,35 @@ export function drawWeatherFx(
     calls++;
   }
 
-  // Splashes where the rain strikes: a tiny burst that blinks in and out per
-  // frame, so the ground reads as being rained ON rather than the rain merely
-  // passing in front of it. Positions are rehashed each frame with the frame
-  // number, which is what makes them flicker instead of drift.
-  const splashes = storm ? 34 : 18;
-  for (let i = 0; i < splashes * 4 && calls < count + splashes; i++) {
+  // Where the rain lands, the surface answers. Marks are rehashed each frame with
+  // the frame number so they blink rather than drift, and the mark depends on
+  // what was struck: the river dimples in little rings, wet paving throws a short
+  // glint, and rain on a roof or in a yard is left to the streaks alone.
+  const surfaceMarks = Math.round((storm ? 46 : 26) * gust);
+  for (let i = 0; i < surfaceMarks * 5 && calls < count + surfaceMarks; i++) {
     const h = mix(city.seed, Stream.Weather, weather.watch + 9, i * 3 + (frame & 7));
     const x = Math.floor(tl.wx + (h % spanX));
     const y = Math.floor(tl.wy + ((h >>> 12) % spanY));
     const tx = Math.round(x / TILE_W + y / TILE_H);
     const ty = Math.round(y / TILE_H - x / TILE_W);
-    if (!insideIsland(city.district, tx, ty)) continue;
-    ctx.fillStyle = (h & 3) === 0 ? glint : dark;
-    ctx.fillRect(x - 1, y, 3, 1);
-    ctx.fillRect(x, y - 1, 1, 1);
-    calls++;
+    if (!insideIsland(d, tx, ty)) continue;
+    const tile = d.tile[cellKey(d, tx, ty)];
+    if (tile === Tile.Water) {
+      // A dimple ring on the water.
+      ctx.fillStyle = glint;
+      ctx.fillRect(x - 1, y, 1, 1);
+      ctx.fillRect(x + 1, y, 1, 1);
+      ctx.fillRect(x, y - 1, 1, 1);
+      if ((h & 3) === 0) ctx.fillRect(x, y + 1, 1, 1);
+      calls++;
+    } else if (tile === Tile.Street || tile === Tile.Alley || tile === Tile.Square
+      || tile === Tile.Embankment || tile === Tile.Wharf || tile === Tile.Bridge) {
+      // A glint on wet stone.
+      ctx.fillStyle = (h & 3) === 0 ? glint : dark;
+      ctx.fillRect(x - 1, y, 3, 1);
+      if (storm && (h & 7) === 0) ctx.fillRect(x, y - 1, 1, 1);
+      calls++;
+    }
   }
   return calls;
 }
