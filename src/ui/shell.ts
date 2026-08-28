@@ -51,6 +51,10 @@ export interface ShellHooks {
   onFocusTarget: (target: Target) => void;
   onDeclineMatter: (id: number) => void;
   onPressMatter: (id: number) => void;
+  /** Sandbox: pin the weather to a kind, or null to hand it back to the clock. */
+  onForceWeather: (kind: 'fair' | 'overcast' | 'rain' | 'storm' | 'fog' | null) => void;
+  /** Sandbox: loose a disaster on the selected building, or a random fit one. */
+  onTriggerDisaster: (kind: 'fire' | 'flood' | 'collapse') => void;
 }
 
 export interface Shell {
@@ -149,7 +153,10 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   const deskBtn = el('button', 'brass', 'DESK') as HTMLButtonElement;
   deskBtn.setAttribute('aria-label', "Open the alderman's desk");
   deskBtn.addEventListener('click', () => toggleDesk());
-  budgetRow.append(deskBtn);
+  const sandboxBtn = el('button', 'brass', 'SANDBOX') as HTMLButtonElement;
+  sandboxBtn.setAttribute('aria-label', 'Sandbox: force the weather and trigger disasters');
+  sandboxBtn.addEventListener('click', () => toggleSandbox());
+  budgetRow.append(deskBtn, sandboxBtn);
   title.append(h1, rule, clock, counts, meters, budgetRow);
 
   // Inspector.
@@ -371,9 +378,59 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       syncSheets();
       desk.node.hidden = true;
       vestry.node.hidden = true;
+      sandbox.hidden = true;
     }
     help.hidden = !help.hidden;
     if (!help.hidden) helpClose.focus();
+  };
+
+  // The sandbox panel: pin the weather and loose disasters. The god controls the
+  // reframe promised, made reachable rather than hidden behind a selection.
+  const sandbox = el('div', 'plate');
+  sandbox.id = 'sandbox';
+  sandbox.hidden = true;
+  sandbox.setAttribute('role', 'dialog');
+  sandbox.setAttribute('aria-label', 'Sandbox controls');
+  const sbClose = el('button', 'close', '×');
+  sbClose.setAttribute('aria-label', 'Close');
+  sbClose.addEventListener('click', () => toggleSandbox());
+  sandbox.append(sbClose, el('div', 'name', 'SANDBOX'));
+  const sbRow = (heading: string, defs: [string, () => void][]) => {
+    sandbox.append(el('div', 'heading', heading));
+    const row = el('div', 'sandbox-row');
+    for (const [label, fn] of defs) {
+      const b = el('button', 'brass', label) as HTMLButtonElement;
+      b.addEventListener('click', fn);
+      row.append(b);
+    }
+    sandbox.append(row);
+  };
+  sbRow('WEATHER', [
+    ['Fair', () => hooks.onForceWeather('fair')],
+    ['Cloud', () => hooks.onForceWeather('overcast')],
+    ['Rain', () => hooks.onForceWeather('rain')],
+    ['Storm', () => hooks.onForceWeather('storm')],
+    ['Fog', () => hooks.onForceWeather('fog')],
+    ['Auto', () => hooks.onForceWeather(null)],
+  ]);
+  sbRow('DISASTER', [
+    ['Fire', () => hooks.onTriggerDisaster('fire')],
+    ['Flood', () => hooks.onTriggerDisaster('flood')],
+    ['Collapse', () => hooks.onTriggerDisaster('collapse')],
+  ]);
+  sandbox.append(el('p', 'hint', 'Disasters strike the selected building, or a fitting one if you have chosen none.'));
+
+  const toggleSandbox = () => {
+    if (sandbox.hidden) {
+      document.documentElement.removeAttribute('data-sheet');
+      syncSheets();
+      desk.node.hidden = true;
+      vestry.node.hidden = true;
+      help.hidden = true;
+    }
+    sandbox.hidden = !sandbox.hidden;
+    sandboxBtn.setAttribute('aria-expanded', String(!sandbox.hidden));
+    if (!sandbox.hidden) sbClose.focus();
   };
 
   /*
@@ -451,7 +508,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     deskSheetBtn.setAttribute('aria-expanded', String(!desk.node.hidden));
   };
 
-  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, vestry.node, desk.node, firstRun);
+  root.append(title, inspector, zoomPlate, scrub, verbs, nudges, ticker, toastEl, help, sandbox, vestry.node, desk.node, firstRun);
 
   measureBar();
   let insetsAt = -1e9;

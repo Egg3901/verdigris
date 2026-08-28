@@ -712,7 +712,7 @@ button.brass[hidden] { display: none; }
 #firstrun button { margin-top: calc(3px * var(--px)); min-width: calc(40px * var(--px)); }
 
 /* Help sheet */
-#help {
+#help, #sandbox {
   position: fixed;
   left: 50%;
   top: 50%;
@@ -723,6 +723,14 @@ button.brass[hidden] { display: none; }
   z-index: 8;
   font-size: var(--fs-small);
 }
+.sandbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(3px * var(--px));
+  margin-bottom: calc(4px * var(--px));
+}
+.sandbox-row button { flex: 1 0 auto; padding: calc(3px * var(--px)) calc(5px * var(--px)); }
+#sandbox .hint { color: var(--brass-ink); margin-top: calc(2px * var(--px)); }
 #help .name { font-family: var(--font-instrument); font-size: var(--fs-body); color: var(--brass0); letter-spacing: 0.2em; }
 #help .heading { font-size: var(--fs-small); color: var(--brass-ink); letter-spacing: 0.18em; margin-top: calc(4px * var(--px)); }
 #help ul { list-style: none; margin: 0; padding: 0; }
@@ -898,7 +906,7 @@ button.brass[hidden] { display: none; }
     transform: none;
     max-height: none;
   }
-  #vestry, #help {
+  #vestry, #help, #sandbox {
     left: var(--pad-left);
     right: var(--pad-right);
     top: var(--pad-top);

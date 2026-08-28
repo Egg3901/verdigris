@@ -22,7 +22,24 @@ export const WEATHER_WATCH_MINUTES = MIN_PER_DAY / 4;
 
 const WIND: readonly (-1 | 0 | 1)[] = [-1, -1, 0, 1, 1];
 
-/** A pure snapshot. Same seed and tick always mean the same sky. */
+// A sandbox override. Normally weather is a pure function of (seed, tick); when
+// the player pins it from the settings panel, that pin wins everywhere until it
+// is cleared. Bumping a generation counter on every change moves the render
+// revision, which is what makes the compositor rebake the baked fog and puddles
+// for the new sky rather than only the per-frame rain.
+let forcedKind: WeatherKind | null = null;
+let forcedGen = 0;
+
+export function forceWeather(kind: WeatherKind | null): void {
+  forcedKind = kind;
+  forcedGen++;
+}
+
+export function forcedWeather(): WeatherKind | null {
+  return forcedKind;
+}
+
+/** A pure snapshot, unless the player has pinned the weather from the sandbox. */
 export function weatherAt(seed: number, tick: number): Weather {
   const watch = Math.floor(Math.max(0, tick) / WEATHER_WATCH_MINUTES);
   const pressureSystem = Math.floor(watch / 8);
@@ -43,13 +60,15 @@ export function weatherAt(seed: number, tick: number): Weather {
   else if (roll < fogAt) kind = 'fog';
   else if (roll < cloudAt) kind = 'overcast';
   else kind = 'fair';
+  if (forcedKind !== null) kind = forcedKind;
 
   const precipitation: Weather['precipitation'] = kind === 'storm' ? 2 : kind === 'rain' ? 1 : 0;
   const chill: Weather['chill'] = kind === 'storm' || kind === 'fog' ? 2
     : kind === 'rain' || kind === 'overcast' ? 1 : 0;
   const visibility: Weather['visibility'] = kind === 'fog' ? 2 : kind === 'storm' ? 1 : 0;
   const windX = WIND[mix(seed, Stream.Weather, watch, 2) % WIND.length];
-  return { kind, precipitation, chill, visibility, windX, watch, revision: watch };
+  const revision = forcedKind !== null ? 1_000_000 + forcedGen : watch;
+  return { kind, precipitation, chill, visibility, windX, watch, revision };
 }
 
 export function isWetWeather(weather: Weather): boolean {

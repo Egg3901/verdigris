@@ -26,11 +26,12 @@ import { describeBuilding } from './sim/prose';
 import { INTERVENTIONS, canApply, forecastIntervention, apply as applyNudge } from './sim/interventions';
 import type { InterventionForecast } from './sim/interventions';
 import { enact as enactOrdinance, repeal as repealOrdinance } from './sim/ordinances';
-import { startDisaster } from './sim/disasters';
+import { startDisaster, canStartDisaster } from './sim/disasters';
 import type { DisasterKind } from './sim/disasters';
 import { startMarketDay } from './sim/occasions';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
-import { weatherAt } from './sim/weather';
+import { weatherAt, forceWeather } from './sim/weather';
+import type { WeatherKind } from './sim/weather';
 import { activeMatters, declineMatter, pressMatter, recommendedFor } from './sim/matters';
 
 const params = new URLSearchParams(location.search);
@@ -289,6 +290,29 @@ shell = mountShell(shellRoot, {
   },
   onPressMatter: (id) => {
     if (pressMatter(city, id)) shell.toast('A clerk has been sent after it. One influence spent.', 'gain');
+  },
+  onForceWeather: (kind) => {
+    forceWeather(kind as WeatherKind | null);
+    shell.toast(kind ? `The weather is set to ${kind}.` : 'The weather is back on its own.', 'info');
+  },
+  onTriggerDisaster: (kind) => {
+    // Prefer the selected building; otherwise find any building it can strike.
+    let id = sel.buildingId;
+    if (id < 0 || canStartDisaster(city, kind, id)) {
+      id = -1;
+      for (const b of city.buildings) {
+        if (!canStartDisaster(city, kind, b.id)) { id = b.id; break; }
+      }
+    }
+    if (id < 0) {
+      shell.toast(`Nothing in the ward can take ${kind === 'collapse' ? 'a collapse' : `a ${kind}`} right now.`, 'loss');
+      return;
+    }
+    if (startDisaster(city, kind, id)) {
+      sel.buildingId = id;
+      sel.soulId = -1;
+      shell.toast(city.log[city.log.length - 1]?.text ?? 'Done.', 'loss');
+    }
   },
 });
 
