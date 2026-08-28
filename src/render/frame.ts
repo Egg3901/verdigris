@@ -140,12 +140,17 @@ export function drawFrame(
           fillPolyHard(ctx, [a0, b0, { x: b0.x, y: b0.y + 4 }, { x: a0.x, y: a0.y + 4 }],
             (w.hash % 6 === 0) ? warmB : warmA);
           if (glow === 1) {
+            // The spill follows the pane's own slope and stays shallow. A deep
+            // axis-aligned skirt under a sloped pane reads as a crooked window.
             ditherPolyHard(ctx, [
-              { x: a0.x, y: a0.y + 4 }, { x: b0.x, y: b0.y + 4 },
-              { x: b0.x, y: b0.y + 7 }, { x: a0.x, y: a0.y + 7 },
-            ], spill, 5);
+              { x: a0.x + 1, y: a0.y + 4 }, { x: b0.x - 1, y: b0.y + 4 },
+              { x: b0.x - 1, y: b0.y + 6 }, { x: a0.x + 1, y: a0.y + 6 },
+            ], spill, 4);
+            // The bright sash catch sits inside the glass, mid-pane, never on the
+            // frame: on a face sloping the other way the old corner pixel landed
+            // outside the window entirely.
             ctx.fillStyle = warmB;
-            ctx.fillRect(Math.round(b0.x) - 1, Math.round(b0.y) + 1, 1, 1);
+            ctx.fillRect(Math.round((a0.x + b0.x) / 2), Math.round((a0.y + b0.y) / 2) + 1, 1, 1);
           }
           stats.calls++;
         }
