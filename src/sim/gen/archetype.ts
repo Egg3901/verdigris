@@ -77,7 +77,7 @@ export const ARCHETYPES: Record<ArchetypeKind, Archetype> = {
     riverFracPct: [46, 54],
     riverAmp: [3.0, 5.0],
     halfWidthMax: 2,
-    mouthExtra: 1,
+    mouthExtra: 2,
     bridgeMin: 2,
     bridgeMax: 3,
     squareMin: 6,
@@ -85,7 +85,7 @@ export const ARCHETYPES: Record<ArchetypeKind, Archetype> = {
     rimDepth: 2,
     rimSkipPct: 25,
     parkBlobs: [0, 1],
-    jetties: [2, 4],
+    jetties: [3, 5],
     coastShaveY: 0,
     quota: {
       wharfshed: { min: 5, max: 8 },

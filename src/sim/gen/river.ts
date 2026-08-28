@@ -57,7 +57,9 @@ export function carveRiver(d: District, seed: number, arch: Archetype): RiverPla
     // ramping toward the east mouth.
     let cap = Math.max(1, Math.min(arch.halfWidthMax, hw));
     if (arch.mouthExtra > 0) {
-      const mouthStart = d.width * 0.6;
+      // Start the ramp mid-island: the far east tip is mostly sea already, so a
+      // later start hides the whole mouth off the coast.
+      const mouthStart = d.width * 0.45;
       if (x > mouthStart) {
         const t = (x - mouthStart) / (d.width - mouthStart);
         cap = Math.min(arch.halfWidthMax + arch.mouthExtra, cap + Math.round(t * (arch.mouthExtra + 1)));
