@@ -212,19 +212,23 @@ html, body {
   align-items: center;
   gap: calc(3px * var(--px));
   font-size: var(--fs-small);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
-.meter-label { width: calc(32px * var(--px)); color: var(--brass-ink); }
+/* ch units, not px: the label is monospace and must hold "Happiness" (9) and the
+   caption "critical" (8) whole at every pixel scale, or the longest word clips. */
+.meter-label { flex: 0 0 auto; width: 9ch; color: var(--brass-ink); }
 .meter-track {
-  flex: 1;
-  min-width: calc(28px * var(--px));
+  flex: 1 1 auto;
+  min-width: calc(14px * var(--px));
   height: calc(4px * var(--px));
   background: rgba(8, 9, 12, 0.22);
   border: 1px solid var(--brass0);
 }
 .meter-fill { height: 100%; width: 0; background: var(--verd2); transition: width 0.3s ease; }
 .meter-val {
-  width: calc(40px * var(--px));
+  flex: 0 0 auto;
+  width: 8ch;
   text-align: right;
   color: var(--brass-ink);
 }
@@ -822,6 +826,13 @@ button.brass[hidden] { display: none; }
   #titleplate h1 { font-size: var(--fs-body); }
   #titleplate .rule { display: none; }
   #titleplate .counts { display: none; }
+  /* The scoreboard is the goal, so it keeps its place on a phone: its own full
+     width row under the title line, not squeezed inline until it clips. */
+  #titleplate .meters {
+    flex: 1 0 100%;
+    margin-top: calc(2px * var(--px));
+  }
+  #titleplate .meter-track { min-width: calc(24px * var(--px)); }
 
   /* Everything on the right becomes a summonable sheet. */
   #verbs, #nudges {

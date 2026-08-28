@@ -47,5 +47,5 @@ export function metricWord(value: number): string {
   if (value >= 640) return 'steady';
   if (value >= 440) return 'strained';
   if (value >= 240) return 'failing';
-  return 'in crisis';
+  return 'critical';
 }
