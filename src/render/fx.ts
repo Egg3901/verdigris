@@ -10,7 +10,7 @@ import { PAL, gradeHex, shadeHex } from './palette';
 import type { Variant } from './palette';
 import { minuteOfDay } from '../sim/clock';
 import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_AGENT, LAYER_OVERHEAD } from './iso';
-import { fillPolyHard, lineHard } from './raster';
+import { fillPolyHard, lineHard, ditherPolyHard } from './raster';
 import { mix, Stream } from '../sim/rng';
 import { stepToward } from '../sim/graph';
 import { Tile } from '../sim/types';
@@ -58,7 +58,7 @@ export function collectHazards(
       const roofY = isoY(sx, sy) - b.storeys * 8 - 11;
       for (let i = 0; i < anchors; i++) {
         const wx = isoX(sx, sy) + (anchors === 1 ? 0 : i === 0 ? -7 : 7);
-        if (wx < tl.wx - 12 || wx > br.wx + 12 || roofY < tl.wy - 24 || roofY > br.wy + 8) continue;
+        if (wx < tl.wx - 14 || wx > br.wx + 14 || roofY < tl.wy - 56 || roofY > br.wy + 8) continue;
         const slot = out[n] ?? (out[n] = { wx: 0, wy: 0, depth: 0, phase: 0, wide: false });
         slot.wx = wx;
         slot.wy = roofY;
@@ -81,27 +81,66 @@ export function collectHazards(
   return n;
 }
 
-/** Draw one stepped flame cluster using the existing civic and gaslight ramps. */
+/**
+ * A big, layered, flickering blaze. The old version was a 10px lozenge that read
+ * as an orange smudge; a building fire has to look like it is destroying the
+ * building. Four nested tongues from a dark-red envelope to a white-hot core,
+ * two of them leaning independently so the flame writhes, a hot base flare that
+ * licks up the near roof, and embers spat up into the smoke above.
+ */
 export function drawHazard(ctx: CanvasRenderingContext2D, hazard: HazardDraw, variant: Variant): number {
   const x = Math.round(hazard.wx);
   const y = Math.round(hazard.wy);
-  const lean = (hazard.phase % 3) - 1;
-  const height = hazard.wide ? 12 : 10;
+  const p = hazard.phase;
+  // Two flicker terms, so the outer sheet and the core do not move as one block.
+  const leanA = ((p % 3) - 1) * 2;
+  const leanB = (((p >> 1) % 3) - 1);
+  const flick = p % 4;
+  const H = (hazard.wide ? 26 : 20) + flick * 2;
+  const halfW = hazard.wide ? 9 : 7;
+
+  // A hot pool of light on the roof under the flame, so the fire sits IN the
+  // building rather than floating above it. Ordered dither keeps it on-palette.
+  ditherPolyHard(ctx, [
+    { x: x - halfW - 2, y: y + 2 }, { x: x + halfW + 2, y: y + 2 },
+    { x: x + halfW, y: y - 4 }, { x: x - halfW, y: y - 4 },
+  ], gradeHex(PAL.brass2, variant, true), 6);
+
+  // Outer envelope: dark, wide, ragged, the sooty edge of the fire.
   fillPolyHard(ctx, [
-    { x: x - 5, y }, { x: x - 4, y: y - 4 }, { x: x - 1 + lean, y: y - height },
-    { x: x + 2 + lean, y: y - 5 }, { x: x + 5, y },
+    { x: x - halfW, y }, { x: x - halfW + 1, y: y - H * 0.4 },
+    { x: x - 3 + leanA, y: y - H * 0.72 }, { x: x - 1 + leanA, y: y - H },
+    { x: x + 3 + leanA, y: y - H * 0.66 }, { x: x + halfW - 1, y: y - H * 0.36 },
+    { x: x + halfW, y },
   ], gradeHex(PAL.buntRed, variant));
+  // Mid body.
   fillPolyHard(ctx, [
-    { x: x - 3, y }, { x: x - 2, y: y - 4 }, { x: x + lean, y: y - height + 3 },
-    { x: x + 2 + lean, y: y - 3 }, { x: x + 3, y },
+    { x: x - halfW + 2, y }, { x: x - 2 + leanB, y: y - H * 0.5 },
+    { x: x - 1 + leanA, y: y - H * 0.82 }, { x: x + 1 + leanA, y: y - H * 0.62 },
+    { x: x + 3 + leanB, y: y - H * 0.42 }, { x: x + halfW - 2, y },
   ], gradeHex(PAL.buntRedHi, variant));
+  // Inner flame, bright.
   fillPolyHard(ctx, [
-    { x: x - 1, y }, { x: x - 1, y: y - 4 }, { x: x + lean, y: y - 7 },
-    { x: x + 2, y: y - 3 }, { x: x + 1, y },
+    { x: x - 3, y }, { x: x - 2 + leanB, y: y - H * 0.4 },
+    { x: x + leanB, y: y - H * 0.66 }, { x: x + 2 + leanB, y: y - H * 0.38 },
+    { x: x + 3, y },
   ], gradeHex(PAL.brass2, variant, true));
-  ctx.fillStyle = gradeHex(PAL.gas2, variant, true);
-  ctx.fillRect(x, y - 3, 1, 2);
-  return 4;
+  // White-hot core, low in the flame where it is hottest.
+  fillPolyHard(ctx, [
+    { x: x - 1, y }, { x: x - 1 + leanB, y: y - H * 0.34 },
+    { x: x + 1 + leanB, y: y - H * 0.5 }, { x: x + 2, y: y - H * 0.28 },
+    { x: x + 1, y },
+  ], gradeHex(PAL.gas2, variant, true));
+
+  // Embers: a few sparks flung up into the smoke, positions hashed off the phase.
+  ctx.fillStyle = gradeHex(PAL.brass3, variant, true);
+  for (let i = 0; i < 3; i++) {
+    const e = (p * 7 + i * 5) % 13;
+    const ex = x + ((e % 5) - 2) + leanA;
+    const ey = y - H - 2 - (e % 6);
+    ctx.fillRect(ex, ey, 1, 1);
+  }
+  return 9;
 }
 
 /**

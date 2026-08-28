@@ -373,6 +373,13 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
       : damageEvent?.kind === 'flood' && isDisasterActive(city, damageEvent) ? 'flooded' : 'none';
   // The fire has moved on but the shell still stands: a charred husk until the
   // fabric is genuinely rebuilt. Live flame and total collapse both win over it.
+  // A building on fire is lit from the inside: the windows glow hot whatever the
+  // hour, so a daytime blaze still reads as a fire and not as a grey box with a
+  // flame decal balanced on the ridge.
+  if (damage === 'burning') {
+    skin.window = gradeHex(PAL.litWindow, variant, true);
+    skin.windowLit = true;
+  }
   const scorched = b.burntAt >= 0 && damage !== 'collapsed' && damage !== 'burning';
   if (scorched) {
     // Char the whole skin toward soot: the paint is gone, the near tiles are gone,

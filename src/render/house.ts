@@ -170,7 +170,10 @@ export function drawHouse(ctx: CanvasRenderingContext2D, ox: number, oy: number,
   const eave = houseCorners(ox, oy, w, d, wallH);
 
   if (spec.damage === 'collapsed') {
-    drawCollapsedHouse(ctx, ox, oy, ground, spec);
+    // A cleared site with a works gang on it is not a ruin: it is a building
+    // site. Fresh walls rise inside a scaffold instead of rubble lying in a hole.
+    if ((spec.worksStage ?? 0) >= 2) drawReconstruction(ctx, ox, oy, ground, spec);
+    else drawCollapsedHouse(ctx, ox, oy, ground, spec);
     return;
   }
 
@@ -342,6 +345,69 @@ function drawCharredRoof(ctx: CanvasRenderingContext2D, roof: Pt[], spec: HouseS
   // One surviving purlin across them, and a broken ridge.
   lineHard(ctx, lerp(topA, lowA, 0.5), lerp(topB, lowB, 0.5), PAL.soot1);
   lineHard(ctx, topA, lerp(topA, topB, 0.4), PAL.soot2);
+}
+
+/**
+ * A building site: fresh partial walls rising inside a timber scaffold, with a
+ * blue weather sheet and a ladder. This is the reconstruction state, distinct
+ * from both the ruin and the finished house, so the district visibly rebuilds
+ * what it lost rather than snapping from rubble to intact.
+ */
+function drawReconstruction(
+  ctx: CanvasRenderingContext2D, ox: number, oy: number, ground: Corners, spec: HouseSpec,
+): void {
+  const partH = Math.max(6, Math.round(spec.wallH * 0.55));
+  const eave = houseCorners(ox, oy, spec.w, spec.d, partH);
+  // Fresh walls, half-built.
+  fillPolyHard(ctx, [eave.W, ground.W, ground.S, eave.S], spec.skin.wallLit);
+  fillPolyHard(ctx, [eave.S, ground.S, ground.E, eave.E], spec.skin.wallShade);
+  const lit = makeFace(eave.W, eave.S, true);
+  const shade = makeFace(eave.S, eave.E, false);
+  // Fresh courses on the new work, so it reads as freshly laid rather than old.
+  for (const f of [lit, shade]) {
+    if (f.span < 5) continue;
+    const course = spec.material === 'brick' ? 3 : 4;
+    for (let h = course; h < partH; h += course) {
+      lineHard(ctx, f.at(0.02, h), f.at(0.98, h), shadeHex(spec.skin.wallShade, -0.2));
+    }
+  }
+  // A ragged top course: the wall is mid-build, not capped.
+  lineHard(ctx, eave.W, eave.S, shadeHex(spec.skin.wallLit, 0.12));
+  lineHard(ctx, eave.S, eave.E, shadeHex(spec.skin.wallShade, 0.06));
+
+  // The scaffold: standards proud of the wall, two lifts of ledgers, on the two
+  // near faces.
+  const wood = PAL.wood2;
+  for (const f of [lit, shade]) {
+    if (f.span < 5) continue;
+    for (const t of [0.04, 0.5, 0.96]) {
+      lineHard(ctx, f.at(t, -5), f.at(t, partH), wood);
+    }
+    for (const h of [Math.round(partH * 0.35), Math.round(partH * 0.8), -4]) {
+      lineHard(ctx, f.at(0.02, h), f.at(0.98, h), PAL.wood1);
+    }
+  }
+  // A ladder leaning on the lit face.
+  const lx0 = lit.at(0.2, partH);
+  const lx1 = lit.at(0.32, -3);
+  lineHard(ctx, lx0, lx1, PAL.wood1);
+  lineHard(ctx, { x: lx0.x + 2, y: lx0.y }, { x: lx1.x + 2, y: lx1.y }, PAL.wood1);
+  for (let r = 1; r < 5; r++) {
+    const a = lerp(lx0, lx1, r / 5);
+    lineHard(ctx, a, { x: a.x + 2, y: a.y }, PAL.wood0);
+  }
+
+  // A blue weather sheet lashed over one bay of the scaffold.
+  const sa = lit.at(0.55, -3);
+  const sb = lit.at(0.95, -3);
+  const sc = lit.at(0.95, partH * 0.55);
+  const sd = lit.at(0.55, partH * 0.55);
+  fillPolyHard(ctx, [sa, sb, sc, sd], PAL.buntBlueHi);
+  ditherPolyHard(ctx, [sa, sb, sc, sd], PAL.arc0, 6);
+  lineHard(ctx, sa, sb, PAL.wood1);
+
+  lineHard(ctx, ground.W, ground.S, spec.skin.outline);
+  lineHard(ctx, ground.S, ground.E, spec.skin.outline);
 }
 
 /** Broken tiles and a soot-black opening keep the flame attached to real damage. */
