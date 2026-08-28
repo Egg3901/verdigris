@@ -252,13 +252,17 @@ export function drawCourses(
  */
 export function drawDormer(
   ctx: CanvasRenderingContext2D, quad: readonly Pt[], t: number, skin: DetailSkin, roofLit: string,
+  salt = 0,
 ): void {
   const eave = { x: quad[0].x + (quad[1].x - quad[0].x) * t, y: quad[0].y + (quad[1].y - quad[0].y) * t };
   const ridge = { x: quad[3].x + (quad[2].x - quad[3].x) * t, y: quad[3].y + (quad[2].y - quad[3].y) * t };
-  // Sit it a third of the way up the slope.
-  const base = { x: eave.x + (ridge.x - eave.x) * 0.34, y: eave.y + (ridge.y - eave.y) * 0.34 };
+  // Sit it a third of the way up the slope, with a little per-building drift so
+  // a terrace of dormers is not a picket line.
+  const climb = 0.3 + (salt % 3) * 0.04;
+  const base = { x: eave.x + (ridge.x - eave.x) * climb, y: eave.y + (ridge.y - eave.y) * climb };
   const bx = Math.round(base.x);
   const by = Math.round(base.y);
+  const style = salt % 3;
 
   fillPolyHard(ctx, [
     { x: bx - 3, y: by }, { x: bx + 3, y: by },
@@ -268,11 +272,28 @@ export function drawDormer(
     { x: bx - 1, y: by - 1 }, { x: bx + 2, y: by - 1 },
     { x: bx + 2, y: by - 3 }, { x: bx - 1, y: by - 3 },
   ], skin.glassLit ? skin.glass : PAL.darkWindow);
-  // Its own little pitched roof.
-  fillPolyHard(ctx, [
-    { x: bx - 4, y: by - 4 }, { x: bx + 4, y: by - 4 }, { x: bx, y: by - 7 },
-  ], roofLit);
-  lineHard(ctx, { x: bx - 4, y: by - 4 }, { x: bx + 4, y: by - 4 }, skin.outline);
+  if (style === 1) {
+    // Shed dormer: a single flat pitch falling toward the eave.
+    fillPolyHard(ctx, [
+      { x: bx - 4, y: by - 4 }, { x: bx + 4, y: by - 6 },
+      { x: bx + 4, y: by - 4 }, { x: bx - 4, y: by - 3 },
+    ], roofLit);
+    lineHard(ctx, { x: bx - 4, y: by - 4 }, { x: bx + 4, y: by - 6 }, skin.outline);
+  } else if (style === 2) {
+    // Hipped dormer: the little gable clipped back, wider than it is tall.
+    fillPolyHard(ctx, [
+      { x: bx - 4, y: by - 4 }, { x: bx + 4, y: by - 4 },
+      { x: bx + 2, y: by - 6 }, { x: bx - 2, y: by - 6 },
+    ], roofLit);
+    lineHard(ctx, { x: bx - 4, y: by - 4 }, { x: bx + 4, y: by - 4 }, skin.outline);
+    lineHard(ctx, { x: bx - 2, y: by - 6 }, { x: bx + 2, y: by - 6 }, skin.outline);
+  } else {
+    // Gabled dormer: the classic peak.
+    fillPolyHard(ctx, [
+      { x: bx - 4, y: by - 4 }, { x: bx + 4, y: by - 4 }, { x: bx, y: by - 7 },
+    ], roofLit);
+    lineHard(ctx, { x: bx - 4, y: by - 4 }, { x: bx + 4, y: by - 4 }, skin.outline);
+  }
 }
 
 /**
@@ -310,6 +331,109 @@ export function drawBunting(
 }
 
 export type WallMaterial = 'stucco' | 'brick' | 'ashlar' | 'timber' | 'wood' | 'glazed';
+
+/** The covering family a roof was laid in, which decides its baked texture. */
+export type RoofKind = 'slate' | 'clay' | 'copper' | 'thatch';
+
+/** Point inside a slope quad: u runs along the eave, v from eave to ridge. */
+function quadAt(quad: readonly Pt[], u: number, v: number): Pt {
+  const a = { x: quad[0].x + (quad[1].x - quad[0].x) * u, y: quad[0].y + (quad[1].y - quad[0].y) * u };
+  const b = { x: quad[3].x + (quad[2].x - quad[3].x) * u, y: quad[3].y + (quad[2].y - quad[3].y) * u };
+  return { x: a.x + (b.x - a.x) * v, y: a.y + (b.y - a.y) * v };
+}
+
+/**
+ * The covering itself, on the near slope. Slate hangs in staggered vertical
+ * joints, clay pantiles ripple along their courses, copper is seamed in long
+ * standing runs from ridge to eave, thatch is combed diagonally. Sparse marks
+ * over the course lines already drawn: at zoom one this is a whisper, at zoom
+ * three it is what tells the families apart.
+ */
+export function drawRoofTexture(
+  ctx: CanvasRenderingContext2D, quad: readonly Pt[], kind: RoofKind,
+  lit: string, shade: string, salt: number,
+): void {
+  if (quad.length < 4) return;
+  const w = Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y);
+  const h = Math.hypot(quad[3].x - quad[0].x, quad[3].y - quad[0].y);
+  if (w < 8 || h < 5) return;
+  if (kind === 'copper') {
+    // Standing seams, eave to ridge. Long runs, few of them, a hair lighter.
+    const seams = Math.max(2, Math.round(w / 9));
+    const hi = shadeHex(lit, 0.1);
+    for (let i = 1; i < seams; i++) {
+      const u = i / seams + (((salt >>> i) & 1) === 0 ? 0.02 : -0.02);
+      lineHard(ctx, quadAt(quad, u, 0.06), quadAt(quad, u, 0.94), hi);
+    }
+    return;
+  }
+  if (kind === 'thatch') {
+    // Combed straw: short diagonal strokes near the eave.
+    const marks = Math.max(3, Math.round(w / 7));
+    for (let i = 0; i < marks; i++) {
+      const u = (i + 0.5) / marks;
+      const v = 0.12 + ((salt + i * 13) % 30) / 100;
+      lineHard(ctx, quadAt(quad, u - 0.03, v + 0.16), quadAt(quad, u + 0.02, v), shadeHex(shade, -0.05));
+    }
+    return;
+  }
+  if (kind === 'slate') {
+    // Staggered vertical joints between courses: the hung-slate read.
+    const joints = Math.max(3, Math.round(w / 5));
+    const dark = shadeHex(shade, -0.05);
+    for (let row = 0; row < 3; row++) {
+      const v = 0.2 + row * 0.25;
+      const off = ((row + (salt >>> 2)) & 1) === 0 ? 0 : 0.5;
+      for (let i = 0; i < joints; i++) {
+        if (((i + row + salt) % 3) === 0) continue;
+        const u = (i + off + 0.5) / joints;
+        if (u <= 0.04 || u >= 0.96) continue;
+        const p = quadAt(quad, u, v);
+        ctx.fillStyle = dark;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
+      }
+    }
+    return;
+  }
+  // Clay pantiles: a warm fleck and a shadow fleck rippling along each course.
+  const ticks = Math.max(3, Math.round(w / 4));
+  const warm = shadeHex(lit, 0.1);
+  const dark = shadeHex(shade, -0.08);
+  for (let row = 0; row < 3; row++) {
+    const v = 0.18 + row * 0.27;
+    for (let i = 0; i < ticks; i++) {
+      const k = (i * 7 + row * 5 + salt) % 9;
+      if (k > 3) continue;
+      const u = (i + 0.5) / ticks;
+      if (u <= 0.04 || u >= 0.96) continue;
+      const p = quadAt(quad, u, v);
+      ctx.fillStyle = k < 2 ? warm : dark;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
+    }
+  }
+}
+
+/**
+ * Ridge tiles: the half-round caps a tiler beds along the ridge. Small nubs on
+ * the skyline every few pixels, alternating light and dark so the run reads as
+ * separate tiles rather than a thicker line.
+ */
+export function drawRidgeTiles(
+  ctx: CanvasRenderingContext2D, a: Pt, b: Pt, ridge: string, salt: number,
+): void {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 8) return;
+  const n = Math.floor(len / 3);
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    const x = Math.round(a.x + dx * t);
+    const y = Math.round(a.y + dy * t);
+    ctx.fillStyle = ((i + salt) & 1) === 0 ? shadeHex(ridge, 0.1) : shadeHex(ridge, -0.1);
+    ctx.fillRect(x, y - 1, 1, 1);
+  }
+}
 
 /**
  * Brick courses on a wall face: mortar lines parallel to the eave, joints

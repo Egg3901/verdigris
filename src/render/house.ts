@@ -26,7 +26,8 @@ import {
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
   drawVerdigrisStreaks, drawWallPosters,
 } from './detail';
-import type { DetailSkin, WallMaterial, WindowLight } from './detail';
+import { drawRoofTexture, drawRidgeTiles } from './detail';
+import type { DetailSkin, RoofKind, WallMaterial, WindowLight } from './detail';
 import { drawFinial, drawMooringMast } from './landmarks';
 import type { Corners } from './landmarks';
 
@@ -118,6 +119,8 @@ export interface HouseSpec {
   rainStrength?: 0 | 1 | 2;
   finial: Finial;
   finialH: number;
+  /** Covering family, for the baked roof texture. Defaults to clay. */
+  roofKind?: RoofKind;
 }
 
 interface Pt { x: number; y: number }
@@ -203,6 +206,11 @@ export function drawHouse(
 
   const alongX = spec.ridgeAlongX ?? w >= d;
   const roofQuad = drawRoof(ctx, eave, spec, alongX);
+  // The covering texture goes down before wear and repairs, so a missing slate
+  // is missing FROM something.
+  if (roofQuad && spec.roofKind && !spec.scorched && spec.damage !== 'burning') {
+    drawRoofTexture(ctx, roofQuad, spec.roofKind, skin.roofLit, skin.roofShade, spec.salt ?? 0);
+  }
   if (roofQuad && spec.roofWear) {
     drawRoofPatina(ctx, roofQuad, spec.roofWear, spec.salt ?? 0, skin.roofLit, skin.roofShade, skin.roofRidge);
   }
@@ -214,7 +222,7 @@ export function drawHouse(
   if (roofQuad && spec.dormers) {
     const n = Math.min(3, spec.dormers);
     for (let i = 0; i < n; i++) {
-      drawDormer(ctx, roofQuad, (i + 1) / (n + 1), detailSkin(spec), spec.skin.roofLit);
+      drawDormer(ctx, roofQuad, (i + 1) / (n + 1), detailSkin(spec), spec.skin.roofLit, (spec.salt ?? 0) + i * 7);
     }
   }
   if (roofQuad && spec.patched) {
@@ -1095,7 +1103,26 @@ function drawSawtooth(
 function ridgeLine(
   ctx: CanvasRenderingContext2D, a: Pt, b: Pt, colour: string, spec?: HouseSpec,
 ): void {
-  lineHard(ctx, a, b, colour);
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  if (spec && (spec.roofWear ?? 0) >= 2 && len >= 10 && spec.damage !== 'burning') {
+    // The worst roofs sag: the purlin has gone and the ridge dips toward the
+    // middle. Two straight runs through a dropped midpoint, and a shadow pixel
+    // under the low point where the slates have opened up.
+    const sag = 1 + ((spec.salt ?? 0) & 1);
+    const m = { x: (a.x + b.x) / 2 + (((spec.salt ?? 0) >>> 3) % 3) - 1, y: (a.y + b.y) / 2 + sag };
+    lineHard(ctx, a, m, colour);
+    lineHard(ctx, m, b, colour);
+    ctx.fillStyle = PAL.soot1;
+    ctx.fillRect(Math.round(m.x), Math.round(m.y) + 1, 2, 1);
+  } else {
+    lineHard(ctx, a, b, colour);
+    // Ridge tiles cap the sound roofs. Cresting outranks them, and a sagging
+    // ridge has shed its caps already.
+    if (spec && !spec.cresting && !spec.scorched
+      && (spec.roofKind === 'clay' || spec.roofKind === 'slate')) {
+      drawRidgeTiles(ctx, a, b, colour, spec.salt ?? 0);
+    }
+  }
   if (spec?.cresting) {
     drawRidgeCrest(ctx, a, b, spec.skin.trim ?? spec.skin.roofRidge, spec.polite);
   }
@@ -1137,14 +1164,20 @@ function chimneys(ctx: CanvasRenderingContext2D, r0: Pt, r1: Pt, spec: HouseSpec
     }
     // Terracotta pots on the cap: one or two, the London-brown skyline detail
     // that turns a brick stub into a chimney. Sit clear of the flaunching line.
-    const pots = 1 + (((i + (spec.salt ?? 0)) >>> 1) & 1);
+    // Pot patterns vary per stack: a pair of squat cans, one tall chimney can,
+    // or a mismatched pair where a sweep replaced a cracked pot with whatever
+    // the yard had. The mismatch is the period detail.
+    const style = ((spec.salt ?? 0) + i * 5) >>> 1;
+    const pots = 1 + (style & 1);
     const pot = spec.polite ? PAL.tileRed2 : PAL.ochre1;
     for (let p = 0; p < pots; p++) {
       const px = x - 1 + p * 2;
-      ctx.fillStyle = pot;
-      ctx.fillRect(px, y - h - 3, 1, 2);
+      const tall = ((style >>> (1 + p)) & 1) === 1;
+      const ph = tall ? 3 : 2;
+      ctx.fillStyle = (style & 4) !== 0 && p === 1 ? PAL.soot2 : pot;
+      ctx.fillRect(px, y - h - 1 - ph, 1, ph);
       ctx.fillStyle = shadeHex(pot, 0.18);
-      ctx.fillRect(px, y - h - 3, 1, 1);
+      ctx.fillRect(px, y - h - 1 - ph, 1, 1);
     }
   }
 }

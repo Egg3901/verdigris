@@ -29,7 +29,7 @@ import { hardenAlpha, ditherPolyHard, lineHard, fillPolyHard } from './raster';
 import { buildCartRoutes } from './fx';
 import type { CartRoute } from './fx';
 import type { HouseSpec, HouseSkin, RoofShape, Finial, Frontage } from './house';
-import type { WallMaterial, WindowLight } from './detail';
+import type { RoofKind, WallMaterial, WindowLight } from './detail';
 import { mix, Stream } from '../sim/rng';
 import { buildMarketProps, buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
@@ -320,6 +320,14 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     }
   }
 
+  // The covering family, read off the roof colours before they are washed. It
+  // drives baked texture only, never geometry.
+  const roofKind: RoofKind =
+    roof[0] === PAL.verd0 || roof[0] === PAL.verd1 || roof[0] === PAL.verd2 || roof[0] === PAL.verd3 ? 'copper'
+      : roof[0] === PAL.thatch1 || roof[0] === PAL.thatch2 ? 'thatch'
+        : roof[0] === PAL.tileRed0 || roof[0] === PAL.tileRed1 || roof[0] === PAL.tileRed2 ? 'clay'
+          : 'slate';
+
   const skin: HouseSkin = {
     wallLit: wash(wall[0], wallWash + tired),
     wallShade: wash(wall[1], wallWash + tired - 0.06),
@@ -463,6 +471,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     rainStrength: weatherAt(city.seed, city.tick).precipitation,
     finial,
     finialH: fam.finialH ?? 0,
+    roofKind,
   };
 }
 
