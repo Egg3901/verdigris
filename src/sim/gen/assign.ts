@@ -16,6 +16,7 @@ import { plotIsReachable } from './plots';
 import type { StreetPlan } from './streets';
 import type { RiverPlan } from './river';
 import type { Ward, WardKind } from './wards';
+import type { Archetype } from './archetype';
 
 export interface Placement {
   plot: Plot;
@@ -142,6 +143,7 @@ function bfsDist(d: District, sources: number[]): Float32Array {
 
 export function assignBuildings(
   d: District, seed: number, plots: Plot[], streets: StreetPlan, river: RiverPlan, wards: readonly Ward[],
+  arch: Archetype,
 ): Placement[] {
   const rng = mulberry32(mix(seed, Stream.GenAssign, 0));
 
@@ -198,11 +200,17 @@ export function assignBuildings(
   // Forced placements first, in quota order. Anything that misses its minimum on
   // the strict pass gets a relaxed retry, because a district with no town hall is
   // not a district. Better a small civic hall than an absent one.
+  // The archetype adjusts quotas without ever dropping a validator-required
+  // kind: a mill town wants a second mill and foundry, a port wants the wharf
+  // sheds and bonded warehouses, a garden borough trims industry to the minimum.
   for (const q of QUOTAS) {
-    const want = range(rng, q.min, q.max);
+    const o = arch.quota[q.kind];
+    const min = o ? o.min : q.min;
+    const max = o ? o.max : q.max;
+    const want = range(rng, min, max);
     let got = 0;
     for (let i = 0; i < want; i++) { if (!place(q.kind)) break; got++; }
-    while (got < q.min && place(q.kind, true)) got++;
+    while (got < min && place(q.kind, true)) got++;
   }
 
   // Courts are dwellings by definition. Fill them before the general residue so a
@@ -230,7 +238,9 @@ export function assignBuildings(
     for (const kind of RESIDUE) {
       if (kind === 'courtdwelling') continue;
       if (!footprintFor(p, kind)) continue;
-      const s = scoreOf(ctx, p, kind);
+      // Residue weights are where the archetype's housing character lives:
+      // terraces for a mill town, villas for a garden borough, lodgings at a port.
+      const s = scoreOf(ctx, p, kind) * (arch.residueWeight[kind] ?? 1);
       if (s <= 0) continue;
       kinds.push(kind);
       weights.push(s);
