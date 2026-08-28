@@ -347,6 +347,13 @@ export function drawSmoke(
 
   // Disaster smoke is larger and denser than a flue, but uses the same hard,
   // deterministic puff language. It remains an atmospheric pass above roofs.
+  // A fire throws a thick, dark column, black with soot at the base and paling to
+  // grey as it climbs and thins. It leans hard downwind and towers over the roofs,
+  // so a blaze is legible across the whole district, not just at the flame.
+  const fireShades = [
+    gradeHex(PAL.soot0, variant), gradeHex(PAL.soot1, variant),
+    gradeHex(PAL.smoke1, variant), gradeHex(PAL.smoke2, variant),
+  ];
   for (const event of city.disasters.events) {
     if (event.kind !== 'fire' || !isDisasterActive(city, event)) continue;
     for (let bi = 0; bi < event.affectedBuildingIds.length; bi++) {
@@ -356,16 +363,19 @@ export function drawSmoke(
       const sy = b.oy + b.d - 1;
       const wx = isoX(sx, sy);
       const wy = isoY(sx, sy) - b.storeys * 8 - 19;
-      if (wx < tl.wx - 48 || wx > br.wx + 48 || wy < tl.wy - 96 || wy > br.wy + 40) continue;
-      const puffs = b.w * b.d > 2 ? 10 : 7;
+      if (wx < tl.wx - 64 || wx > br.wx + 64 || wy < tl.wy - 140 || wy > br.wy + 40) continue;
+      const big = b.w * b.d > 2;
+      const puffs = big ? 20 : 14;
+      const rise = big ? 108 : 90;
       for (let i = 0; i < puffs; i++) {
-        const age = (t * 0.07 + i / puffs) % 1;
-        const drift = (((mix(city.seed, 185, event.id, bi * 11 + i) >>> 0) % 9) - 4) * 0.7;
-        const px = Math.round(wx + drift * age * 5 + weather.windX * age * 18);
-        const py = Math.round(wy - age * 62);
-        const r = Math.max(1, Math.round((1 - age) * 3));
-        ctx.fillStyle = shades[Math.min(2, Math.floor(age * 3))];
-        ctx.fillRect(px - r, py - r, r * 2, Math.max(1, r * 2 - 1));
+        const age = (t * 0.055 + i / puffs) % 1;
+        const drift = (((mix(city.seed, 185, event.id, bi * 11 + i) >>> 0) % 11) - 5) * 0.6;
+        // The plume widens as it leaves the fire, then frays out at the top.
+        const px = Math.round(wx + drift * (0.4 + age) * 4 + weather.windX * age * 30);
+        const py = Math.round(wy - age * rise);
+        const r = Math.max(1, Math.round(1 + (age < 0.15 ? age * 6 : (1 - age) * 3.4)));
+        ctx.fillStyle = fireShades[Math.min(3, Math.floor(age * 4))];
+        ctx.fillRect(px - r, py - r, r * 2, r * 2);
         calls++;
       }
     }
@@ -380,10 +390,11 @@ export function drawWeatherFx(
 ): number {
   const weather = weatherAt(city.seed, city.tick);
   if (weather.precipitation === 0) return 0;
-  const count = weather.precipitation === 2 ? 78 : 48;
+  const storm = weather.precipitation === 2;
+  const count = storm ? 118 : 66;
   const spanX = Math.max(1, Math.floor(br.wx - tl.wx));
   const spanY = Math.max(1, Math.floor(br.wy - tl.wy));
-  const frame = Math.floor((city.tick + fracMin) * (weather.precipitation === 2 ? 2 : 1.4));
+  const frame = Math.floor((city.tick + fracMin) * (storm ? 2 : 1.4));
   const dark = gradeHex(PAL.riv2, variant);
   const glint = gradeHex(PAL.rivGlint, variant);
   let calls = 0;
@@ -392,17 +403,115 @@ export function drawWeatherFx(
     // instead of every streak teleporting to a new x each animation frame.
     const h = mix(city.seed, Stream.Weather, weather.watch, i);
     const x = Math.floor(tl.wx + (h % spanX));
-    const fall = frame * (weather.precipitation === 2 ? 5 : 3);
+    const fall = frame * (storm ? 5 : 3);
     const y = Math.floor(tl.wy + (((h >>> 12) + fall) % spanY));
     const tx = Math.round(x / TILE_W + y / TILE_H);
     const ty = Math.round(y / TILE_H - x / TILE_W);
     if (!insideIsland(city.district, tx, ty)) continue;
-    const len = weather.precipitation === 2 ? 6 + (h & 1) : 4 + (h & 1);
-    const lean = weather.windX * (weather.precipitation === 2 ? 3 : 2);
-    const bright = weather.precipitation === 2 ? (h % 5) < 2 : (h & 3) === 0;
-    const colour = bright ? glint : dark;
-    lineHard(ctx, { x, y }, { x: x + lean, y: y + len }, colour);
+    const len = storm ? 6 + (h & 1) : 4 + (h & 1);
+    const lean = weather.windX * (storm ? 3 : 2);
+    const bright = storm ? (h % 5) < 2 : (h & 3) === 0;
+    lineHard(ctx, { x, y }, { x: x + lean, y: y + len }, bright ? glint : dark);
     calls++;
+  }
+
+  // Splashes where the rain strikes: a tiny burst that blinks in and out per
+  // frame, so the ground reads as being rained ON rather than the rain merely
+  // passing in front of it. Positions are rehashed each frame with the frame
+  // number, which is what makes them flicker instead of drift.
+  const splashes = storm ? 34 : 18;
+  for (let i = 0; i < splashes * 4 && calls < count + splashes; i++) {
+    const h = mix(city.seed, Stream.Weather, weather.watch + 9, i * 3 + (frame & 7));
+    const x = Math.floor(tl.wx + (h % spanX));
+    const y = Math.floor(tl.wy + ((h >>> 12) % spanY));
+    const tx = Math.round(x / TILE_W + y / TILE_H);
+    const ty = Math.round(y / TILE_H - x / TILE_W);
+    if (!insideIsland(city.district, tx, ty)) continue;
+    ctx.fillStyle = (h & 3) === 0 ? glint : dark;
+    ctx.fillRect(x - 1, y, 3, 1);
+    ctx.fillRect(x, y - 1, 1, 1);
+    calls++;
+  }
+  return calls;
+}
+
+/**
+ * Drifting street-level fog and haze.
+ *
+ * Not the baked river bank, which sits still on the water plane, but a moving
+ * layer of low cloud that rolls through with the wind. Dense and low on a fog
+ * watch, a thin veil on an overcast or stormy one. Ordered dither keeps it on
+ * palette and keeps buildings legible through it: the pixels are scattered, so
+ * it reads as translucent without ever using alpha.
+ */
+export function drawFog(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const weather = weatherAt(city.seed, city.tick);
+  const heavy = weather.kind === 'fog';
+  if (!heavy && weather.kind !== 'overcast' && weather.kind !== 'storm') return 0;
+  const t = city.tick + fracMin;
+  const spanX = Math.max(1, br.wx - tl.wx);
+  const spanY = Math.max(1, br.wy - tl.wy);
+  const pale = gradeHex(PAL.smoke2, variant);
+  const dim = gradeHex(PAL.smoke1, variant);
+  const banks = heavy ? 16 : 6;
+  const dir = weather.windX || 1;
+  let calls = 0;
+  for (let i = 0; i < banks; i++) {
+    // Each bank drifts across and wraps, at its own height and speed. Lower banks
+    // (nearer the foreground) are denser, which is what makes it read as fog
+    // lying in the streets rather than a flat grey wash over the sky.
+    const speed = 4 + (i % 3) * 2;
+    const cx = tl.wx - 60 + (((i * 211 + t * speed * dir) % (spanX + 120)) + (spanX + 120)) % (spanX + 120);
+    const low = 0.42 + ((i * 37) % 100) / 170;
+    const cy = tl.wy + spanY * low + Math.sin((t * 0.03 + i) * 1) * 4;
+    const w = heavy ? 34 + (i % 4) * 8 : 26;
+    const h = heavy ? 9 : 6;
+    const bank = [
+      { x: cx - w, y: cy }, { x: cx - w * 0.5, y: cy - h },
+      { x: cx + w * 0.6, y: cy - h + 1 }, { x: cx + w, y: cy + 1 },
+      { x: cx + w * 0.4, y: cy + h * 0.7 }, { x: cx - w * 0.6, y: cy + h * 0.8 },
+    ];
+    const near = low > 0.62;
+    ditherPolyHard(ctx, bank, pale, heavy ? (near ? 8 : 5) : 3);
+    ditherPolyHard(ctx, bank, dim, heavy ? (near ? 4 : 2) : 1);
+    calls += 2;
+  }
+  return calls;
+}
+
+/**
+ * Flood water on the ground: a slow shimmer of glints that drift across the
+ * flooded footprints, so standing water reads as water rather than a blue stain.
+ * Runs while the event is active, which is when the water is actually moving.
+ */
+export function drawFloodFx(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  let calls = 0;
+  const t = city.tick + fracMin;
+  const glint = gradeHex(PAL.rivGlint, variant);
+  const dark = gradeHex(PAL.riv2, variant);
+  for (const event of city.disasters.events) {
+    if (event.kind !== 'flood' || !isDisasterActive(city, event)) continue;
+    for (const id of event.affectedBuildingIds) {
+      const b = city.buildings[id];
+      if (!b) continue;
+      const cx = isoX(b.doorX, b.doorY);
+      const cy = isoY(b.doorX, b.doorY) + 2;
+      if (cx < tl.wx - 20 || cx > br.wx + 20 || cy < tl.wy - 20 || cy > br.wy + 20) continue;
+      for (let i = 0; i < 3; i++) {
+        const ph = (t * 0.06 + i * 0.37 + (id % 7) * 0.11) % 1;
+        const gx = Math.round(cx - 7 + ph * 14);
+        const gy = Math.round(cy - 3 + ((i + id) % 3) * 3 + Math.sin((t * 0.05 + i)) * 1);
+        ctx.fillStyle = i === 1 ? glint : dark;
+        ctx.fillRect(gx, gy, 2, 1);
+        calls++;
+      }
+    }
   }
   return calls;
 }

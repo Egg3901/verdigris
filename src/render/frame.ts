@@ -18,7 +18,7 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx } from './fx';
+import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx } from './fx';
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
@@ -125,6 +125,10 @@ export function drawFrame(
   // Smoke is atmospheric: it rises above its source and therefore belongs above
   // the depth-sorted street pass.
   const variant = variantFor(minuteOfDay(city.tick));
+  // Water on the ground first, then the fog that lies over it, then the smoke
+  // that climbs through the fog, then the rain in front of all of it.
+  stats.calls += drawFloodFx(ctx, city, fracMin, variant, tl, br);
+  stats.calls += drawFog(ctx, city, fracMin, variant, tl, br);
   stats.calls += drawSmoke(ctx, city, fracMin, variant, tl, br);
   stats.calls += drawWeatherFx(ctx, city, fracMin, variant, tl, br);
 
