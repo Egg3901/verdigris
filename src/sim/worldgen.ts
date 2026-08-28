@@ -8,6 +8,8 @@ import type { BuildingId, NodeId } from './types';
 import type { District } from './district';
 import { cellKey, dumpDistrict, inBounds, insideIsland, newDistrict, tileAt } from './district';
 import { carveRiver, layBanks } from './gen/river';
+import { addJetties, pickArchetype, reserveParks, shapeCoast } from './gen/archetype';
+import type { Archetype } from './gen/archetype';
 import type { RiverPlan } from './gen/river';
 import { layStreets } from './gen/streets';
 import type { StreetPlan } from './gen/streets';
@@ -38,6 +40,8 @@ import { LANDMARK_NAMES, PUB_HEAD, PUB_TAIL, SHOP_TRADE, FAMILY } from './names'
 export interface World {
   seedStr: string;
   seed: number;
+  /** What kind of district this seed grew: pure in the seed, decided first. */
+  archetype: Archetype;
   district: District;
   river: RiverPlan;
   streetPlan: StreetPlan;
@@ -62,12 +66,16 @@ const TARGET_SOULS = 340;
 
 export function generateWorld(seedStr: string): World {
   const seed = hashString(seedStr);
+  const arch = pickArchetype(seed);
   const district = newDistrict(seed);
+  shapeCoast(district, seed, arch);
 
-  const river = carveRiver(district, seed);
+  const river = carveRiver(district, seed, arch);
   layBanks(district, river);
-  const streetPlan = layStreets(district, seed, river);
-  reserveRim(district, seed);
+  const streetPlan = layStreets(district, seed, river, arch);
+  addJetties(district, seed, river, arch);
+  reserveRim(district, seed, arch);
+  reserveParks(district, seed, arch);
   const blocks = subdivideBlocks(district, seed);
   const wards = assignWards(district, seed, blocks, streetPlan, river);
   const plots = subdividePlots(district, seed, blocks);
@@ -76,7 +84,7 @@ export function generateWorld(seedStr: string): World {
     streetPlan.squareX + (streetPlan.squareW >> 1),
     streetPlan.squareY + (streetPlan.squareW >> 1),
   );
-  const placements = assignBuildings(district, seed, plots, streetPlan, river, wards);
+  const placements = assignBuildings(district, seed, plots, streetPlan, river, wards, arch);
   const streets = nameStreets(district, seed);
   const squareName = nameSquare(seed);
 
@@ -198,7 +206,7 @@ export function generateWorld(seedStr: string): World {
   const { souls, households, firms } = populate(seed, buildings, TARGET_SOULS);
 
   return {
-    seedStr, seed, district, river, streetPlan, squareName,
+    seedStr, seed, archetype: arch, district, river, streetPlan, squareName,
     blocks, wards, plots, buildings, streets, graph, networks, tram, squareNode,
     souls, households, firms, doorNodes,
   };
@@ -214,8 +222,8 @@ export function generateWorld(seedStr: string): World {
  * against the void, and props.ts never once took its "parks are 46% wooded"
  * branch. The rim has to be claimed BEFORE the blocks are, not after.
  */
-function reserveRim(d: District, seed: number): void {
-  const depth = 2;
+function reserveRim(d: District, seed: number, arch: Archetype): void {
+  const depth = arch.rimDepth;
   const rim: number[] = [];
   for (let y = 0; y < d.height; y++) {
     for (let x = 0; x < d.width; x++) {
@@ -236,7 +244,7 @@ function reserveRim(d: District, seed: number): void {
   for (const k of rim) {
     const x = k % d.width;
     const y = (k - x) / d.width;
-    if (mix(seed, 63, x, y) % 100 < 22) continue;
+    if (mix(seed, 63, x, y) % 100 < arch.rimSkipPct) continue;
     d.tile[k] = Tile.Park;
   }
 }

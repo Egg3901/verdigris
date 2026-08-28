@@ -8,6 +8,7 @@ import type { District } from '../district';
 import { cellKey, inBounds, insideIsland, setTile, tileAt } from '../district';
 import { Stream, mulberry32, mix, noise2, range, shuffle } from '../rng';
 import type { RiverPlan } from './river';
+import type { Archetype } from './archetype';
 
 export interface StreetPlan {
   squareX: number;
@@ -94,9 +95,11 @@ function carve(d: District, cells: { x: number; y: number }[], width: number): v
 }
 
 /** The largest clear square on the polite bank, biased toward the map centre. */
-function placeSquare(d: District, river: RiverPlan, seed: number): { x: number; y: number; w: number } {
+function placeSquare(d: District, river: RiverPlan, seed: number, arch: Archetype): { x: number; y: number; w: number } {
   const rng = mulberry32(mix(seed, Stream.GenStreets, 7));
-  const w = range(rng, 6, d.width >= 60 ? 9 : 8);
+  // Square size is archetype character: a mill town keeps a tight working
+  // square, a crossing town can afford a parade ground.
+  const w = range(rng, arch.squareMin, d.width >= 60 ? arch.squareMax : Math.min(arch.squareMax, 8));
   let best = { x: -1, y: -1, w, score: -Infinity };
   const cx = (d.width - 1) / 2;
   const cy = (d.height - 1) / 2;
@@ -131,9 +134,9 @@ function placeSquare(d: District, river: RiverPlan, seed: number): { x: number; 
   return { x: best.x, y: best.y, w: best.w };
 }
 
-export function layStreets(d: District, seed: number, river: RiverPlan): StreetPlan {
+export function layStreets(d: District, seed: number, river: RiverPlan, arch: Archetype): StreetPlan {
   const rng = mulberry32(mix(seed, Stream.GenStreets, 1));
-  const sq = placeSquare(d, river, seed);
+  const sq = placeSquare(d, river, seed, arch);
   for (let j = 0; j < sq.w; j++) {
     for (let i = 0; i < sq.w; i++) setTile(d, sq.x + i, sq.y + j, Tile.Square);
   }
