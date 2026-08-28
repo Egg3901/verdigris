@@ -19,7 +19,7 @@ import { fillPolyHard, ditherPolyHard, lineHard } from './raster';
 import { PAL } from './palette';
 import {
   makeFace, drawDoor, drawShopfront, drawSign, drawWindowGrid, drawBoarded,
-  drawCourses, drawDormer, drawBunting,
+  drawCourses, drawDormer, drawBunting, drawQuoins, drawStringCourse,
   drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
   drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
@@ -632,6 +632,12 @@ function drawMaterials(
     switch (material) {
       case 'brick':
         drawBrickFace(ctx, f, wallH, mortar);
+        // A better brick building dresses its corner in stone. Same quoins the
+        // ashlar face carries, on brick they read as the merchant spending money
+        // where the street can see it.
+        if (spec.polite || spec.frontage === 'civic') {
+          drawQuoins(ctx, f, wallH, shadeHex(skin.wallLit, 0.25), mortar, 3);
+        }
         break;
       case 'ashlar':
         drawAshlarFace(ctx, f, wallH, mortar, shadeHex(skin.wallLit, 0.1));
@@ -648,6 +654,13 @@ function drawMaterials(
       default:
         drawStuccoMottle(ctx, f.lit ? litPts : shadePts, shadeHex(skin.wallLit, f.lit ? 0.08 : -0.1), salt ?? 0);
         break;
+    }
+    // String courses between storeys on the taller masonry facades. The band
+    // uses the window grid's own spacing, so it lands between the rows.
+    if ((material === 'brick' || material === 'ashlar' || material === 'stucco')
+      && wallH >= 17 && spec.windowRows >= 2 && (spec.polite || spec.frontage === 'civic')) {
+      drawStringCourse(ctx, f, wallH, spec.windowRows,
+        shadeHex(skin.wallLit, 0.15), shadeHex(skin.wallShade, -0.15), spec.shopfront === true);
     }
     if (!spec.polite) drawSootStreaks(ctx, f, wallH, shadeHex(PAL.soot1, 0), salt ?? 0);
     if (spec.facadeWear) drawFacadePatina(ctx, f, wallH, material, spec.facadeWear, spec.drainState ?? 0, salt ?? 0, ds);
@@ -672,6 +685,10 @@ function detailSkin(spec: HouseSpec): DetailSkin {
     glassLit: spec.skin.windowLit === true,
     trim: spec.skin.trim,
     outline: spec.skin.outline,
+    // Stone dressings around the openings on the kept-up masonry buildings.
+    dress: spec.polite && !spec.scorched
+      && (spec.material === 'brick' || spec.material === 'ashlar' || spec.material === 'stucco')
+      ? shadeHex(spec.skin.wallLit, 0.2) : undefined,
   };
 }
 

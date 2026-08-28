@@ -48,6 +48,9 @@ export interface DetailSkin {
   glassLit: boolean;
   trim?: string;
   outline: string;
+  /** Dressed stone for lintels and sills on the better buildings. When unset the
+   *  window openings fall back to wall-derived colours. */
+  dress?: string;
 }
 
 /**
@@ -172,9 +175,12 @@ export function drawWindowGrid(
         ctx.fillRect(Math.round(g.x), Math.round(g.y), 1, 1);
       }
       // Lintel above, sill below: two one-pixel lines that do most of the work of
-      // making a hole in a wall look like a window.
-      lineHard(ctx, f.at(t - halfW, h - 1), f.at(t + halfW, h - 1), skin.wallDark);
-      lineHard(ctx, f.at(t - halfW - 0.01, h + 4), f.at(t + halfW + 0.01, h + 4), shadeHex(skin.wall, 0.14));
+      // making a hole in a wall look like a window. On a dressed facade both are
+      // cut stone, a step brighter than the wall, which is what says the owner
+      // paid a mason rather than a plasterer.
+      lineHard(ctx, f.at(t - halfW, h - 1), f.at(t + halfW, h - 1), skin.dress ?? skin.wallDark);
+      lineHard(ctx, f.at(t - halfW - 0.01, h + 4), f.at(t + halfW + 0.01, h + 4),
+        skin.dress ? shadeHex(skin.dress, -0.05) : shadeHex(skin.wall, 0.14));
       // Record the pane for the per-frame lamplighter: its top edge in sprite
       // coordinates, and a stable hash for its own on/off schedule.
       if (lights) {
@@ -326,15 +332,47 @@ export function drawAshlarFace(
       lineHard(ctx, f.at(t, h), f.at(t, Math.min(wallH - 1, h + course - 1)), mortar);
     }
   }
-  // Quoins: alternating dressed corner stones down the leading edge. A hair
-  // brighter than the wall, they give a stone building its weight and mark the
-  // corner the eye already reads as the silhouette. Lit face only.
-  if (f.lit && f.span >= 10) {
-    const quoin = shadeHex(hilite, 0.06);
-    for (let h = 2; h < wallH - 2; h += course * 2) {
-      faceQuad(ctx, f, 0.0, 0.06, h, Math.min(wallH - 1, h + course), quoin);
-      lineHard(ctx, f.at(0.06, h), f.at(0.06, Math.min(wallH - 1, h + course)), mortar);
-    }
+  // Quoins on the leading corner, shared with the better brick buildings.
+  drawQuoins(ctx, f, wallH, shadeHex(hilite, 0.06), mortar, course);
+}
+
+/**
+ * Quoins: alternating dressed corner stones down the leading edge. A hair
+ * brighter than the wall, they give a building its weight and mark the corner
+ * the eye already reads as the silhouette. Lit face only, so the light does the
+ * work of picking them out.
+ */
+export function drawQuoins(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number,
+  quoin: string, mortar: string, course = 4,
+): void {
+  if (!f.lit || f.span < 10) return;
+  for (let h = 2; h < wallH - 2; h += course * 2) {
+    faceQuad(ctx, f, 0.0, 0.06, h, Math.min(wallH - 1, h + course), quoin);
+    lineHard(ctx, f.at(0.06, h), f.at(0.06, Math.min(wallH - 1, h + course)), mortar);
+  }
+}
+
+/**
+ * A stone string course between storeys. The horizontal band a mason runs at
+ * each floor line on a facade worth the trouble: one bright line, one shadow
+ * line under it, spaced off the same grid the windows use so the band lands
+ * between the rows rather than through them.
+ */
+export function drawStringCourse(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, rows: number,
+  hilite: string, shadow: string, skipGround: boolean,
+): void {
+  if (f.span < 10 || wallH < 17 || rows < 2) return;
+  const bottom = skipGround ? wallH - 15 : wallH - 3;
+  const usable = bottom - 4;
+  if (usable < 6) return;
+  const stepY = Math.max(7, Math.floor(usable / rows));
+  for (let r = 1; r < rows; r++) {
+    const h = 4 + r * stepY - 2;
+    if (h < 6 || h > wallH - 7) continue;
+    lineHard(ctx, f.at(0.02, h), f.at(0.98, h), hilite);
+    lineHard(ctx, f.at(0.02, h + 1), f.at(0.98, h + 1), shadow);
   }
 }
 
