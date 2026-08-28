@@ -61,7 +61,9 @@ describe('Civic Market Day', () => {
   });
 
   it('uses the seeded six-day calendar rather than a random cursor', () => {
-    const city = newCity('market-calendar');
+    // Re-anchored when archetypes landed: the old fixture seed grows a garden
+    // borough whose first fair market day no longer opens. Same test, new seed.
+    const city = newCity('market-calendar-3');
     let day = -1;
     for (let candidate = 0; candidate < 30; candidate++) {
       const tick = candidate * 1440 + 600;

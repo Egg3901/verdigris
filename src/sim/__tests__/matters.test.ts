@@ -91,7 +91,9 @@ describe("the alderman's matters", () => {
   });
 
   it('opens and truthfully resolves a street sanitation matter', () => {
-    const city = newCity('verdigris');
+    // Re-anchored when archetypes landed: verdigris now grows a mill town whose
+    // first drained street cannot stage this outbreak. Same scenario, new seed.
+    const city = newCity('sanitation-2');
     warp(city, 179);
     const home = city.buildings.find((building) => building.householdIds.length > 0 && building.drainSeg >= 0)!;
     const residents = city.souls.filter((soul) => city.buildings[soul.homeId]?.streetId === home.streetId);

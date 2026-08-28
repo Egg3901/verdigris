@@ -52,6 +52,7 @@ export const Stream = {
   GenTram: 10,
   GenHistory: 11,
   GenWards: 12,
+  GenArchetype: 13,
   Schedule: 20,
   Gossip: 21,
   Incident: 22,
