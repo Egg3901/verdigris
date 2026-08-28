@@ -24,7 +24,7 @@ import { TILE_W, TILE_H, HEAD_ROOM, isoX, isoY, worldBounds, depthKey, LAYER_STR
 import { serviceAt } from '../sim/networks';
 import { drawIsoDiamond } from './fallback';
 import { drawHouse, houseBounds } from './house';
-import { hardenAlpha, ditherPolyHard, lineHard } from './raster';
+import { hardenAlpha, ditherPolyHard, lineHard, fillPolyHard } from './raster';
 import { buildCartRoutes } from './fx';
 import type { CartRoute } from './fx';
 import type { HouseSpec, HouseSkin, RoofShape, Finial, Frontage } from './house';
@@ -32,7 +32,7 @@ import type { WallMaterial } from './detail';
 import { mix, Stream } from '../sim/rng';
 import { buildMarketProps, buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
-import { worksStageFor } from '../sim/works';
+import { worksStageFor, latestOrderFor } from '../sim/works';
 import { isDeputationActive } from '../sim/deputations';
 import { activePublicVisit } from '../sim/civic-visits';
 import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters';
@@ -449,6 +449,47 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   };
 }
 
+/** An open street trench with spoil, a pipe, a barrier and a warning lamp: the
+ *  mark a drain or gas repair leaves on the road while the crew is in. */
+function drawRoadWorks(
+  ctx: CanvasRenderingContext2D, cx: number, cy: number, kind: 'gas' | 'drain', variant: Variant,
+): void {
+  const g = (c: string, e = false) => gradeHex(c, variant, e);
+  const hw = Math.round(TILE_W * 0.32);
+  const hh = Math.round(TILE_H * 0.32);
+  const x = Math.round(cx);
+  const y = Math.round(cy);
+  // The trench, dug into the road.
+  const trench = [
+    { x, y: y - hh }, { x: x + hw, y }, { x, y: y + hh }, { x: x - hw, y },
+  ];
+  fillPolyHard(ctx, trench, g(PAL.soot1));
+  ditherPolyHard(ctx, trench, g(PAL.dirt0), 6);
+  // The main at the bottom of it: brass for gas, dark iron for drain.
+  lineHard(ctx, { x: x - hw + 2, y: y + 1 }, { x: x + hw - 2, y: y - 1 },
+    g(kind === 'gas' ? PAL.brass1 : PAL.soot3));
+  lineHard(ctx, { x: x - hw + 2, y: y + 2 }, { x: x + hw - 2, y }, g(PAL.soot0));
+  // A spoil heap on the near lip.
+  ctx.fillStyle = g(PAL.dirt2);
+  ctx.fillRect(x - hw, y + 1, 3, 2);
+  ctx.fillRect(x - hw + 2, y + 2, 2, 1);
+  // A duckboard laid across so people can still pass.
+  lineHard(ctx, { x: x - hw + 1, y: y - 1 }, { x: x + hw - 1, y: y - 2 }, g(PAL.wood1));
+  // A trestle barrier along the near edge, striped, with a lamp on the corner.
+  const by = y + hh + 1;
+  ctx.fillStyle = g(PAL.wood1);
+  ctx.fillRect(x - 8, by - 4, 1, 4);
+  ctx.fillRect(x + 7, by - 4, 1, 4);
+  for (let i = -8; i < 8; i += 2) {
+    ctx.fillStyle = ((i >> 1) & 1) ? g(PAL.buntRed) : g(PAL.buntCream);
+    ctx.fillRect(x + i, by - 4, 2, 2);
+  }
+  ctx.fillStyle = g(PAL.soot2);
+  ctx.fillRect(x + 8, by - 7, 1, 7);
+  ctx.fillStyle = variant === 'day' ? g(PAL.buntRed) : g(PAL.gas2, true);
+  ctx.fillRect(x + 7, by - 8, 2, 2);
+}
+
 function makeCanvas(w: number, h: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.ceil(w));
@@ -750,6 +791,36 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       { x: pr.wx - 2, y: pr.wy }, { x: pr.wx + 4, y: pr.wy + 2 },
       { x: pr.wx - 2, y: pr.wy + 3 }, { x: pr.wx - 6, y: pr.wy + 2 },
     ], PAL.soot0, 5);
+  }
+
+  // Road works. A drain or gas repair means a crew has the street open: to reach
+  // a buried main you dig up the road above it, not the house. So a building with
+  // an active pipe works order gets a trench, spoil, a barrier and a lamp on the
+  // street tile in front of its door. This is the physical form of "the works are
+  // in", and the reason a cut main and its repair both leave a mark on the ward.
+  for (const bld of city.buildings) {
+    const order = latestOrderFor(city, bld.id);
+    if (!order || order.status !== 'working' || order.kind === 'fabric') continue;
+    // The street cell the door opens onto, so the trench sits on the road.
+    let wx = -1;
+    let wy = -1;
+    // Prefer the cells toward the camera first, so the trench lands where it can
+    // be seen rather than tucked behind the building.
+    for (const [dx, dy] of [[0, 1], [1, 0], [1, 1], [-1, 0], [0, -1], [-1, 1], [1, -1], [-1, -1]]) {
+      const nx = bld.doorX + dx;
+      const ny = bld.doorY + dy;
+      if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height) continue;
+      const nk = cellKey(d, nx, ny);
+      const t = d.tile[nk];
+      if ((t === Tile.Street || t === Tile.Alley || t === Tile.Square || t === Tile.Embankment)
+        && d.buildingId[nk] < 0) {
+        wx = originX + isoX(nx, ny);
+        wy = originY + isoY(nx, ny);
+        break;
+      }
+    }
+    if (wx < 0) continue;
+    drawRoadWorks(gctx, wx, wy, order.kind, variant);
   }
 
   // Lamp pools are baked INTO THE GROUND, not drawn per frame over everything.
