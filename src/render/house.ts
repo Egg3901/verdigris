@@ -683,7 +683,13 @@ function drawMaterials(
       && !spec.shopfront && wallH >= 14 && (((salt ?? 0) >>> 5) % 3) === 0) {
       drawPartyPipe(ctx, f, wallH, spec.polite ? PAL.soot2 : PAL.soot1, (salt ?? 0) + (f.lit ? 0 : 1));
     }
-    if (spec.facadeWear) drawFacadePatina(ctx, f, wallH, material, spec.facadeWear, spec.drainState ?? 0, salt ?? 0, ds);
+    // The rot concentrates low and behind. A gilded frontage keeps its face: the
+    // lit side of a trimmed building shows one step less wear than the shade
+    // side, which is the district's whole act performed by a single facade.
+    if (spec.facadeWear) {
+      const shown = f.lit && skin.trim ? (spec.facadeWear - 1) as 0 | 1 | 2 : spec.facadeWear;
+      if (shown) drawFacadePatina(ctx, f, wallH, material, shown, spec.drainState ?? 0, salt ?? 0, ds);
+    }
     // Pasted bills on the working bank's brick and timber, lit face only, and
     // never over a shopfront, which carries its own signage. Drawn here so the
     // door and windows, drawn later, sit over the paper the way real joinery

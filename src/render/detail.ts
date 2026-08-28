@@ -792,6 +792,19 @@ export function drawFacadePatina(
     lineHard(ctx, a, b, crack);
     lineHard(ctx, b, c, crack);
     if (wear === 2) lineHard(ctx, b, f.at(t + 0.12, low - 1), crack);
+    // On the worst stucco the render has come away in a sheet and the brick
+    // shows through: a ragged warm patch low on the wall, its top edge in
+    // shadow where the surviving render stands proud of it.
+    if (wear === 2 && material === 'stucco' && f.span >= 9) {
+      const pt = Math.min(0.78, t + 0.08);
+      const patch = [
+        f.at(pt, low - 4), f.at(pt + 0.14, low - 5),
+        f.at(pt + 0.17, low), f.at(pt - 0.03, low),
+      ];
+      fillPolyHard(ctx, patch, PAL.brick1);
+      ditherPolyHard(ctx, patch, PAL.brick0, 3);
+      lineHard(ctx, patch[0], patch[1], crack);
+    }
   } else if (material === 'brick') {
     const p = f.at(0.2 + ((salt >>> 5) % 52) / 100, low - 3);
     ctx.fillStyle = crack;
@@ -876,6 +889,15 @@ export function drawRoofPatina(
     const u = 0.12 + ((salt + i * 19) % 71) / 100;
     const v = 0.34 + ((salt + i * 11) % 38) / 100;
     const p = at(u, v);
+    // The first chip on every worn roof is a missing slate: a black socket where
+    // the batten shows through, not a discoloured one. Nothing else on a roof is
+    // that dark, which is what makes the loss legible from the air.
+    if (i === 0 || (wear === 2 && i === 2)) {
+      ctx.fillStyle = PAL.soot0;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 1);
+      if (wear === 2) ctx.fillRect(Math.round(p.x) + 2, Math.round(p.y) - 1, 2, 1);
+      continue;
+    }
     ctx.fillStyle = i % 2 === 0 ? shadeHex(roofShade, -0.1) : shadeHex(roofLit, 0.08);
     ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 1);
   }
@@ -887,6 +909,12 @@ export function drawRoofPatina(
     fillPolyHard(ctx, [a, b, c, d], shadeHex(roofLit, -0.08));
     ditherPolyHard(ctx, [a, b, c, d], shadeHex(roofShade, -0.08), 5);
     lineHard(ctx, a, b, ridge);
+    // A run of slates gone together near the eave, where the gutter failed and
+    // the frost got under them: two sockets side by side, low on the slope.
+    const gap = at(0.6 + ((salt >>> 4) % 20) / 100, 0.2);
+    ctx.fillStyle = PAL.soot0;
+    ctx.fillRect(Math.round(gap.x), Math.round(gap.y), 3, 1);
+    ctx.fillRect(Math.round(gap.x) + 1, Math.round(gap.y) + 1, 2, 1);
   }
 }
 
