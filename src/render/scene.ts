@@ -15,6 +15,7 @@ import type { City } from '../sim/city';
 import type { Building } from '../sim/buildings';
 import { DEFS } from '../sim/buildings';
 import { cellKey, insideIsland } from '../sim/district';
+import type { District } from '../sim/district';
 import { Tile } from '../sim/types';
 import type { TileCode } from '../sim/types';
 import { PAL, shadeHex, hexToRgb, rgbToHex, gradeHex, variantFor, isDarkVariant } from './palette';
@@ -38,6 +39,7 @@ import { activePublicVisit } from '../sim/civic-visits';
 import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters';
 import type { WardKind } from '../sim/gen/wards';
 import { weatherAt, WEATHER_WATCH_MINUTES } from '../sim/weather';
+import { riverLevelAt, riverSurfaceDrop } from '../sim/hydrology';
 import { isShelterActive } from '../sim/shelters';
 
 export interface StaticSprite {
@@ -67,6 +69,8 @@ export interface Scene {
   weatherRevision: number;
   shelterRevision: number;
   occasionRevision: number;
+  /** River level 0..4 this scene was baked at; the water plane sits lower as it falls. */
+  riverLevel: number;
   ground: HTMLCanvasElement;
   props: Prop[];
   idBuffer: HTMLCanvasElement;
@@ -517,6 +521,10 @@ function ctxOf(c: HTMLCanvasElement, readFrequently = false): CanvasRenderingCon
 export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind)): Scene {
   const b = worldBounds();
   const weather = weatherAt(city.seed, city.tick);
+  // The water plane sits below the bank lip and moves with the trailing rain.
+  // Everything below the lip, wall, bed, waterline, keys off these two numbers.
+  const riverLevel = riverLevelAt(city.seed, city.tick);
+  const drop = riverSurfaceDrop(riverLevel);
   const originX = -b.minX;
   const originY = -b.minY;
   const floodedBuildings = new Set<number>();
@@ -588,9 +596,21 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       if (tile === Tile.Void) continue;
       let colour = GROUND_COLOUR[tile] ?? PAL.soot2;
       if (tile === Tile.Water) {
-        // Shallows at the bank, deep water in the channel.
         const dep = depth[k];
-        colour = dep <= 1 ? PAL.riv2 : dep === 2 ? PAL.riv1 : shadeHex(PAL.riv1, -0.15);
+        // The channel keeps its water longest: shallows dry out first as the
+        // level falls, and in a drought only a mid-channel trickle is left.
+        const dryBed = riverLevel === 0 ? dep <= 2 : riverLevel === 1 ? dep <= 1 : false;
+        const cx0 = originX + isoX(tx, ty);
+        const cy0 = originY + isoY(tx, ty);
+        drawBankWalls(gctx, d, tx, ty, cx0, cy0, drop, riverLevel, variant);
+        if (dryBed) {
+          drawDryBed(gctx, cx0, cy0 + drop, mix(city.seed, 57, tx, ty), variant);
+        } else {
+          // Shallows at the bank, deep water in the channel.
+          const wet = dep <= 1 ? PAL.riv2 : dep === 2 ? PAL.riv1 : shadeHex(PAL.riv1, -0.15);
+          drawIsoDiamond(gctx, cx0, cy0 + drop, gradeHex(wet, variant));
+          textureCell(gctx, city.seed, tx, ty, tile, originX, originY + drop, variant, d.polite[k] === 1);
+        }
       }
       if (tile !== Tile.Water) {
         // Soot rises toward the factory quarter. A district that visibly gets
@@ -605,8 +625,10 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
           if (wardKind === 'quayside' && tile !== Tile.Embankment) colour = shadeHex(PAL.dirt1, -dirt * 0.7);
         }
       }
-      drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), gradeHex(colour, variant));
-      textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant, d.polite[k] === 1);
+      if (tile !== Tile.Water) {
+        drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), gradeHex(colour, variant));
+        textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant, d.polite[k] === 1);
+      }
 
       // Standing rain gathers in selected joints and wheel ruts. Patches are
       // sparse and hashed per watch, so wet streets glint without becoming a
@@ -647,9 +669,9 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
 
       // Dither the step between depth bands. A hard step made the channel read as
       // a set of tiled patches rather than as water getting deeper.
-      if (tile === Tile.Water && depth[k] === 2) {
+      if (tile === Tile.Water && depth[k] === 2 && riverLevel >= 2) {
         const bx = originX + isoX(tx, ty);
-        const by = originY + isoY(tx, ty);
+        const by = originY + isoY(tx, ty) + drop;
         ditherPolyHard(gctx, [
           { x: bx, y: by - TILE_H / 2 }, { x: bx + TILE_W / 2, y: by },
           { x: bx, y: by + TILE_H / 2 }, { x: bx - TILE_W / 2, y: by },
@@ -692,6 +714,8 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       }
     }
   }
+
+  drawIslandUnderside(gctx, d, city.seed, originX, originY, drop, variant);
 
   // River fog lies on the water plane, so roofs, bridges, people and cranes are
   // still painted in front of it by the normal compositor. Opaque ordered
@@ -887,6 +911,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     weatherRevision: weather.revision,
     shelterRevision: city.shelters.revision,
     occasionRevision: city.occasions.revision,
+    riverLevel,
     ground, props, idBuffer, idCtx, statics, originX, originY,
   };
 }
@@ -967,3 +992,243 @@ export function refreshBuilding(city: City, scene: Scene, id: number): void {
 }
 
 export { HEAD_ROOM, TILE_H };
+
+/**
+ * The visible walls of the river channel: the two camera-facing faces under the
+ * bank lip of each water cell. The south seams need nothing drawn, because the
+ * later-painted land diamond occludes the sunken surface behind it, which is
+ * exactly what a raised near bank does to water.
+ */
+function drawBankWalls(
+  ctx: CanvasRenderingContext2D, d: District,
+  tx: number, ty: number, cx: number, cy: number, drop: number, level: number, variant: Variant,
+): void {
+  const HW = TILE_W / 2;
+  const HH = TILE_H / 2;
+  for (const side of [0, 1]) {
+    const nx = side === 0 ? tx - 1 : tx;
+    const ny = side === 0 ? ty : ty - 1;
+    if (nx < 0 || ny < 0) continue;
+    const nTile = d.tile[cellKey(d, nx, ny)];
+    if (nTile === Tile.Water || nTile === Tile.Void) continue;
+    // Face material follows what stands on the lip above it.
+    const ashlar = nTile === Tile.Embankment || nTile === Tile.Bridge || nTile === Tile.Square;
+    const timber = nTile === Tile.Wharf;
+    const face = ashlar ? PAL.stone1 : timber ? PAL.wood1 : PAL.dirt0;
+    const dark = ashlar ? PAL.stone0 : timber ? PAL.wood0 : shadeHex(PAL.dirt0, -0.3);
+    const a = side === 0 ? { x: cx - HW, y: cy } : { x: cx, y: cy - HH };
+    const b = side === 0 ? { x: cx, y: cy - HH } : { x: cx + HW, y: cy };
+    fillPolyHard(ctx, [
+      a, b, { x: b.x, y: b.y + drop }, { x: a.x, y: a.y + drop },
+    ], gradeHex(side === 0 ? face : shadeHex(face, -0.14), variant));
+    // Coursing on masonry, piles on timber, nothing on bare earth.
+    if (ashlar) {
+      for (let row = 3; row < drop - 1; row += 3) {
+        lineHard(ctx, { x: a.x, y: a.y + row }, { x: b.x, y: b.y + row }, gradeHex(dark, variant));
+      }
+    } else if (timber) {
+      const n = 4;
+      for (let i = 1; i < n; i++) {
+        const t = i / n;
+        const px = Math.round(a.x + (b.x - a.x) * t);
+        const py = Math.round(a.y + (b.y - a.y) * t);
+        ctx.fillStyle = gradeHex(dark, variant);
+        ctx.fillRect(px, py + 1, 1, drop - 1);
+      }
+    }
+    // The waterline stains the foot of the wall, and a falling river leaves
+    // pale tide marks above it.
+    lineHard(ctx, { x: a.x, y: a.y + drop - 1 }, { x: b.x, y: b.y + drop - 1 }, gradeHex(dark, variant));
+    if (level <= 1) {
+      const mark = gradeHex(shadeHex(face, 0.25), variant);
+      lineHard(ctx, { x: a.x, y: a.y + drop - 3 }, { x: b.x, y: b.y + drop - 3 }, mark);
+      if (drop > 6) lineHard(ctx, { x: a.x, y: a.y + drop - 5 }, { x: b.x, y: b.y + drop - 5 }, mark);
+    }
+  }
+}
+function drawDryBed(ctx: CanvasRenderingContext2D, cx: number, cy: number, salt: number, variant: Variant): void {
+  // Fill base diamond with graded dirt.
+  fillPolyHard(ctx, [
+    { x: cx, y: cy - 8 },
+    { x: cx + 16, y: cy },
+    { x: cx, y: cy + 8 },
+    { x: cx - 16, y: cy }
+  ], gradeHex(shadeHex(PAL.dirt0, -0.12), variant));
+  // Add damp patches with dither.
+  ditherPolyHard(ctx, [
+    { x: cx, y: cy - 8 },
+    { x: cx + 16, y: cy },
+    { x: cx, y: cy + 8 },
+    { x: cx - 16, y: cy }
+  ], gradeHex(shadeHex(PAL.dirt0, -0.35), variant), 4);
+  // Draw crack lines.
+  const crackCount = 3 + (mix(salt, 1, 0, 0) % 2);
+  for (let i = 0; i < crackCount; i++) {
+    const hx = cx - 8 + (mix(salt, 2, i, 0) % 16);
+    const hy = cy - 4 + (mix(salt, 3, i, 0) % 8);
+    lineHard(ctx, { x: hx, y: hy }, { x: hx + 2, y: hy + (mix(salt, 4, i, 0) % 2) }, gradeHex(shadeHex(PAL.dirt0, -0.5), variant));
+  }
+  // Place stones.
+  const stoneCount = 1 + (mix(salt, 5, 0, 0) % 2);
+  for (let i = 0; i < stoneCount; i++) {
+    const px = cx - 8 + (mix(salt, 6, i, 0) % 16);
+    const py = cy - 4 + (mix(salt, 7, i, 0) % 8);
+    fillPolyHard(ctx, [{ x: px, y: py }, { x: px + 1, y: py }], gradeHex(PAL.stone1, variant));
+  }
+  // Add puddle.
+  if (salt % 5 === 0) {
+    const px = cx - 3 + (mix(salt, 8, 0, 0) % 6);
+    const py = cy - 1 + (mix(salt, 9, 0, 0) % 2);
+    ditherPolyHard(ctx, [
+      { x: px, y: py - 1 },
+      { x: px + 3, y: py },
+      { x: px, y: py + 1 },
+      { x: px - 3, y: py }
+    ], gradeHex(PAL.riv2, variant), 9);
+  }
+}
+
+function drawIslandUnderside(ctx: CanvasRenderingContext2D, d: District, seed: number, originX: number, originY: number, drop: number, variant: Variant): void {
+  for (let ty = 0; ty < d.height; ty++) {
+    for (let tx = 0; tx < d.width; tx++) {
+      if (!insideIsland(d, tx, ty)) continue;
+      const cx = originX + isoX(tx, ty);
+      const cy = originY + isoY(tx, ty);
+      const tile = d.tile[ty * d.width + tx];
+      // Check bottom-left neighbour.
+      if (ty + 1 >= d.height || !insideIsland(d, tx, ty + 1)) {
+        const a = { x: cx - 16, y: cy + (tile === Tile.Water ? drop : 0) };
+        const b = { x: cx, y: cy + 8 + (tile === Tile.Water ? drop : 0) };
+        const h = 40 - (tile === Tile.Water ? drop : 0);
+        let yOff = 0;
+        // Topsoil band.
+        const topCol = tile === Tile.Water ? shadeHex(PAL.dirt1, -0.3) : shadeHex(PAL.dirt0, -0.2);
+        const topH = tile === Tile.Water ? 4 : 5;
+        fillPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff },
+          { x: b.x, y: b.y + yOff },
+          { x: b.x, y: b.y + yOff + topH },
+          { x: a.x, y: a.y + yOff + topH }
+        ], gradeHex(shadeHex(topCol, -0.14), variant));
+        yOff += topH;
+        // Dither seam.
+        ditherPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff - 2 },
+          { x: b.x, y: b.y + yOff - 2 },
+          { x: b.x, y: b.y + yOff },
+          { x: a.x, y: a.y + yOff }
+        ], gradeHex(shadeHex(PAL.ochre0, -0.14), variant), 8);
+        // Subsoil band.
+        fillPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff },
+          { x: b.x, y: b.y + yOff },
+          { x: b.x, y: b.y + yOff + 12 },
+          { x: a.x, y: a.y + yOff + 12 }
+        ], gradeHex(shadeHex(PAL.ochre0, -0.14), variant));
+        yOff += 12;
+        // Dither seam.
+        ditherPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff - 2 },
+          { x: b.x, y: b.y + yOff - 2 },
+          { x: b.x, y: b.y + yOff },
+          { x: a.x, y: a.y + yOff }
+        ], gradeHex(shadeHex(PAL.soot1, -0.14), variant), 8);
+        // Rock band.
+        const rockH = h - yOff;
+        fillPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff },
+          { x: b.x, y: b.y + yOff },
+          { x: b.x, y: b.y + yOff + rockH },
+          { x: a.x, y: a.y + yOff + rockH }
+        ], gradeHex(shadeHex(PAL.soot1, -0.14), variant));
+        // Ragged bottom.
+        ditherPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff + rockH - 4 },
+          { x: b.x, y: b.y + yOff + rockH - 4 },
+          { x: b.x, y: b.y + yOff + rockH },
+          { x: a.x, y: a.y + yOff + rockH }
+        ], gradeHex(shadeHex(PAL.soot0, -0.14), variant), 8);
+        // Roots for park/yard.
+        if (tile === Tile.Park || tile === Tile.Yard) {
+          const rootCount = 2 + (mix(seed, 57, tx, ty) % 2);
+          for (let i = 0; i < rootCount; i++) {
+            const rx = a.x + (mix(seed, 58, tx, ty + i) % 14) + 1;
+            const ryStart = a.y + 2;
+            const rootLen = 4 + (mix(seed, 60, tx, ty + i) % 6);
+            lineHard(ctx, { x: rx, y: ryStart }, { x: rx, y: ryStart + rootLen }, gradeHex(shadeHex(PAL.wood0, -0.2), variant));
+            if (mix(seed, 61, tx, ty + i) % 3 === 0) {
+              lineHard(ctx, { x: rx, y: ryStart + rootLen - 1 }, { x: rx + 1, y: ryStart + rootLen - 1 }, gradeHex(shadeHex(PAL.wood0, -0.2), variant));
+            }
+          }
+        }
+      }
+      // Check bottom-right neighbour.
+      if (tx + 1 >= d.width || !insideIsland(d, tx + 1, ty)) {
+        const a = { x: cx, y: cy + 8 + (tile === Tile.Water ? drop : 0) };
+        const b = { x: cx + 16, y: cy + (tile === Tile.Water ? drop : 0) };
+        const h = 40 - (tile === Tile.Water ? drop : 0);
+        let yOff = 0;
+        // Topsoil band.
+        const topCol = tile === Tile.Water ? shadeHex(PAL.dirt1, -0.3) : shadeHex(PAL.dirt0, -0.2);
+        const topH = tile === Tile.Water ? 4 : 5;
+        fillPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff },
+          { x: b.x, y: b.y + yOff },
+          { x: b.x, y: b.y + yOff + topH },
+          { x: a.x, y: a.y + yOff + topH }
+        ], gradeHex(topCol, variant));
+        yOff += topH;
+        // Dither seam.
+        ditherPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff - 2 },
+          { x: b.x, y: b.y + yOff - 2 },
+          { x: b.x, y: b.y + yOff },
+          { x: a.x, y: a.y + yOff }
+        ], gradeHex(PAL.ochre0, variant), 8);
+        // Subsoil band.
+        fillPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff },
+          { x: b.x, y: b.y + yOff },
+          { x: b.x, y: b.y + yOff + 12 },
+          { x: a.x, y: a.y + yOff + 12 }
+        ], gradeHex(PAL.ochre0, variant));
+        yOff += 12;
+        // Dither seam.
+        ditherPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff - 2 },
+          { x: b.x, y: b.y + yOff - 2 },
+          { x: b.x, y: b.y + yOff },
+          { x: a.x, y: a.y + yOff }
+        ], gradeHex(PAL.soot1, variant), 8);
+        // Rock band.
+        const rockH = h - yOff;
+        fillPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff },
+          { x: b.x, y: b.y + yOff },
+          { x: b.x, y: b.y + yOff + rockH },
+          { x: a.x, y: a.y + yOff + rockH }
+        ], gradeHex(PAL.soot1, variant));
+        // Ragged bottom.
+        ditherPolyHard(ctx, [
+          { x: a.x, y: a.y + yOff + rockH - 4 },
+          { x: b.x, y: b.y + yOff + rockH - 4 },
+          { x: b.x, y: b.y + yOff + rockH },
+          { x: a.x, y: a.y + yOff + rockH }
+        ], gradeHex(PAL.soot0, variant), 8);
+        // Caves.
+        if (mix(seed, 59, tx, ty) % 23 === 0) {
+          const caveX = a.x + 3;
+          const caveY = a.y + yOff + 2;
+          fillPolyHard(ctx, [
+            { x: caveX, y: caveY },
+            { x: caveX + 3, y: caveY - 2 },
+            { x: caveX + 7, y: caveY - 2 },
+            { x: caveX + 7, y: caveY + 3 },
+            { x: caveX, y: caveY + 3 }
+          ], gradeHex(PAL.soot0, variant));
+          lineHard(ctx, { x: caveX, y: caveY - 1 }, { x: caveX + 7, y: caveY - 1 }, PAL.stone1);
+        }
+      }
+    }
+  }
+}

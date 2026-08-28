@@ -31,6 +31,7 @@ import type { DisasterKind } from './sim/disasters';
 import { startMarketDay } from './sim/occasions';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
 import { weatherAt, forceWeather } from './sim/weather';
+import { riverLevelAt } from './sim/hydrology';
 import type { WeatherKind } from './sim/weather';
 import { activeMatters, declineMatter, pressMatter, recommendedFor } from './sim/matters';
 
@@ -558,6 +559,7 @@ function loop(now: number): void {
     || scene.civicVisitRevision !== city.civicVisits.revision
     || scene.disasterRevision !== city.disasters.revision
     || scene.weatherRevision !== weatherAt(city.seed, city.tick).revision
+    || scene.riverLevel !== riverLevelAt(city.seed, city.tick)
     || scene.shelterRevision !== city.shelters.revision
     || scene.occasionRevision !== city.occasions.revision) {
     buntingShown = buntingNow;
