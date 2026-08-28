@@ -369,6 +369,23 @@ export function drawSmoke(
       ctx.fillRect(px - r, py - r, r * 2, Math.max(1, r * 2 - 1));
       calls++;
     }
+
+    // Ember drift from a working stack after dark: single hot pixels climbing
+    // through the plume and going out partway up. Only visible against the dusk
+    // and night sky, which is when a foundry gate glows anyway. The building is
+    // already known to be RUNNING, so a struck mill goes cold in both channels.
+    if (industrial && variant !== 'day') {
+      ctx.fillStyle = gradeHex(PAL.brass3, variant, true);
+      for (let i = 0; i < 3; i++) {
+        const age = (t * 0.09 + i / 3 + ((mix(city.seed, 86, b.id, i) % 7) / 7)) % 1;
+        if (age >= 0.65) continue;
+        const sway = ((mix(city.seed, 87, b.id, i) % 5) - 2) * 0.8;
+        const ex = Math.round(wx + sway * age * 5 + weather.windX * age * 16);
+        const ey = Math.round(wy - age * (rise + 10));
+        ctx.fillRect(ex, ey, 1, 1);
+        calls++;
+      }
+    }
   }
 
   // Disaster smoke is larger and denser than a flue, but uses the same hard,
@@ -540,6 +557,104 @@ export function drawLamps(
         { x: lx, y: ly - (TILE_H / 2) * scale }, { x: lx + (TILE_W / 2) * scale, y: ly },
         { x: lx, y: ly + (TILE_H / 2) * scale }, { x: lx - (TILE_W / 2) * scale, y: ly },
       ], colour, density);
+    }
+    calls++;
+  }
+  return calls;
+}
+
+/**
+ * Birds over the roofs.
+ *
+ * A few small flocks wheel across the district in fair daylight: two-pixel
+ * chevrons that beat and glide, drifting on the same wind as the smoke. They
+ * ground themselves in rain, fog and darkness, so their absence is also a
+ * weather read. Purely atmospheric, above the depth-sorted pass, never pickable.
+ */
+export function drawBirds(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  if (variant !== 'day') return 0;
+  const weather = weatherAt(city.seed, city.tick);
+  if (weather.precipitation > 0 || weather.kind === 'fog') return 0;
+  const t = city.tick + fracMin;
+  const spanX = Math.max(1, br.wx - tl.wx);
+  const spanY = Math.max(1, br.wy - tl.wy);
+  const ink = gradeHex(PAL.soot1, variant);
+  ctx.fillStyle = ink;
+  let calls = 0;
+  for (let fl = 0; fl < 3; fl++) {
+    const h = mix(city.seed, 88, fl);
+    // Each flock crosses at its own height and pace, leaning with the wind, and
+    // wraps around the viewport so there is usually one somewhere in frame.
+    const dir = weather.windX !== 0 ? weather.windX : (h & 1) ? 1 : -1;
+    const speed = 2.2 + (h % 3) * 0.7;
+    const cx = tl.wx - 40
+      + ((((h % 997) + t * speed * dir) % (spanX + 80)) + spanX + 80) % (spanX + 80);
+    const cy = tl.wy + spanY * (0.1 + ((h >>> 4) % 28) / 100) + Math.sin(t * 0.05 + fl * 2) * 5;
+    const birds = 4 + ((h >>> 6) % 3);
+    for (let i = 0; i < birds; i++) {
+      const bh = mix(h, 89, i);
+      const bx = Math.round(cx + ((bh % 25) - 12) * 1.6);
+      const by = Math.round(cy + (((bh >>> 5) % 13) - 6));
+      // The wing beat: the chevron closes to a bar and opens again, phased per
+      // bird so the flock ripples rather than flapping in unison.
+      const beat = (Math.floor(t * 6) + i) % 4 < 2;
+      ctx.fillRect(bx, by, 1, 1);
+      ctx.fillRect(bx - 1, by - (beat ? 0 : 1), 1, 1);
+      ctx.fillRect(bx + 1, by - (beat ? 0 : 1), 1, 1);
+      calls++;
+    }
+  }
+  return calls;
+}
+
+/**
+ * Warm light spilling from open doorways after dark.
+ *
+ * A street lamp is civic light; this is domestic trade light. Pubs and shops
+ * with gas throw an amber fan across the pavement outside their door, smaller
+ * and warmer than a lamp pool. Shops shut by nine and their fronts go dark;
+ * pubs pour light into the small hours, which is when the district's night
+ * geography becomes legible: the lit doors are where the trouble and the
+ * comfort both are. Drawn with the lamps, between ground and buildings, so a
+ * wall still occludes it.
+ */
+export function drawDoorGlow(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  if (variant === 'day') return 0;
+  const m = (minuteOfDay(city.tick) + fracMin) % 1440;
+  const t = city.tick + fracMin;
+  const flickFrame = Math.floor(t * 3);
+  const warm = gradeHex(PAL.litWindow, variant, true);
+  const amber = gradeHex(PAL.gas1, variant, true);
+  let calls = 0;
+  for (const b of city.buildings) {
+    const isPub = b.kind === 'pub';
+    if (!isPub && b.kind !== 'shop') continue;
+    if (!serviceAt(city.networks.gas, b.id)) continue;
+    // Opening hours: shops go dark at nine, pubs at half past one.
+    const open = isPub ? (m >= 1050 || m < 90) : (m >= 1050 && m < 1260);
+    if (!open) continue;
+    const lx = isoX(b.doorX, b.doorY);
+    const ly = isoY(b.doorX, b.doorY);
+    if (lx < tl.wx - 16 || lx > br.wx + 16 || ly < tl.wy - 12 || ly > br.wy + 12) continue;
+    // The fan gutters when the door swings, hashed per building and frame.
+    const gutter = (mix(city.seed, 66, b.id, flickFrame) % 9) === 0;
+    const w = isPub ? 7 : 5;
+    const fan = [
+      { x: lx, y: ly - 3 }, { x: lx + w, y: ly },
+      { x: lx, y: ly + 3 }, { x: lx - w, y: ly },
+    ];
+    ditherPolyHard(ctx, fan, amber, gutter ? 3 : 6);
+    if (!gutter) {
+      ditherPolyHard(ctx, [
+        { x: lx, y: ly - 2 }, { x: lx + w - 3, y: ly },
+        { x: lx, y: ly + 2 }, { x: lx - w + 3, y: ly },
+      ], warm, 8);
     }
     calls++;
   }

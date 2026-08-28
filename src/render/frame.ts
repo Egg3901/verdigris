@@ -18,7 +18,7 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawLamps } from './fx';
+import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawLamps, drawBirds, drawDoorGlow } from './fx';
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
@@ -71,6 +71,9 @@ export function drawFrame(
   // the street and still fall behind the walls that stand in front of them. Drawn
   // per frame, they catch one at a time as evening comes on and flicker.
   stats.calls += drawLamps(ctx, city, fracMin, scene.variant, tl, br);
+  // Doorway light goes down with the lamp pools, for the same occlusion reason:
+  // it lies on the pavement, and the buildings drawn after it stand over it.
+  stats.calls += drawDoorGlow(ctx, city, fracMin, scene.variant, tl, br);
 
   const agentCount = collectAgents(city, fracMin, agentPool);
   const vehicleCount = collectVehicles(city, scene.cartRoutes, fracMin, tl, br, vehiclePool);
@@ -169,6 +172,7 @@ export function drawFrame(
   stats.calls += drawFloodFx(ctx, city, fracMin, variant, tl, br);
   stats.calls += drawFog(ctx, city, fracMin, variant, tl, br);
   stats.calls += drawSmoke(ctx, city, fracMin, variant, tl, br);
+  stats.calls += drawBirds(ctx, city, fracMin, variant, tl, br);
   stats.calls += drawWeatherFx(ctx, city, fracMin, variant, tl, br);
 
   // Selection belongs to the ground plane, not to a sprite's rectangular canvas
