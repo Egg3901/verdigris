@@ -197,3 +197,57 @@ export function hardenAlpha(
   }
   ctx.putImageData(img, 0, 0);
 }
+
+// An ordered 4x4 Bayer matrix, used as a temporal dissolve: lighting bands
+// crossfade by keeping more and more pixels of the incoming frame. Every kept
+// pixel is a pure palette colour from one frame or the other, so the palette
+// contract holds through the transition; nothing is ever blended.
+const BAYER4 = [
+  [0, 8, 2, 10],
+  [12, 4, 14, 6],
+  [3, 11, 1, 9],
+  [15, 7, 13, 5],
+];
+
+const VEIL_CACHE: (HTMLCanvasElement | null)[] = new Array(17).fill(null);
+
+function bayerTile(keep: number): HTMLCanvasElement {
+  const cached = VEIL_CACHE[keep];
+  if (cached) return cached;
+  const c = document.createElement('canvas');
+  c.width = 4;
+  c.height = 4;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const img = ctx.createImageData(4, 4);
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      const i = (y * 4 + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 255;
+      img.data[i + 2] = 255;
+      img.data[i + 3] = BAYER4[y][x] < keep ? 255 : 0;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  VEIL_CACHE[keep] = c;
+  return c;
+}
+
+/** Keep `keep` of 16 pixels of what is already on the canvas, hard alpha. */
+export function applyDitherVeil(ctx: CanvasRenderingContext2D, w: number, h: number, keep: number): void {
+  const k = Math.max(0, Math.min(16, Math.round(keep)));
+  if (k >= 16) return;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'destination-in';
+  if (k <= 0) {
+    ctx.clearRect(0, 0, w, h);
+  } else {
+    const pattern = ctx.createPattern(bayerTile(k), 'repeat');
+    if (pattern) {
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+  ctx.restore();
+}

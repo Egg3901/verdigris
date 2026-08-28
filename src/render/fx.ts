@@ -17,7 +17,7 @@ import { Tile } from '../sim/types';
 import { cellKey, insideIsland } from '../sim/district';
 import { isDisasterActive } from '../sim/disasters';
 import { weatherAt } from '../sim/weather';
-import { riverLevelAt, riverSurfaceDrop } from '../sim/hydrology';
+import { riverLevelAt, riverDropAt } from '../sim/hydrology';
 
 export interface VehicleDraw {
   /** 0 tram, 1 cart, 2 barge. */
@@ -232,7 +232,7 @@ export function collectVehicles(
   // under a bridge is skipped: the deck and parapet are what hide it.
   const level = riverLevelAt(city.seed, city.tick);
   if (level > 0) {
-    const surfaceY = riverSurfaceDrop(level) + (level === 1 ? 2 : 0);
+    const surfaceY = riverDropAt(city.seed, city.tick) + (level === 1 ? 2 : 0);
     const riv = city.river;
     let x0 = -1;
     let x1 = -1;
@@ -253,7 +253,7 @@ export function collectVehicles(
         const bi = Math.min(x1 - 1, Math.floor(bx));
         const f = bx - bi;
         const by = riv.centre[bi] + (riv.centre[bi + 1] - riv.centre[bi]) * f;
-        if (riv.bridges.some((bridge) => Math.abs(bx - bridge.x) < (bridge.stone ? 2.2 : 1.6))) continue;
+        if (riv.bridges.some((bridge) => Math.abs(bx - bridge.x) < (bridge.stone ? 1.4 : 1.1))) continue;
         add(2, (i % 3) as VehicleDraw['cartKind'], bx, by, ph <= span, surfaceY);
       }
     }

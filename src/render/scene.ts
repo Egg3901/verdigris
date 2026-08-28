@@ -39,7 +39,7 @@ import { activePublicVisit } from '../sim/civic-visits';
 import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters';
 import type { WardKind } from '../sim/gen/wards';
 import { weatherAt, WEATHER_WATCH_MINUTES } from '../sim/weather';
-import { riverLevelAt, riverSurfaceDrop } from '../sim/hydrology';
+import { riverLevelAt, riverDropAt } from '../sim/hydrology';
 import { isShelterActive } from '../sim/shelters';
 
 export interface StaticSprite {
@@ -69,7 +69,8 @@ export interface Scene {
   weatherRevision: number;
   shelterRevision: number;
   occasionRevision: number;
-  /** River level 0..4 this scene was baked at; the water plane sits lower as it falls. */
+  /** Combined river key this scene was baked at: surface drop in px and the
+   *  coarse level, so a one-pixel move of the water plane rebakes the ground. */
   riverLevel: number;
   ground: HTMLCanvasElement;
   props: Prop[];
@@ -523,8 +524,17 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   const weather = weatherAt(city.seed, city.tick);
   // The water plane sits below the bank lip and moves with the trailing rain.
   // Everything below the lip, wall, bed, waterline, keys off these two numbers.
-  const riverLevel = riverLevelAt(city.seed, city.tick);
-  const drop = riverSurfaceDrop(riverLevel);
+  let riverLevel = riverLevelAt(city.seed, city.tick);
+  let drop = riverDropAt(city.seed, city.tick);
+  // A flood is the river coming up over its walls: the surface surges to the
+  // lip while the disaster runs, on top of the flooded-ground sheet below.
+  for (const event of city.disasters.events) {
+    if (event.kind === 'flood' && isDisasterActive(city, event)) {
+      riverLevel = 4;
+      drop = 0;
+      break;
+    }
+  }
   const originX = -b.minX;
   const originY = -b.minY;
   const floodedBuildings = new Set<number>();
@@ -931,7 +941,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     weatherRevision: weather.revision,
     shelterRevision: city.shelters.revision,
     occasionRevision: city.occasions.revision,
-    riverLevel,
+    riverLevel: drop * 8 + riverLevel,
     ground, props, idBuffer, idCtx, statics, originX, originY,
   };
 }

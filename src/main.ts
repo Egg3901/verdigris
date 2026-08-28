@@ -9,6 +9,7 @@ import type { City } from './sim/city';
 import { MAX_TICKS_PER_FRAME, MIN_PER_DAY, SPEEDS, minuteOfDay } from './sim/clock';
 import { buildScene, refreshBuilding, debugSkin } from './render/scene';
 import { renderPalette, variantFor } from './render/palette';
+import { applyDitherVeil } from './render/raster';
 import type { Scene } from './render/scene';
 import { drawFrame } from './render/frame';
 import type { Selection } from './render/frame';
@@ -31,7 +32,7 @@ import type { DisasterKind } from './sim/disasters';
 import { startMarketDay } from './sim/occasions';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
 import { weatherAt, forceWeather } from './sim/weather';
-import { riverLevelAt } from './sim/hydrology';
+import { riverLevelAt, riverDropAt } from './sim/hydrology';
 import type { ForcedWeather } from './sim/weather';
 import { activeMatters, declineMatter, pressMatter, recommendedFor } from './sim/matters';
 
@@ -64,6 +65,25 @@ const city: City = newCity(SEED);
   warp(city, Number.isFinite(at) && at > 0 ? at : OPENING_TICK);
 }
 let scene: Scene = buildScene(city);
+// The outgoing lighting band, kept alive through a transition so the two can
+// crossfade by ordered dither instead of the world snapping to the new light.
+let prevScene: Scene | null = null;
+let offA: HTMLCanvasElement | null = null;
+let offB: HTMLCanvasElement | null = null;
+
+/** Minutes a lighting band takes to dissolve in. Pure in (seed, tick). */
+const BAND_DISSOLVE_MIN = 20;
+
+function bandTransition(): { from: ReturnType<typeof variantFor>; progress: number } | null {
+  const nowVar = variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind);
+  for (let back = 1; back <= BAND_DISSOLVE_MIN; back++) {
+    const t = city.tick - back;
+    if (t < 0) break;
+    const v = variantFor(minuteOfDay(t), weatherAt(city.seed, t).kind);
+    if (v !== nowVar) return { from: v, progress: (back + fracMin()) / (BAND_DISSOLVE_MIN + 1) };
+  }
+  return null;
+}
 
 let viewW = window.innerWidth;
 let viewH = window.innerHeight;
@@ -560,14 +580,42 @@ function loop(now: number): void {
     || scene.civicVisitRevision !== city.civicVisits.revision
     || scene.disasterRevision !== city.disasters.revision
     || scene.weatherRevision !== weatherAt(city.seed, city.tick).revision
-    || scene.riverLevel !== riverLevelAt(city.seed, city.tick)
+    || scene.riverLevel !== riverDropAt(city.seed, city.tick) * 8 + riverLevelAt(city.seed, city.tick)
     || scene.shelterRevision !== city.shelters.revision
     || scene.occasionRevision !== city.occasions.revision) {
     buntingShown = buntingNow;
     scene = buildScene(city, wantVariant);
   }
 
-  drawFrame(ctx as CanvasRenderingContext2D, city, scene, cam, viewW, viewH, fracMin(), sel);
+  const trans = bandTransition();
+  if (trans && trans.from !== scene.variant) {
+    if (!prevScene || prevScene.variant !== trans.from
+      || prevScene.riverLevel !== scene.riverLevel
+      || prevScene.weatherRevision !== scene.weatherRevision
+      || prevScene.disasterRevision !== scene.disasterRevision
+      || prevScene.worksRevision !== scene.worksRevision) {
+      prevScene = buildScene(city, trans.from);
+    }
+    if (!offA) { offA = document.createElement('canvas'); offB = document.createElement('canvas'); }
+    if (offA.width !== canvas.width || offA.height !== canvas.height) {
+      offA.width = canvas.width; offA.height = canvas.height;
+      offB!.width = canvas.width; offB!.height = canvas.height;
+    }
+    const actx = offA.getContext('2d') as CanvasRenderingContext2D;
+    const bctx = offB!.getContext('2d') as CanvasRenderingContext2D;
+    const f = fracMin();
+    drawFrame(actx, city, prevScene, cam, viewW, viewH, f, sel);
+    drawFrame(bctx, city, scene, cam, viewW, viewH, f, sel);
+    applyDitherVeil(bctx, canvas.width, canvas.height, Math.round(trans.progress * 16));
+    const c = ctx as CanvasRenderingContext2D;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.imageSmoothingEnabled = false;
+    c.drawImage(offA, 0, 0);
+    c.drawImage(offB!, 0, 0);
+  } else {
+    prevScene = null;
+    drawFrame(ctx as CanvasRenderingContext2D, city, scene, cam, viewW, viewH, fracMin(), sel);
+  }
   shell.update(city, sel, cam.zoom, speedIndex, city.budgetLeft);
   shell.nudgeReasons(nudgeReasons());
   requestAnimationFrame(loop);

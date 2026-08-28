@@ -8,19 +8,25 @@ import { mix, Stream } from './rng';
 
 export const RIVER_LOOKBACK_WATCHES = 28;
 
+/** A river has base flow: springs and the upstream catchment keep it alive
+ *  through ordinary dry weather. Droughts need a sustained deficit. */
+const BASE_FLOW = 40;
+
 const RIVER_SURFACE_DROP: readonly number[] = [10, 8, 6, 4, 2];
 
-export function riverLevelAt(seed: number, tick: number): number {
+function wetAt(seed: number, tick: number): number {
   const currentWatch = Math.floor(Math.max(0, tick) / WEATHER_WATCH_MINUTES);
   let wet = 0;
   for (let age = 0; age < RIVER_LOOKBACK_WATCHES; age++) {
     const sampleTick = tick - age * WEATHER_WATCH_MINUTES;
-    let precipitation = 0;
-    if (sampleTick >= 0) {
-      precipitation = weatherAt(seed, sampleTick).precipitation;
-    }
-    wet += (RIVER_LOOKBACK_WATCHES - age) * precipitation;
+    // Prehistory: before tick 0, borrow the seed's own weather a lookback
+    // ahead, so the district opens with a real river rather than an empty
+    // rain ledger reading as a drought.
+    const at = sampleTick >= 0 ? sampleTick
+      : sampleTick + RIVER_LOOKBACK_WATCHES * WEATHER_WATCH_MINUTES;
+    wet += (RIVER_LOOKBACK_WATCHES - age) * weatherAt(seed, at).precipitation;
   }
+  wet += BASE_FLOW;
 
   const pressureSystem = Math.floor(currentWatch / 8);
   const dry = mix(seed, Stream.Weather, pressureSystem, 7) % 100;
@@ -34,15 +40,31 @@ export function riverLevelAt(seed: number, tick: number): number {
   if (pinned.kind === 'drought' && tick >= pinned.since) {
     wet -= Math.floor((tick - pinned.since) * 2 / 3);
   }
+  return wet;
+}
 
+export function riverLevelAt(seed: number, tick: number): number {
+  const wet = wetAt(seed, tick);
   let level: number;
-  if (wet <= 55) level = 0;
-  else if (wet <= 95) level = 1;
-  else if (wet <= 200) level = 2;
-  else if (wet <= 260) level = 3;
+  if (wet <= 95) level = 0;
+  else if (wet <= 135) level = 1;
+  else if (wet <= 240) level = 2;
+  else if (wet <= 300) level = 3;
   else level = 4;
 
   return Math.max(0, Math.min(4, level));
+}
+
+/**
+ * The surface height in pixels below the bank lip, at pixel resolution rather
+ * than in five steps, so the river rises and falls a pixel at a time as the
+ * rain ledger moves instead of jumping a band per rebake.
+ */
+export function riverDropAt(seed: number, tick: number): number {
+  const wet = wetAt(seed, tick);
+  if (wet <= 95) return 10;
+  if (wet >= 300) return 2;
+  return Math.round(10 - (8 * (wet - 95)) / 205);
 }
 
 export function riverSurfaceDrop(level: number): number {
