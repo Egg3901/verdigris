@@ -43,7 +43,14 @@ function centreOf(block: Block): { x: number; y: number } {
 
 function anchorY(river: RiverPlan, x: number, polite: boolean, gap: number): number {
   const ix = clamp(Math.round(x), 0, river.centre.length - 1);
-  return river.centre[ix] + (polite ? -gap : gap);
+  const cy = river.centre[ix];
+  const h = river.centre.length;
+  // An archetype river hugging one edge leaves that bank thin. Clamp the gap to
+  // the depth of the bank that actually exists, or the anchor lands in the sea
+  // and the ward seeds onto a nonsense block.
+  const depth = polite ? cy : h - cy;
+  const used = Math.min(gap, Math.max(3, depth - 9));
+  return cy + (polite ? -used : used);
 }
 
 function score(block: Block, ward: Ward, river: RiverPlan): number {
@@ -224,6 +231,91 @@ export function assignWards(
       bestBlock = block;
     }
     claim(bestWard, bestBlock);
+  }
+
+  // Rebalance. An archetype that pushes the river toward one edge leaves the
+  // thin bank short of blocks, and a ward there can starve below the three the
+  // validator demands. Starving wards take an adjacent block from a rich
+  // neighbour, but only when the donor keeps a connected remainder.
+  const donorStaysConnected = (donor: Ward, removed: number): boolean => {
+    const rest = donor.blockIds.filter((id) => id !== removed);
+    if (rest.length <= 1) return true;
+    const wanted = new Set(rest);
+    const reached = new Set<number>([rest[0]]);
+    const queue = [rest[0]];
+    for (let head = 0; head < queue.length; head++) {
+      for (const other of adjacency[queue[head]]) {
+        if (!wanted.has(other) || reached.has(other)) continue;
+        reached.add(other);
+        queue.push(other);
+      }
+    }
+    return reached.size === wanted.size;
+  };
+  const relocated = new Set<number>();
+  for (let round = 0; round < 12; round++) {
+    let moved = false;
+    for (const starving of wards) {
+      if (starving.blockIds.length >= 3) continue;
+      let take = -1;
+      let takeScore = Infinity;
+      for (const id of starving.blockIds) {
+        for (const other of adjacency[id]) {
+          const donor = wards[blocks[other].wardId];
+          if (donor === starving || donor.blockIds.length <= 3) continue;
+          if (!donorStaysConnected(donor, other)) continue;
+          const s = score(blocks[other], starving, river);
+          if (s < takeScore) { takeScore = s; take = other; }
+        }
+      }
+      if (take < 0) {
+        // Stuck: the ward sits in an isolated block cluster too small to feed
+        // it. Donate its blocks to adjacent wards and re-seed it inside the
+        // nearest ward rich enough to spare three.
+        if (relocated.has(starving.id)) continue;
+        relocated.add(starving.id);
+        for (const id of [...starving.blockIds]) {
+          let to: Ward | undefined;
+          let toScore = Infinity;
+          for (const other of adjacency[id]) {
+            const w = wards[blocks[other].wardId];
+            if (w === starving) continue;
+            const s = score(blocks[id], w, river);
+            if (s < toScore) { toScore = s; to = w; }
+          }
+          if (!to) to = wards.reduce((best, w) => w !== starving
+            && score(blocks[id], w, river) < score(blocks[id], best, river) ? w : best,
+            wards.find((w) => w !== starving) as Ward);
+          blocks[id].wardId = to.id;
+          to.blockIds.push(id);
+        }
+        starving.blockIds = [];
+        let seedBlock = -1;
+        let seedScore = Infinity;
+        for (const donor of wards) {
+          if (donor === starving || donor.blockIds.length < 6) continue;
+          for (const id of donor.blockIds) {
+            if (!donorStaysConnected(donor, id)) continue;
+            const s = score(blocks[id], starving, river);
+            if (s < seedScore) { seedScore = s; seedBlock = id; }
+          }
+        }
+        if (seedBlock >= 0) {
+          const donor = wards[blocks[seedBlock].wardId];
+          donor.blockIds = donor.blockIds.filter((id) => id !== seedBlock);
+          blocks[seedBlock].wardId = starving.id;
+          starving.blockIds.push(seedBlock);
+          moved = true;
+        }
+        continue;
+      }
+      const donor = wards[blocks[take].wardId];
+      donor.blockIds = donor.blockIds.filter((id) => id !== take);
+      blocks[take].wardId = starving.id;
+      starving.blockIds.push(take);
+      moved = true;
+    }
+    if (!moved) break;
   }
 
   for (const block of blocks) {
