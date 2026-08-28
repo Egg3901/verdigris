@@ -240,11 +240,35 @@ export function drawDome(
   fillEllipseHard(ctx, c.x, c.y - drum - dh * 0.58, rx * 0.72, ry * 0.62, shadeHex(body, 0.06));
   fillEllipseHard(ctx, c.x - 1, c.y - drum - dh * 0.58, rx * 0.38, ry * 0.4, skin.roofRidge);
   fillEllipseHard(ctx, c.x, c.y - drum - dh * 0.82, rx * 0.38, ry * 0.32, shade);
-  // Lantern and gold needle.
+
+  // Ribs down the dome, from the lantern base to the springing line. These are
+  // most of what says "dome" rather than "green blob" at this size.
+  const crown = { x: c.x, y: c.y - drum - dh * 0.8 };
+  for (const k of [-1, -0.5, 0, 0.5, 1]) {
+    const rim = { x: c.x + rx * k, y: c.y - drum - ry * (1 - Math.abs(k)) * 0.3 };
+    lineHard(ctx, crown, rim, shadeHex(k <= 0 ? shadeHex(body, 0.1) : shade, -0.05));
+  }
+  // A gold band at the springing, the one place the civic gilding is spent.
+  const gild = skin.trim ?? PAL.gold;
+  fillEllipseHard(ctx, c.x, c.y - drum, rx, ry, gild);
+  fillEllipseHard(ctx, c.x, c.y - drum + 1, rx - 1, ry - 1, shadeHex(gild, -0.1));
+  fillEllipseHard(ctx, c.x, c.y - drum, rx - 2, ry - 1, shade);
+
+  // A little arcade of windows around the drum, warm when lit.
+  const drumGlass = skin.windowLit ? PAL.litWindow : PAL.darkWindow;
+  ctx.fillStyle = drumGlass;
+  for (const k of [-0.62, -0.2, 0.2, 0.62]) {
+    const wx = Math.round(c.x + rx * k);
+    ctx.fillRect(wx, Math.round(c.y - drum + 1), 1, Math.max(2, drum - 1));
+  }
+
+  // Lantern, gold needle, and a small flag: the postcard finish.
   ctx.fillStyle = skin.wallLit;
   ctx.fillRect(Math.round(c.x) - 2, Math.round(c.y - drum - dh) - 1, 4, 5);
-  ctx.fillStyle = skin.trim ?? PAL.gold;
-  ctx.fillRect(Math.round(c.x), Math.round(c.y - drum - dh) - 6, 1, 5);
+  ctx.fillStyle = gild;
+  ctx.fillRect(Math.round(c.x), Math.round(c.y - drum - dh) - 8, 1, 7);
+  ctx.fillStyle = PAL.buntRed;
+  ctx.fillRect(Math.round(c.x) + 1, Math.round(c.y - drum - dh) - 8, 3, 2);
 }
 
 /** A glazed lantern on the ridge: exchange, school. */
@@ -278,6 +302,24 @@ export function drawCupola(
     { x: b.x, y: b.y - h - 5 },
   ], skin.roofLit);
   lineHard(ctx, { x: b.x - w - 1, y: b.y - h }, { x: b.x + w + 1, y: b.y - h }, skin.outline);
+
+  // A clock face on the lantern: the exchange and the school keep time for the
+  // ward. Pale dial, gilt rim, two hands.
+  const cx = Math.round(b.x - 1);
+  const cy = Math.round(b.y - h + 4);
+  fillEllipseHard(ctx, cx, cy, 3, 3, skin.trim ?? PAL.gold);
+  fillEllipseHard(ctx, cx, cy, 2, 2, PAL.buntCream);
+  ctx.fillStyle = PAL.soot0;
+  ctx.fillRect(cx, cy - 2, 1, 2);
+  ctx.fillRect(cx, cy, 2, 1);
+
+  // A weathervane on the peak.
+  const vane = skin.trim ?? PAL.brass2;
+  ctx.fillStyle = vane;
+  ctx.fillRect(Math.round(b.x), Math.round(b.y - h - 5) - 4, 1, 4);
+  ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y - h - 5) - 4, 3, 1);
+  ctx.fillStyle = PAL.gold;
+  ctx.fillRect(Math.round(b.x) + 1, Math.round(b.y - h - 5) - 5, 2, 1);
 }
 
 /** Two gasometers beside a low engine house: the gasworks postcard. */
@@ -305,14 +347,36 @@ export function drawGasometers(
     ], body);
     fillEllipseHard(ctx, cx, cy, rx, ry, shadeHex(body, -0.1));
     fillEllipseHard(ctx, cx, cy - h, rx, ry, shadeHex(lit, 0.08));
+    // A bright crown highlight, so the drum reads as a filled cylinder.
+    fillEllipseHard(ctx, cx - 1, cy - h, rx * 0.5, ry * 0.6, shadeHex(lit, 0.16));
     for (let i = 1; i < 4; i++) {
       const y = cy - (h * i) / 4;
       lineHard(ctx, { x: cx - rx, y }, { x: cx + rx, y }, ring);
     }
-    // Uprights.
-    lineHard(ctx, { x: cx - rx, y: cy }, { x: cx - rx, y: cy - h }, iron);
-    lineHard(ctx, { x: cx + rx, y: cy }, { x: cx + rx, y: cy - h }, iron);
-    lineHard(ctx, { x: cx, y: cy }, { x: cx, y: cy - h }, iron);
+
+    // The guide frame: the iron cage a gasholder rises and falls inside, and the
+    // thing that makes a gasworks a gasworks rather than two oil drums. Standards
+    // stand a little proud of the drum, joined by a top ring above the crown and
+    // one tier of diagonal bracing.
+    const frameH = h + 4;
+    const cols = 5;
+    const standX: number[] = [];
+    for (let i = 0; i < cols; i++) {
+      const x = Math.round(cx - rx + (2 * rx * i) / (cols - 1));
+      standX.push(x);
+      lineHard(ctx, { x, y: cy + 1 }, { x, y: cy - frameH }, i === 0 || i === cols - 1 ? iron : ring);
+    }
+    // Top ring and a lower ring, drawn as flattened ellipses on the frame.
+    fillEllipseHard(ctx, cx, cy - frameH, rx + 1, ry * 0.7, iron);
+    fillEllipseHard(ctx, cx, cy - frameH + 1, rx - 1, ry * 0.6, body);
+    // Diagonal bracing across the top tier of each bay.
+    for (let i = 0; i + 1 < cols; i++) {
+      const a = { x: standX[i], y: cy - frameH + 4 };
+      const b = { x: standX[i + 1], y: cy - frameH + 1 };
+      lineHard(ctx, a, i % 2 === 0 ? { x: b.x, y: b.y } : { x: a.x, y: a.y }, ring);
+      lineHard(ctx, { x: standX[i], y: cy - frameH * 0.5 },
+        { x: standX[i + 1], y: cy - frameH * 0.5 + (i % 2 ? -3 : 3) }, ring);
+    }
   }
 }
 
