@@ -143,13 +143,13 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   const mOrder = mkMeter('Order');
   const mMoney = mkMeter('Money');
 
+  // Powers are free now, so the old daily-allowance tokens are gone. The row
+  // survives only to carry the desk button.
   const budgetRow = el('div', 'budget');
-  const budgetLabel = el('span', undefined, 'ACTIONS');
-  const budgetTokens = el('span');
   const deskBtn = el('button', 'brass', 'DESK') as HTMLButtonElement;
   deskBtn.setAttribute('aria-label', "Open the alderman's desk");
   deskBtn.addEventListener('click', () => toggleDesk());
-  budgetRow.append(budgetLabel, budgetTokens, deskBtn);
+  budgetRow.append(deskBtn);
   title.append(h1, rule, clock, counts, meters, budgetRow);
 
   // Inspector.
@@ -460,8 +460,6 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   let lastKey = '';
   let lastTickerLen = 0;
   let lastInspectorPaint = -1;
-  let prevBudget = -1;
-  let prevBudgetCap = -1;
   let prevZoom = -1;
   let prevSpeed = -1;
 
@@ -505,16 +503,6 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     setMeter(mHappy, 'Happiness', m.happiness);
     setMeter(mOrder, 'Order', m.order);
     setMeter(mMoney, 'Money', m.money);
-
-    if (budget !== prevBudget || city.matters.influenceCap !== prevBudgetCap) {
-      prevBudget = budget;
-      prevBudgetCap = city.matters.influenceCap;
-      budgetTokens.textContent = '';
-      for (let i = 0; i < city.matters.influenceCap; i++) {
-        budgetTokens.append(el('span', i < budget ? 'token' : 'token spent'));
-      }
-      budgetRow.setAttribute('aria-label', `${budget} of ${city.matters.influenceCap} interventions left today`);
-    }
 
     if (zoom !== prevZoom) {
       prevZoom = zoom;

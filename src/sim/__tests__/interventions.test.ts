@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newCity, warp, hashWorld } from '../city';
-import { INTERVENTIONS, canApply, apply, DAILY_BUDGET, forecastIntervention } from '../interventions';
+import { INTERVENTIONS, canApply, apply, forecastIntervention } from '../interventions';
 import { applyPressure, pressureOf } from '../pressures';
 import { serviceAt } from '../networks';
 import type { InterventionKind } from '../types';
@@ -10,17 +10,16 @@ function firstOfKind(c: ReturnType<typeof newCity>, kind: string): number {
 }
 
 describe('interventions', () => {
-  it('spends the daily budget and refuses when it is gone', () => {
+  it('lets the ward boss act freely, with no daily allowance to spend', () => {
     const c = newCity('verdigris');
     warp(c, 600);
-    expect(c.budgetLeft).toBe(DAILY_BUDGET);
-    for (let i = 0; i < DAILY_BUDGET; i++) {
-      expect(apply(c, 'fundBunting', { kind: 'square', id: 0 })
-        || apply(c, 'delayTram', { kind: 'line', id: 0 })
-        || apply(c, 'rumour', { kind: 'soul', id: 0 })).toBe(true);
-    }
-    expect(c.budgetLeft).toBe(0);
-    expect(canApply(c, 'fundBunting', { kind: 'square', id: 0 })).toBe('Nothing left today.');
+    const before = c.budgetLeft;
+    // A power costs nothing from an allowance: budgetLeft does not move, and no
+    // number of acts is ever refused for want of one.
+    expect(apply(c, 'fundBunting', { kind: 'square', id: 0 })).toBe(true);
+    expect(c.budgetLeft).toBe(before);
+    for (let i = 0; i < 5; i++) apply(c, 'fundBunting', { kind: 'square', id: 0 });
+    expect(canApply(c, 'fundBunting', { kind: 'square', id: 0 })).not.toBe('Nothing left today.');
   });
 
   it('cutting a gas main removes service from real buildings downstream', () => {

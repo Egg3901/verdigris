@@ -417,7 +417,8 @@ function neighbourList(city: City, id: number): number[] {
 }
 
 export function canApply(city: City, kind: InterventionKind, target: Target): string | null {
-  if (city.budgetLeft <= 0) return 'Nothing left today.';
+  // No daily allowance gates a ward boss's powers. The only cost of an act is
+  // what it does to happiness, order and the purse, which the meters report.
   const def = INTERVENTIONS[kind];
   if (!def.targets.includes(target.kind)) return 'Not that sort of thing.';
   return def.can(city, target);
@@ -508,7 +509,6 @@ export function apply(city: City, kind: InterventionKind, target: Target): boole
   const def = INTERVENTIONS[kind];
   const traced = def.heat > 55;
   city.nudges.push({ tick: city.tick, kind, target, exposure: exposureOf(kind), traced });
-  city.budgetLeft--;
   const text = def.apply(city, target);
   noteMatterResponse(city, kind, target);
   applyPressure(city.press, 'suspicion', def.heat, 'intervention', target.id, def.label.toLowerCase(), city.tick);
