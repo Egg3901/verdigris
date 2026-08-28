@@ -479,6 +479,57 @@ function bakeRopeCoil(variant: Variant): HTMLCanvasElement {
   return c;
 }
 
+/**
+ * A pneumatic post pillar: the one piece of the buried post network that stands
+ * on the street. A verdigris shaft with a brass collar and a dark send slot,
+ * on the polite and mercantile streets where the service actually runs. The
+ * network existed only as prose and a map overlay before this.
+ */
+function bakePostPillar(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 8; c.height = 16;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  ctx.fillStyle = g(PAL.soot1);
+  ctx.fillRect(1, 13, 6, 2);
+  ctx.fillStyle = g(PAL.verd1);
+  ctx.fillRect(2, 4, 4, 9);
+  ctx.fillStyle = g(PAL.verd2);
+  ctx.fillRect(2, 4, 1, 9);
+  ctx.fillStyle = g(PAL.brass2);
+  ctx.fillRect(2, 3, 4, 1);
+  ctx.fillStyle = g(PAL.verd1);
+  ctx.fillRect(3, 1, 2, 2);
+  ctx.fillStyle = g(PAL.soot0);
+  ctx.fillRect(3, 6, 2, 1);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** A stack of shipping crates, stencilled, for the wharves and yards. */
+function bakeCrates(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 15; c.height = 13;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const wood = [PAL.wood2, PAL.thatch1][salt % 2];
+  ctx.fillStyle = g(wood);
+  ctx.fillRect(1, 6, 7, 7);
+  ctx.fillRect(8, 8, 6, 5);
+  ctx.fillRect(3, 1, 6, 5);
+  ctx.fillStyle = g(shadeHex(wood, -0.2));
+  ctx.fillRect(1, 6, 7, 1);
+  ctx.fillRect(8, 8, 6, 1);
+  ctx.fillRect(3, 1, 6, 1);
+  ctx.fillRect(4, 6, 1, 7);
+  ctx.fillRect(11, 9, 1, 4);
+  // The stencil mark: one dark glyph, which is all a shipping mark is at 3px.
+  ctx.fillStyle = g(PAL.soot1);
+  ctx.fillRect(5, 3, 2, 2);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
 function bakeBench(variant: Variant): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = 16; c.height = 13;
@@ -518,6 +569,8 @@ export function buildStreetProps(
   const washTub = bakeWashTub(variant);
   const ropeCoil = bakeRopeCoil(variant);
   const bench = bakeBench(variant);
+  const postPillar = bakePostPillar(variant);
+  const crates = [0, 1].map((s) => bakeCrates(s, variant));
 
   for (let ty = 0; ty < district.height; ty++) {
     for (let tx = 0; tx < district.width; tx++) {
@@ -604,6 +657,19 @@ export function buildStreetProps(
       }
       if ((t === Tile.Street || t === Tile.Embankment) && ward === 'garden' && roll >= 36 && roll < 40) {
         push(urn, 5, 13);
+        continue;
+      }
+      // The pneumatic post, above ground: a pillar every few polite streets.
+      if (t === Tile.Street && (ward === 'civic' || ward === 'merchant' || ward === 'garden')
+        && roll >= 40 && roll < 42) {
+        push(postPillar, 4, 15);
+        continue;
+      }
+      // Crate stacks where goods actually move: wharves, works yards, and the
+      // streets outside the warehouses.
+      if ((t === Tile.Wharf || t === Tile.Yard || t === Tile.Street)
+        && (ward === 'quayside' || ward === 'works') && roll >= 42 && roll < 47) {
+        push(crates[mix(seed, 85, tx, ty) % 2], 7, 12);
       }
     }
   }

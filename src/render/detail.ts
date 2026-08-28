@@ -462,6 +462,58 @@ export function drawSootStreaks(
 }
 
 /**
+ * Verdigris weeping from the brass.
+ *
+ * The game is named for this: rain crosses a gilded cornice and carries copper
+ * salts down the stone beneath it. Two or three short green drips under the eave
+ * line, on the buildings proud enough to carry trim. Civic pride, oxidising.
+ */
+export function drawVerdigrisStreaks(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, salt: number,
+): void {
+  if (f.span < 8) return;
+  const n = 2 + (salt % 2);
+  for (let i = 0; i < n; i++) {
+    const t = 0.14 + ((salt >>> (2 + i)) % 68) / 100;
+    const len = 2 + ((salt + i * 7) % 4);
+    lineHard(ctx, f.at(t, 1), f.at(t, Math.min(wallH - 3, 1 + len)),
+      i % 2 === 0 ? PAL.verd2 : PAL.verd1);
+  }
+}
+
+/**
+ * Pasted bills at street level: playbills, notices, quack remedies. The working
+ * bank's walls are its noticeboard, and a bare brick terrace with nothing stuck
+ * to it reads as a film set. One or two small papers, low on the wall where a
+ * bill sticker can reach, each with an ink masthead line.
+ */
+export function drawWallPosters(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, salt: number,
+): void {
+  if (f.span < 10) return;
+  const colours = [PAL.buntCream, PAL.parch2, PAL.buntRedHi, PAL.buntBlueHi];
+  const n = 1 + (salt % 2);
+  for (let i = 0; i < n; i++) {
+    // Keep clear of the doorway band around t 0.28 to 0.45, where the door and
+    // its step are drawn later and would truncate the paper oddly.
+    const raw = ((salt >>> (3 + i * 2)) % 55) / 100;
+    const t = raw < 0.14 ? 0.5 + raw : 0.08 + raw * 0.1 + (i === 1 ? 0.72 : 0);
+    const top = Math.max(4, wallH - 9 - ((salt >>> i) % 3));
+    const p = f.at(Math.min(0.9, t), top);
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    const h = 4 + ((salt + i) % 2);
+    ctx.fillStyle = colours[(salt + i * 5) % colours.length];
+    ctx.fillRect(x, y, 3, h);
+    // The masthead: one ink line, which is all the type a bill carries at this
+    // scale. A second bill sometimes hangs peeling by a corner.
+    ctx.fillStyle = PAL.ink;
+    ctx.fillRect(x, y + 1, 3, 1);
+    if (((salt >>> 4) + i) % 3 === 0) ctx.fillRect(x + 2, y + h - 1, 1, 1);
+  }
+}
+
+/**
  * Local scars say more about a facade than another overall shade ever could.
  * These marks sit below doors and windows, so the address keeps its use as well
  * as its condition.

@@ -23,6 +23,7 @@ import {
   drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
   drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
+  drawVerdigrisStreaks, drawWallPosters,
 } from './detail';
 import type { DetailSkin, WallMaterial, WindowLight } from './detail';
 import { drawFinial, drawMooringMast } from './landmarks';
@@ -229,6 +230,11 @@ export function drawHouse(
     // and it is deliberately on the buildings whose fabric is worst.
     lineHard(ctx, eave.W, eave.S, skin.trim);
     lineHard(ctx, eave.S, eave.E, skin.trim);
+    // And the brass pays for itself: rain over gilded trim weeps verdigris down
+    // the wall below. Half the trimmed buildings carry it; a worn facade always.
+    if ((spec.facadeWear ?? 0) > 0 || ((spec.salt ?? 0) & 1) === 0) {
+      drawVerdigrisStreaks(ctx, lit, wallH, spec.salt ?? 0);
+    }
   }
   if (spec.railings) {
     drawEaveRail(ctx, eave.W, eave.S, spec.polite ? PAL.soot2 : PAL.soot1);
@@ -645,6 +651,15 @@ function drawMaterials(
     }
     if (!spec.polite) drawSootStreaks(ctx, f, wallH, shadeHex(PAL.soot1, 0), salt ?? 0);
     if (spec.facadeWear) drawFacadePatina(ctx, f, wallH, material, spec.facadeWear, spec.drainState ?? 0, salt ?? 0, ds);
+    // Pasted bills on the working bank's brick and timber, lit face only, and
+    // never over a shopfront, which carries its own signage. Drawn here so the
+    // door and windows, drawn later, sit over the paper the way real joinery
+    // interrupts real flyposting.
+    if (!spec.polite && f.lit && !spec.shopfront && !spec.boarded
+      && (material === 'brick' || material === 'timber' || material === 'wood')
+      && ((salt ?? 0) % 3) === 0) {
+      drawWallPosters(ctx, f, wallH, salt ?? 0);
+    }
   }
 }
 
@@ -1079,6 +1094,13 @@ function chimneys(ctx: CanvasRenderingContext2D, r0: Pt, r1: Pt, spec: HouseSpec
     // that turns a brick stub into a chimney. The lit pot keeps a bright edge.
     ctx.fillStyle = spec.skin.outline;
     ctx.fillRect(x - 1, y - h - 1, 3, 1);
+    // A third of the stacks are soot-ringed just under the cap: the flue that
+    // draws hard leaves its mark, and the mark breaks up a skyline of identical
+    // brick stubs.
+    if (((i + ((spec.salt ?? 0) >>> 2)) % 3) === 0) {
+      ctx.fillStyle = PAL.soot1;
+      ctx.fillRect(x - 1, y - h + 1, 3, 1);
+    }
     // Terracotta pots on the cap: one or two, the London-brown skyline detail
     // that turns a brick stub into a chimney. Sit clear of the flaunching line.
     const pots = 1 + (((i + (spec.salt ?? 0)) >>> 1) & 1);
