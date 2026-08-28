@@ -28,6 +28,7 @@ import type { Desk } from './desk';
 import type { InterventionKind, Target } from '../sim/types';
 import { INTERVENTIONS } from '../sim/interventions';
 import type { InterventionForecast } from '../sim/interventions';
+import { wardMetrics, metricWord } from '../sim/metrics';
 import { civicVisitSummary } from '../sim/civic-visits';
 
 interface NudgeDecision {
@@ -122,14 +123,34 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   const clock = el('div', 'clock');
   clock.setAttribute('aria-hidden', 'true');
   const counts = el('div', 'counts');
+
+  // The scoreboard. Three things the ward is balanced on, read live off the sim.
+  const meters = el('div', 'meters');
+  meters.setAttribute('role', 'group');
+  meters.setAttribute('aria-label', 'How the ward stands');
+  const mkMeter = (name: string) => {
+    const row = el('div', 'meter');
+    const label = el('span', 'meter-label', name);
+    const track = el('div', 'meter-track');
+    const fill = el('div', 'meter-fill');
+    track.append(fill);
+    const val = el('span', 'meter-val');
+    row.append(label, track, val);
+    meters.append(row);
+    return { row, fill, val };
+  };
+  const mHappy = mkMeter('Happiness');
+  const mOrder = mkMeter('Order');
+  const mMoney = mkMeter('Money');
+
   const budgetRow = el('div', 'budget');
-  const budgetLabel = el('span', undefined, 'INFLUENCE');
+  const budgetLabel = el('span', undefined, 'ACTIONS');
   const budgetTokens = el('span');
   const deskBtn = el('button', 'brass', 'DESK') as HTMLButtonElement;
   deskBtn.setAttribute('aria-label', "Open the alderman's desk");
   deskBtn.addEventListener('click', () => toggleDesk());
   budgetRow.append(budgetLabel, budgetTokens, deskBtn);
-  title.append(h1, rule, clock, counts, budgetRow);
+  title.append(h1, rule, clock, counts, meters, budgetRow);
 
   // Inspector.
   const inspector = el('div', 'plate');
@@ -274,7 +295,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   // useful than not knowing it exists. The refusal text is the teaching.
   const nudges = el('div', 'plate');
   nudges.id = 'nudges';
-  const nudgeHead = el('div', 'heading', 'USE INFLUENCE');
+  const nudgeHead = el('div', 'heading', 'USE YOUR POWERS');
   const nudgeHint = el('div', 'hint');
   nudges.append(nudgeHead, nudgeHint);
   const nudgeList: { verb: Verb; node: HTMLButtonElement; why: HTMLElement }[] = [];
@@ -325,12 +346,13 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   helpClose.setAttribute('aria-label', 'Close');
   helpClose.addEventListener('click', () => toggleHelp());
   const helpIntro = el('p', 'prose');
-  helpIntro.textContent = "You are Verdigris's alderman. The city brings matters to your desk; "
-    + 'you inspect the people and places involved, then spend a few measures of influence each day. '
-    + 'A promise is kept only when the city itself produces the result.';
+  helpIntro.textContent = 'You run this ward of Verdigris. Keep three things in balance: how happy '
+    + 'the district is, how orderly, and the money in the public purse. Every move you make shifts '
+    + 'them, for better or worse. Reward the people or lean on them, build the place up or let it rot. '
+    + 'Nothing is judged by the button you press, only by what actually happens on the ground.';
   help.append(helpClose, el('div', 'name', 'VERDIGRIS'), helpIntro);
   const groups: [string, string][] = [
-    ['camera', 'LOOKING'], ['time', 'TIME'], ['verbs', 'VERBS'], ['nudges', 'INFLUENCE'],
+    ['camera', 'LOOK'], ['time', 'TIME'], ['verbs', 'INSPECT'], ['nudges', 'POWERS'],
   ];
   for (const [g, label] of groups) {
     help.append(el('div', 'heading', label));
@@ -376,21 +398,21 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   firstRun.hidden = seen;
   firstRun.append(el('div', 'name', 'VERDIGRIS'));
   const fr = el('p', 'prose');
-  fr.textContent = "You are Verdigris's alderman. Hundreds of people live in this district, "
-    + 'and some of their troubles will reach your desk.';
+  fr.textContent = 'You run this ward of Verdigris. Hundreds of people live here, and you hold '
+    + 'real power over how they live.';
   firstRun.append(fr);
   const list = el('ul');
   for (const line of [
-    'Read why a matter exists, then inspect the named people and place.',
-    'Spend three measures of influence a day, or decline and keep them for worse trouble.',
-    'The ledger judges what actually happened, not which button you pressed.',
+    'Your job is to balance three things: Happiness, Order, and Money, shown top left.',
+    'Click a building or a person, then use your powers: help them, or lean on them. Every act moves the three.',
+    'Build your perfect district, or squeeze it for all it is worth. What happens on the ground is what counts.',
   ]) {
     const li = el('li');
     li.append(el('span', undefined, line));
     list.append(li);
   }
   firstRun.append(list);
-  const frGo = el('button', 'brass', 'TAKE THE CHAIR') as HTMLButtonElement;
+  const frGo = el('button', 'brass', 'TAKE OFFICE') as HTMLButtonElement;
   frGo.addEventListener('click', () => {
     firstRun.hidden = true;
     try { localStorage.setItem('verdigris.seen', '1'); } catch { /* private mode */ }
@@ -471,6 +493,18 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     clock.textContent = `${formatClock(city.tick)} · ${phaseLabel(phase)} · ${weatherLabel(weather)}`;
     counts.textContent = `${city.buildings.length} ROOFS · ${city.souls.length} SOULS`;
     readout.textContent = `${formatClock(city.tick)} · ${phaseLabel(phase)} · ${weatherLabel(weather)}`;
+
+    const m = wardMetrics(city);
+    const setMeter = (meter: { fill: HTMLElement; val: HTMLElement; row: HTMLElement }, name: string, v: number) => {
+      meter.fill.style.width = `${v / 10}%`;
+      // Green when the ward is holding, amber when strained, red in trouble.
+      meter.fill.style.background = v >= 640 ? 'var(--verd2)' : v >= 440 ? '#c9942c' : '#a8352f';
+      meter.val.textContent = metricWord(v);
+      meter.row.setAttribute('aria-label', `${name}: ${metricWord(v)}, ${Math.round(v / 10)} out of 100`);
+    };
+    setMeter(mHappy, 'Happiness', m.happiness);
+    setMeter(mOrder, 'Order', m.order);
+    setMeter(mMoney, 'Money', m.money);
 
     if (budget !== prevBudget || city.matters.influenceCap !== prevBudgetCap) {
       prevBudget = budget;
@@ -634,8 +668,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     }
     const recommended = [...reasons.values()].some((item) => item.recommended);
     nudgeHint.textContent = recommended
-      ? 'MATTER IN VIEW · marked measures answer this petition.'
-      : needsTarget ? 'Some of these need a target. Tap a roof, then a name inside it.' : '';
+      ? 'Marked powers deal with the matter you have open.'
+      : needsTarget ? 'Most powers need a target. Click a building, or a person inside it.' : '';
   };
 
   return {

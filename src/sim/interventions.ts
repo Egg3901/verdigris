@@ -114,7 +114,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
 
   cutGas: {
     kind: 'cutGas',
-    label: 'Cut a gas main',
+    label: 'Cut off the gas',
     blurb: 'Break one segment. Whatever is downstream of it goes dark at dusk.',
     heat: 70,
     targets: ['building'],
@@ -174,7 +174,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
 
   tipOff: {
     kind: 'tipOff',
-    label: 'Tip off the constabulary',
+    label: 'Set the police on them',
     blurb: 'Give them a name. They will act on it within the hour.',
     heat: 60,
     targets: ['soul', 'building'],
@@ -221,7 +221,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
 
   fundStrike: {
     kind: 'fundStrike',
-    label: 'Fund a strike',
+    label: 'Back a strike',
     blurb: 'Pay the workers to stop. The picket closes the gate.',
     heat: 50,
     targets: ['building', 'firm'],
@@ -262,7 +262,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
 
   plantStory: {
     kind: 'plantStory',
-    label: 'Plant a story',
+    label: 'Plant a newspaper story',
     blurb: 'Put an existing rumour in the paper. Everyone who reads will believe it.',
     heat: 45,
     targets: ['claim', 'soul'],
@@ -348,7 +348,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
 
   fundBunting: {
     kind: 'fundBunting',
-    label: 'Fund the bunting',
+    label: 'Put on a celebration',
     blurb: 'Three days of flags over the square. The money comes from somewhere.',
     heat: 5,
     targets: ['square', 'building'],
@@ -367,7 +367,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
 
   fileWorks: {
     kind: 'fileWorks',
-    label: 'File a works case',
+    label: 'Order repairs',
     blurb: 'Put one real defect into the register. The hall may send a crew, or only a plaque.',
     heat: 10,
     targets: ['building'],
@@ -382,7 +382,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
 
   callDeputation: {
     kind: 'callDeputation',
-    label: 'Call a deputation',
+    label: 'Send a delegation',
     blurb: 'Ask the street to carry its filed works case to Civic Hall in person.',
     heat: 25,
     targets: ['building'],
@@ -396,7 +396,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
 
   openShelter: {
     kind: 'openShelter',
-    label: 'Open a storm refuge',
+    label: 'Open a shelter',
     blurb: 'Open a public door in the rain. The vulnerable still have to reach it.',
     heat: 5,
     targets: ['building'],
