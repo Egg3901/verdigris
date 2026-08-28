@@ -6,7 +6,7 @@ import type { City } from '../sim/city';
 import { tramPos } from '../sim/city';
 import { serviceAt } from '../sim/networks';
 import { isRunning } from '../sim/firms';
-import { PAL, gradeHex, shadeHex } from './palette';
+import { PAL, gradeHex, shadeHex, isDarkVariant } from './palette';
 import type { Variant } from './palette';
 import { minuteOfDay } from '../sim/clock';
 import { TILE_W, TILE_H, isoX, isoY, depthKey, worldBounds, LAYER_AGENT, LAYER_OVERHEAD } from './iso';
@@ -258,7 +258,7 @@ export function drawVehicle(ctx: CanvasRenderingContext2D, vehicle: VehicleDraw,
     ], roof);
     ctx.fillStyle = body;
     ctx.fillRect(x - hw + 1, y - 11, hw * 2 - 1, 7);
-    ctx.fillStyle = variant === 'day' ? gradeHex(PAL.darkWindow, variant) : gradeHex(PAL.litWindow, variant, true);
+    ctx.fillStyle = !isDarkVariant(variant) ? gradeHex(PAL.darkWindow, variant) : gradeHex(PAL.litWindow, variant, true);
     for (let i = 0; i < 3; i++) ctx.fillRect(x - hw + 3 + i * 5, y - 9, 3, 3);
     ctx.fillStyle = gradeHex(PAL.soot2, variant);
     ctx.fillRect(x, y - 19, 1, 5);
@@ -374,7 +374,7 @@ export function drawSmoke(
     // through the plume and going out partway up. Only visible against the dusk
     // and night sky, which is when a foundry gate glows anyway. The building is
     // already known to be RUNNING, so a struck mill goes cold in both channels.
-    if (industrial && variant !== 'day') {
+    if (industrial && isDarkVariant(variant)) {
       ctx.fillStyle = gradeHex(PAL.brass3, variant, true);
       for (let i = 0; i < 3; i++) {
         const age = (t * 0.09 + i / 3 + ((mix(city.seed, 86, b.id, i) % 7) / 7)) % 1;
@@ -575,7 +575,7 @@ export function drawBirds(
   ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
   tl: { wx: number; wy: number }, br: { wx: number; wy: number },
 ): number {
-  if (variant !== 'day') return 0;
+  if (isDarkVariant(variant)) return 0;
   const weather = weatherAt(city.seed, city.tick);
   if (weather.precipitation > 0 || weather.kind === 'fog') return 0;
   const t = city.tick + fracMin;
@@ -625,7 +625,7 @@ export function drawDoorGlow(
   ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
   tl: { wx: number; wy: number }, br: { wx: number; wy: number },
 ): number {
-  if (variant === 'day') return 0;
+  if (!isDarkVariant(variant)) return 0;
   const m = (minuteOfDay(city.tick) + fracMin) % 1440;
   const t = city.tick + fracMin;
   const flickFrame = Math.floor(t * 3);

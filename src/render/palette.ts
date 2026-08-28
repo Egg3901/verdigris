@@ -155,8 +155,14 @@ export interface LightGrade {
 
 export const LIGHT: Record<Variant, LightGrade | null> = {
   day: null,
+  dawn: { mul: [0.86, 0.80, 0.88], add: [22, 14, 26], desat: 0.12 },
+  golden: { mul: [1.00, 0.88, 0.70], add: [26, 12, 0], desat: 0.04 },
   dusk: { mul: [0.74, 0.66, 0.74], add: [18, 8, 22], desat: 0.16 },
   night: { mul: [0.30, 0.34, 0.52], add: [6, 9, 20], desat: 0.42 },
+  smallhours: { mul: [0.24, 0.28, 0.46], add: [4, 7, 18], desat: 0.50 },
+  overcastday: { mul: [0.80, 0.82, 0.88], add: [8, 10, 14], desat: 0.22 },
+  gloom: { mul: [0.56, 0.59, 0.70], add: [8, 10, 20], desat: 0.30 },
+  fogpale: { mul: [0.86, 0.86, 0.88], add: [30, 30, 34], desat: 0.38 },
 };
 
 /** Art-directed night colours. The computed tint handles the long tail; these are
@@ -201,13 +207,13 @@ export function gradeColour(key: PaletteKey, variant: Variant): string {
 }
 
 function gradeColourRaw(key: PaletteKey, variant: Variant): string {
-  const override = variant === 'night' ? NIGHT_OVERRIDE[key] : undefined;
+  const override = variant === 'night' || variant === 'smallhours' ? NIGHT_OVERRIDE[key] : undefined;
   if (override) return override;
   const grade = LIGHT[variant];
   if (!grade) return PAL[key];
   let [r, g, b] = hexToRgb(PAL[key]);
   if (EMISSIVE_SET.has(key)) {
-    const lift = variant === 'night' ? 1.18 : 1.08;
+    const lift = variant === 'night' || variant === 'smallhours' ? 1.18 : variant === 'dusk' || variant === 'gloom' ? 1.12 : 1.08;
     return rgbToHex(r * lift, g * lift, b * lift);
   }
   const lum = 0.299 * r + 0.587 * g + 0.114 * b;
@@ -220,9 +226,7 @@ function gradeColourRaw(key: PaletteKey, variant: Variant): string {
 const PALETTE_KEYS = Object.keys(PAL) as PaletteKey[];
 const PALETTE_CACHE = new Map<Variant, readonly string[]>();
 const RGB_BANK_CACHE = new Map<Variant, readonly [number, number, number][]>();
-const QUANT_CACHE: Record<Variant, Map<number, readonly [number, number, number]>> = {
-  day: new Map(), dusk: new Map(), night: new Map(),
-};
+const QUANT_CACHE = new Map<Variant, Map<number, readonly [number, number, number]>>();
 
 /**
  * The finite set a rendered frame may contain.
@@ -262,7 +266,12 @@ export function quantizeWorldRgb(
   r: number, g: number, b: number, variant: Variant,
 ): readonly [number, number, number] {
   const cacheKey = (r << 16) | (g << 8) | b;
-  const known = QUANT_CACHE[variant].get(cacheKey);
+  let innerCache = QUANT_CACHE.get(variant);
+  if (!innerCache) {
+    innerCache = new Map();
+    QUANT_CACHE.set(variant, innerCache);
+  }
+  const known = innerCache.get(cacheKey);
   if (known) return known;
   const bank = rgbBank(variant);
   let best = 0;
@@ -277,7 +286,7 @@ export function quantizeWorldRgb(
     if (distance < bestDistance) { bestDistance = distance; best = i; }
   }
   const picked = bank[best];
-  QUANT_CACHE[variant].set(cacheKey, picked);
+  innerCache.set(cacheKey, picked);
   return picked;
 }
 
@@ -294,7 +303,7 @@ export function gradeHex(hex: string, variant: Variant, emissive = false): strin
   if (!grade) return quantizeWorldColour(hex, variant);
   let [r, g, b] = hexToRgb(hex);
   if (emissive) {
-    const lift = variant === 'night' ? 1.18 : 1.08;
+    const lift = variant === 'night' || variant === 'smallhours' ? 1.18 : variant === 'dusk' || variant === 'gloom' ? 1.12 : 1.08;
     return quantizeWorldColour(rgbToHex(r * lift, g * lift, b * lift), variant);
   }
   const lum = 0.299 * r + 0.587 * g + 0.114 * b;
@@ -307,14 +316,28 @@ export function gradeHex(hex: string, variant: Variant, emissive = false): strin
   );
 }
 
-export type Variant = 'day' | 'dusk' | 'night';
+export type Variant = 'day' | 'dawn' | 'golden' | 'dusk' | 'night' | 'smallhours' | 'overcastday' | 'gloom' | 'fogpale';
+
+import type { WeatherKind } from '../sim/weather';
 
 /** Which lighting variant a tick falls in. Dawn borrows the dusk grade: the light
  *  is the same colour temperature going up as coming down. */
-export function variantFor(minuteOfDay: number): Variant {
-  if (minuteOfDay >= 1260 || minuteOfDay < 330) return 'night';
-  if (minuteOfDay >= 1140 || minuteOfDay < 450) return 'dusk';
-  return 'day';
+export function variantFor(minuteOfDay: number, weather?: WeatherKind): Variant {
+  // Time band first, then weather presses on the daylight bands. Night is
+  // already dark enough that weather does not re-grade it.
+  let band: Variant;
+  if (minuteOfDay >= 30 && minuteOfDay < 270) band = 'smallhours';
+  else if (minuteOfDay >= 1260 || minuteOfDay < 330) band = 'night';
+  else if (minuteOfDay < 450) band = 'dawn';
+  else if (minuteOfDay >= 1140) band = 'dusk';
+  else if (minuteOfDay >= 960) band = 'golden';
+  else band = 'day';
+  if (weather && (band === 'day' || band === 'dawn' || band === 'golden')) {
+    if (weather === 'storm') return 'gloom';
+    if (weather === 'fog') return 'fogpale';
+    if (weather === 'overcast' || weather === 'rain') return 'overcastday';
+  }
+  return band;
 }
 
 /**
@@ -336,4 +359,10 @@ export function shadeHex(hex: string, amount: number): string {
   const t = snapped < 0 ? 0 : 255;
   const k = Math.abs(snapped);
   return rgbToHex(r + (t - r) * k, g + (t - g) * k, b + (t - b) * k);
+}
+
+/** Bands dark enough that lamps light, windows glow and bunting goes grey.
+ *  Storm gloom counts: a city this proud lights its lamps against a storm. */
+export function isDarkVariant(variant: Variant): boolean {
+  return variant === 'dusk' || variant === 'night' || variant === 'smallhours' || variant === 'gloom';
 }

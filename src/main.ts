@@ -550,7 +550,7 @@ function loop(now: number): void {
 
   // Rebake when the light changes. Three or four times a game-day, never per
   // frame: the whole point of baking is that the expensive pass is rare.
-  const wantVariant = variantFor(minuteOfDay(city.tick));
+  const wantVariant = variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind);
   const buntingNow = city.buntingUntil > city.tick;
   if (wantVariant !== scene.variant || buntingNow !== buntingShown
     || scene.worksRevision !== city.works.revision

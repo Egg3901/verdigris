@@ -4,7 +4,7 @@
 // unbroken green looks like a placeholder, and a district with no trees on its
 // fringe looks like it was stamped rather than grown.
 import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_STRUCT } from './iso';
-import { PAL, shadeHex, gradeHex } from './palette';
+import { PAL, shadeHex, gradeHex, isDarkVariant } from './palette';
 import type { Variant } from './palette';
 import { mix } from '../sim/rng';
 import { fillEllipseHard, ditherPolyHard, hardenAlpha, fillPolyHard, lineHard, BAYER } from './raster';
@@ -344,13 +344,13 @@ function bakeLamp(variant: Variant, arc: boolean): HTMLCanvasElement {
   // the roofs, because the post is one dark pixel wide and vanishes while the
   // head does not. Five by six, and the frame is brass INK rather than brass, so
   // the lamp reads as a lamp close up and as a dot from above.
-  const glass = variant === 'day' ? g(PAL.darkWindow) : (arc ? PAL.arc1 : PAL.gas2);
+  const glass = !isDarkVariant(variant) ? g(PAL.darkWindow) : (arc ? PAL.arc1 : PAL.gas2);
   const frame = g(arc ? PAL.stone1 : PAL.brassInk);
   ctx.fillStyle = frame;
   ctx.fillRect(2, 4, 5, 6);
   ctx.fillStyle = glass;
   ctx.fillRect(3, 5, 3, 4);
-  if (variant !== 'day') {
+  if (isDarkVariant(variant)) {
     ctx.fillStyle = arc ? PAL.arc0 : PAL.gas1;
     ctx.fillRect(3, 6, 2, 2);
   }

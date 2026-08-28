@@ -166,7 +166,7 @@ export function drawFrame(
 
   // Smoke is atmospheric: it rises above its source and therefore belongs above
   // the depth-sorted street pass.
-  const variant = variantFor(minuteOfDay(city.tick));
+  const variant = variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind);
   // Water on the ground first, then the fog that lies over it, then the smoke
   // that climbs through the fog, then the rain in front of all of it.
   stats.calls += drawFloodFx(ctx, city, fracMin, variant, tl, br);

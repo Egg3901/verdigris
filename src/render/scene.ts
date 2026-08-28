@@ -17,7 +17,7 @@ import { DEFS } from '../sim/buildings';
 import { cellKey, insideIsland } from '../sim/district';
 import { Tile } from '../sim/types';
 import type { TileCode } from '../sim/types';
-import { PAL, shadeHex, hexToRgb, rgbToHex, gradeHex, variantFor } from './palette';
+import { PAL, shadeHex, hexToRgb, rgbToHex, gradeHex, variantFor, isDarkVariant } from './palette';
 import type { Variant } from './palette';
 import { minuteOfDay } from '../sim/clock';
 import { TILE_W, TILE_H, HEAD_ROOM, isoX, isoY, worldBounds, depthKey, LAYER_STRUCT } from './iso';
@@ -337,7 +337,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // so a house lights and empties one room at a time. windowLit here only still
     // drives the landmark glazing (dome drums, cupolas, the winter garden).
     window: PAL.litWindow,
-    windowLit: variant !== 'day',
+    windowLit: isDarkVariant(variant),
     outline: gradeHex(PAL.soot0, variant),
   };
 
@@ -494,7 +494,7 @@ function drawRoadWorks(
   }
   ctx.fillStyle = g(PAL.soot2);
   ctx.fillRect(x + 8, by - 7, 1, 7);
-  ctx.fillStyle = variant === 'day' ? g(PAL.buntRed) : g(PAL.gas2, true);
+  ctx.fillStyle = !isDarkVariant(variant) ? g(PAL.buntRed) : g(PAL.gas2, true);
   ctx.fillRect(x + 7, by - 8, 2, 2);
 }
 
@@ -514,7 +514,7 @@ function ctxOf(c: HTMLCanvasElement, readFrequently = false): CanvasRenderingCon
 
 /** Build everything static. Called at startup and whenever a building's look
  *  changes (peek, fire, boarded windows), never per frame. */
-export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay(city.tick))): Scene {
+export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind)): Scene {
   const b = worldBounds();
   const weather = weatherAt(city.seed, city.tick);
   const originX = -b.minX;
@@ -896,11 +896,11 @@ function depthOf(b: Building): number {
 }
 
 export function debugSkin(city: City, b: Building) {
-  return specFor(city, b, city.district.grime[cellKey(city.district, b.ox, b.oy)], variantFor(minuteOfDay(city.tick)));
+  return specFor(city, b, city.district.grime[cellKey(city.district, b.ox, b.oy)], variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind));
 }
 
 export function flattenBuilding(
-  city: City, b: Building, variant: Variant = variantFor(minuteOfDay(city.tick)),
+  city: City, b: Building, variant: Variant = variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind),
 ): StaticSprite {
   const grime = city.district.grime[cellKey(city.district, b.ox, b.oy)];
   const spec = specFor(city, b, grime, variant);
