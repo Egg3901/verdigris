@@ -638,13 +638,16 @@ function drawMaterials(
   litPts: Pt[], shadePts: Pt[], spec: HouseSpec,
 ): void {
   const { wallH, skin, material, salt } = spec;
-  const mortar = material === 'brick' ? skin.outline : shadeHex(skin.wallShade, -0.4);
+  const industrial = !spec.polite && spec.frontage !== 'civic' && spec.w * spec.d >= 4;
+  const mortar = material === 'brick'
+    ? (industrial ? shadeHex(skin.wallShade, -0.18) : skin.outline)
+    : shadeHex(skin.wallShade, -0.4);
   const ds = detailSkin(spec);
   for (const f of [lit, shade]) {
     if (f.span < 6) continue;
     switch (material) {
       case 'brick':
-        drawBrickFace(ctx, f, wallH, mortar);
+        drawBrickFace(ctx, f, wallH, mortar, industrial);
         // A better brick building dresses its corner in stone. Same quoins the
         // ashlar face carries, on brick they read as the merchant spending money
         // where the street can see it.

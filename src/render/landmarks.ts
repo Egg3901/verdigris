@@ -128,20 +128,32 @@ export function drawMooringMast(
 function drawOneStack(
   ctx: CanvasRenderingContext2D, base: Pt, H: number, bw: number, brick: string,
 ): void {
-  const lit = shadeHex(brick, 0.18);
-  const shade = shadeHex(brick, -0.22);
-  const mortar = shadeHex(brick, -0.28);
+  const lit = shadeHex(brick, 0.06);
+  const shade = shadeHex(brick, -0.24);
+  const mortar = shadeHex(brick, -0.32);
+  const band = shadeHex(brick, 0.14);
   const topY = base.y - H;
+  // An industrial chimney batters as it rises: wider at the plinth, drawing
+  // in toward the crown. The straight-sided slab was the whole problem.
+  const bwTop = Math.max(2, bw - 2);
   poly(ctx, [
     { x: base.x - bw, y: base.y - 2 }, { x: base.x, y: base.y + 2 },
-    { x: base.x, y: topY + 4 }, { x: base.x - bw, y: topY },
+    { x: base.x, y: topY + 4 }, { x: base.x - bwTop, y: topY },
   ], lit, 2);
   poly(ctx, [
     { x: base.x, y: base.y + 2 }, { x: base.x + bw, y: base.y - 1 },
-    { x: base.x + bw, y: topY + 1 }, { x: base.x, y: topY + 4 },
+    { x: base.x + bwTop, y: topY + 1 }, { x: base.x, y: topY + 4 },
   ], shade, 2);
-  for (let y = 6; y < H - 6; y += 3) {
-    lineHard(ctx, { x: base.x - bw, y: base.y - 2 - y }, { x: base.x, y: base.y + 2 - y }, mortar);
+  for (let y = 6; y < H - 8; y += 4) {
+    const w = bw + (bwTop - bw) * (y / H);
+    lineHard(ctx, { x: base.x - w, y: base.y - 2 - y }, { x: base.x, y: base.y + 2 - y }, mortar);
+  }
+  // One quiet band of dressed brick above the middle, the Victorian stack's
+  // signature. Two bright ones read as cracks, not courses.
+  {
+    const by = base.y - H * 0.62;
+    const w = bw + (bwTop - bw) * 0.62;
+    lineHard(ctx, { x: base.x - w, y: by - 2 }, { x: base.x, y: by + 2 }, band);
   }
   // The crown is sooted black from years of firing, then a flared lip and a
   // dark flue mouth. This is what makes a chimney read as a working flue.
@@ -172,10 +184,11 @@ export function drawStack(
   const H = spec.wallH + spec.roofH + spec.finialH;
   const brick = spec.skin.chimney ?? PAL.brick1;
   const big = spec.w * spec.d >= 6;
-  // Draw far/shorter stacks first so the tall near one overlaps them.
-  drawOneStack(ctx, lerp(ground.N, ground.E, 0.32), Math.round(H * 0.7), 4, shadeHex(brick, -0.06));
-  if (big) drawOneStack(ctx, lerp(ground.W, ground.N, 0.5), Math.round(H * 0.82), 5, brick);
-  drawOneStack(ctx, lerp(ground.W, ground.S, 0.18), H, 6, brick);
+  // One bold shaft, and a shorter companion only on the big works. Three
+  // overlapping stacks at four storeys made a picket of stripes against the
+  // roof plane behind them; a chimney's job is a clean black silhouette.
+  if (big) drawOneStack(ctx, lerp(ground.N, ground.E, 0.3), Math.round(H * 0.72), 4, shadeHex(brick, -0.06));
+  drawOneStack(ctx, lerp(ground.W, ground.S, 0.18), H, 7, brick);
   void eave;
 }
 

@@ -538,12 +538,16 @@ export function drawRidgeTiles(
  * flat terracotta slab.
  */
 export function drawBrickFace(
-  ctx: CanvasRenderingContext2D, f: Face, wallH: number, mortar: string,
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, mortar: string, industrial = false,
 ): void {
-  const course = 3;
+  // A works wall is a big plane: full bond with staggered joints at outline
+  // contrast turns it into chain-link. Industrial brick gets sparse, quiet
+  // horizontal courses only; the tight bond is for the polite streets.
+  const course = industrial ? 5 : 3;
   const bricks = Math.max(2, Math.round(f.span / 4));
   for (let h = 2; h < wallH - 1; h += course) {
     lineHard(ctx, f.at(0.02, h), f.at(0.98, h), mortar);
+    if (industrial) continue;
     const stagger = ((h / course) & 1) === 0 ? 0 : 0.5;
     for (let i = 1; i < bricks; i++) {
       const t = (i + stagger) / bricks;

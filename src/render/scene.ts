@@ -336,11 +336,14 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
 
   // The covering family, read off the roof colours before they are washed. It
   // drives baked texture only, never geometry.
-  const roofKind: RoofKind =
-    roof[0] === PAL.verd0 || roof[0] === PAL.verd1 || roof[0] === PAL.verd2 || roof[0] === PAL.verd3 ? 'copper'
-      : roof[0] === PAL.thatch1 || roof[0] === PAL.thatch2 ? 'thatch'
-        : roof[0] === PAL.tileRed0 || roof[0] === PAL.tileRed1 || roof[0] === PAL.tileRed2 ? 'clay'
-          : 'slate';
+  // Works roofs are tarred boards and felt over iron, not hung slate: the
+  // staggered slate joints on those huge sawtooth planes read as chain-link.
+  const roofKind: RoofKind | undefined =
+    roof[0] === PAL.soot2 || roof[0] === PAL.soot3 || shape === 'sawtooth' || shape === 'flat' ? undefined
+      : roof[0] === PAL.verd0 || roof[0] === PAL.verd1 || roof[0] === PAL.verd2 || roof[0] === PAL.verd3 ? 'copper'
+        : roof[0] === PAL.thatch1 || roof[0] === PAL.thatch2 ? 'thatch'
+          : roof[0] === PAL.tileRed0 || roof[0] === PAL.tileRed1 || roof[0] === PAL.tileRed2 ? 'clay'
+            : 'slate';
 
   const skin: HouseSkin = {
     wallLit: wash(wall[0], wallWash + tired),
@@ -356,7 +359,12 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
       ? gradeHex(fam.trim ?? PAL.gold, variant, true) : undefined,
     // Chimneys are brick or soot, never the wall colour, and they carry the same
     // grime the walls do.
-    chimney: gradeHex(shadeHex(soot > 0.18 ? PAL.soot2 : PAL.brick1, -soot * 0.5), variant),
+    // A works shaft is black with firing regardless of what the street
+    // sweeps: its colour comes from its own flue, not the local grime, or a
+    // mill on a clean street grows pale grey pipes instead of chimneys.
+    chimney: fam.finial === 'stack'
+      ? gradeHex(shadeHex(PAL.soot2, -0.45), variant)
+      : gradeHex(shadeHex(soot > 0.18 ? PAL.soot2 : PAL.brick1, -soot * 0.5), variant),
     // Lit windows at dusk and after. A gaslight-era city with no lit window in it
     // was the single most conspicuous absence in the build: variantFor and the
     // palette entries both existed and neither had ever been called.

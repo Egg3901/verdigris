@@ -72,7 +72,7 @@ let offA: HTMLCanvasElement | null = null;
 let offB: HTMLCanvasElement | null = null;
 
 /** Minutes a lighting band takes to dissolve in. Pure in (seed, tick). */
-const BAND_DISSOLVE_MIN = 20;
+const BAND_DISSOLVE_MIN = 8;
 
 function bandTransition(): { from: ReturnType<typeof variantFor>; progress: number } | null {
   const nowVar = variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind);
