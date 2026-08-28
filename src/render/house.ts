@@ -27,7 +27,7 @@ import {
   drawVerdigrisStreaks, drawWallPosters,
 } from './detail';
 import { drawRoofTexture, drawRidgeTiles } from './detail';
-import type { DetailSkin, RoofKind, WallMaterial, WindowLight } from './detail';
+import type { DetailSkin, RoofKind, SignGlyph, WallMaterial, WindowLight } from './detail';
 import { drawFinial, drawMooringMast } from './landmarks';
 import type { Corners } from './landmarks';
 
@@ -71,6 +71,8 @@ export interface HouseSpec {
   shopfront?: boolean;
   /** A hanging signboard. */
   sign?: boolean;
+  /** What the hanging sign says, for the customer who cannot read. */
+  signGlyph?: SignGlyph;
   /** Dormers on the near roof slope. */
   dormers?: number;
   /** Windows boarded over: the rot, on the building itself. */
@@ -747,7 +749,7 @@ function drawFacade(
 
   // The shopfront and the door go on the lit face: the one the camera can see.
   if (spec.shopfront && lit.span >= 10) {
-    drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed);
+    drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed, salt);
   } else if (lit.span >= 8 && spec.material !== 'glazed') {
     const t = 0.28 + ((salt % 5) / 12);
     if (spec.frontage === 'works' || spec.frontage === 'warehouse' || spec.frontage === 'wharf') {
@@ -758,7 +760,7 @@ function drawFacade(
       drawDoor(ctx, lit, t, spec.wallH, skin);
     }
   }
-  if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin);
+  if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin, spec.signGlyph, salt);
   if (spec.bunting && lit.span >= 12) drawBunting(ctx, lit, spec.wallH);
   if (spec.deputationBanner && lit.span >= 18) drawDeputationBanner(ctx, lit, spec.wallH);
 }

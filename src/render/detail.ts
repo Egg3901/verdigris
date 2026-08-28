@@ -102,36 +102,114 @@ export function drawDoor(
  * A glazed shopfront with an awning. Shops and pubs get one, which is what makes
  * a commercial street look commercial from above.
  */
+/** Deep paints a signwriter would use on a fascia board, hashed per shop. */
+const FASCIA_PAINT = [PAL.soot2, PAL.buntBlue, PAL.verd1, PAL.brick1, PAL.brassInk];
+
 export function drawShopfront(
   ctx: CanvasRenderingContext2D, f: Face, wallH: number, skin: DetailSkin, awning: string,
+  salt = 0,
 ): void {
   const top = Math.max(4, wallH - 13);
-  // The glass.
-  faceQuad(ctx, f, 0.08, 0.92, top + 3, wallH - 2, skin.glassLit ? PAL.litWindow : shadeHex(skin.glass, -0.1));
+  // The glass, over a low stallriser panel so the window sits on joinery rather
+  // than running into the pavement.
+  faceQuad(ctx, f, 0.08, 0.92, top + 3, wallH - 3, skin.glassLit ? PAL.litWindow : shadeHex(skin.glass, -0.1));
+  faceQuad(ctx, f, 0.08, 0.92, wallH - 3, wallH - 1, shadeHex(skin.timber, -0.05));
   // Mullions, so it reads as panes and not as a hole.
   for (let i = 1; i < 4; i++) {
     const t = 0.08 + (0.84 * i) / 4;
-    lineHard(ctx, f.at(t, top + 3), f.at(t, wallH - 2), skin.timber);
+    lineHard(ctx, f.at(t, top + 3), f.at(t, wallH - 3), skin.timber);
   }
-  // The awning: a striped band, projecting a pixel or two below the fascia.
-  faceQuad(ctx, f, 0.05, 0.95, top, top + 3, awning);
-  ditherPolyHard(ctx, [f.at(0.05, top), f.at(0.95, top), f.at(0.95, top + 3), f.at(0.05, top + 3)],
-    shadeHex(awning, 0.28), 8);
+  // The fascia: a painted lettering board over the glass. Dark signwriter's
+  // paint, the shop's name in cream dashes, which is all the type five pixels
+  // of board can carry, and a thin top bead.
+  const paint = FASCIA_PAINT[(salt >>> 2) % FASCIA_PAINT.length];
+  faceQuad(ctx, f, 0.05, 0.95, top, top + 3, paint);
+  lineHard(ctx, f.at(0.05, top), f.at(0.95, top), shadeHex(paint, 0.15));
+  const letters = 2 + (salt % 3);
+  ctx.fillStyle = skin.trim ?? PAL.buntCream;
+  for (let i = 0; i < letters; i++) {
+    const t = 0.14 + (0.72 * (i + 0.5)) / letters;
+    const p = f.at(t, top + 1);
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), 2 + ((salt + i) % 2), 1);
+  }
   lineHard(ctx, f.at(0.05, top + 3), f.at(0.95, top + 3), skin.outline);
+  // The awning, in three tempers: a full blind with a scalloped skirt, a half
+  // blind wound out over the door side only, or wound in altogether so the
+  // fascia does the talking.
+  const blind = (salt >>> 4) % 3;
+  if (blind < 2) {
+    const a0 = blind === 0 ? 0.06 : 0.5;
+    const a1 = 0.94;
+    faceQuad(ctx, f, a0, a1, top + 3, top + 6, awning);
+    // Stripes, in cloth widths rather than dither.
+    const stripes = Math.max(2, Math.round((f.span * (a1 - a0)) / 5));
+    for (let i = 0; i < stripes; i++) {
+      if ((i & 1) === 0) continue;
+      const s0 = a0 + ((a1 - a0) * i) / stripes;
+      const s1 = a0 + ((a1 - a0) * (i + 1)) / stripes;
+      faceQuad(ctx, f, s0, s1, top + 3, top + 6, shadeHex(awning, 0.3));
+    }
+    // The scalloped skirt: every other cloth width hangs a pixel lower.
+    for (let i = 0; i < stripes; i += 2) {
+      const s0 = a0 + ((a1 - a0) * i) / stripes;
+      const s1 = a0 + ((a1 - a0) * (i + 1)) / stripes;
+      faceQuad(ctx, f, s0, s1, top + 6, top + 7, awning);
+    }
+  }
 }
 
-/** A hanging signboard on a bracket. Pubs and shops. */
+/** The trades a hanging sign can speak for without any lettering at all. */
+export type SignGlyph = 'boot' | 'loaf' | 'scissors' | 'tankard';
+
+// 5x5 one-bit glyphs, top row first, bit 4 leftmost. Bold silhouettes that
+// survive one pixel per bit: a boot in profile, a slashed cob loaf, open
+// scissors, a tankard with its handle.
+const GLYPHS: Record<SignGlyph, number[]> = {
+  boot: [0b01100, 0b01100, 0b01100, 0b01110, 0b11111],
+  loaf: [0b00000, 0b01110, 0b11111, 0b10101, 0b11111],
+  scissors: [0b10001, 0b01010, 0b00100, 0b01010, 0b11011],
+  tankard: [0b11100, 0b11111, 0b11101, 0b11111, 0b11100],
+};
+
+/**
+ * A hanging signboard on a bracket. Pubs and shops. With a glyph it becomes a
+ * proper trade sign: the boot, the loaf, the scissors, the tankard, painted on
+ * a dark board for the customer who cannot read the fascia.
+ */
 export function drawSign(
   ctx: CanvasRenderingContext2D, f: Face, t: number, wallH: number, skin: DetailSkin,
+  glyph?: SignGlyph, salt = 0,
 ): void {
-  const top = Math.max(2, wallH - 20);
-  const p = f.at(t, top);
-  ctx.fillStyle = skin.timber;
-  ctx.fillRect(Math.round(p.x) - 3, Math.round(p.y), 6, 1);
-  ctx.fillStyle = skin.trim ?? PAL.brass2;
-  ctx.fillRect(Math.round(p.x) - 2, Math.round(p.y) + 1, 5, 4);
-  ctx.fillStyle = skin.outline;
-  ctx.fillRect(Math.round(p.x) - 2, Math.round(p.y) + 5, 5, 1);
+  const p = f.at(t, Math.max(2, wallH - 20));
+  const x = Math.round(p.x);
+  const y = Math.round(p.y);
+  if (!glyph) {
+    ctx.fillStyle = skin.timber;
+    ctx.fillRect(x - 3, y, 6, 1);
+    ctx.fillStyle = skin.trim ?? PAL.brass2;
+    ctx.fillRect(x - 2, y + 1, 5, 4);
+    ctx.fillStyle = skin.outline;
+    ctx.fillRect(x - 2, y + 5, 5, 1);
+    return;
+  }
+  // The bracket arm, its drop rod, then the board.
+  ctx.fillStyle = PAL.soot2;
+  ctx.fillRect(x - 4, y, 8, 1);
+  ctx.fillRect(x, y + 1, 1, 1);
+  const paint = FASCIA_PAINT[(salt >>> 3) % FASCIA_PAINT.length];
+  ctx.fillStyle = shadeHex(paint, -0.1);
+  ctx.fillRect(x - 3, y + 2, 7, 7);
+  ctx.fillStyle = skin.trim ?? PAL.brass1;
+  ctx.fillRect(x - 3, y + 2, 7, 1);
+  ctx.fillRect(x - 3, y + 8, 7, 1);
+  // The glyph itself, in gold on the trimmed houses and cream on the rest.
+  ctx.fillStyle = skin.trim ? PAL.gold : PAL.buntCream;
+  const rows = GLYPHS[glyph];
+  for (let r = 0; r < 5; r++) {
+    for (let c = 0; c < 5; c++) {
+      if ((rows[r] >> (4 - c)) & 1) ctx.fillRect(x - 2 + c, y + 3 + r, 1, 1);
+    }
+  }
 }
 
 /**

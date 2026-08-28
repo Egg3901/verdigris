@@ -29,7 +29,7 @@ import { hardenAlpha, ditherPolyHard, lineHard, fillPolyHard } from './raster';
 import { buildCartRoutes } from './fx';
 import type { CartRoute } from './fx';
 import type { HouseSpec, HouseSkin, RoofShape, Finial, Frontage } from './house';
-import type { RoofKind, WallMaterial, WindowLight } from './detail';
+import type { RoofKind, SignGlyph, WallMaterial, WindowLight } from './detail';
 import { mix, Stream } from '../sim/rng';
 import { buildMarketProps, buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
@@ -208,6 +208,20 @@ function plotOf(city: City, b: Building): 'x' | 'y' {
   // dir 2 and 3 are south and north, so the street runs east to west and the
   // frontage with it.
   return p.dir === 2 || p.dir === 3 ? 'x' : 'y';
+}
+
+/**
+ * What the hanging sign shows. Read off the building's NAME, so Mr Hobbs the
+ * Bootmaker actually hangs a boot: the sign and the prose agree, which is the
+ * whole point of a trade sign. Trades outside the four glyphs fall back to a
+ * hashed pick, pubs always hang the tankard.
+ */
+function glyphFor(b: Building, salt: number): SignGlyph {
+  if (b.kind === 'pub') return 'tankard';
+  if (/Bootmaker|Cobbler/.test(b.name)) return 'boot';
+  if (/Baker|Grocer|Confectioner/.test(b.name)) return 'loaf';
+  if (/Draper|Milliner|Tailor/.test(b.name)) return 'scissors';
+  return (['boot', 'loaf', 'scissors'] as const)[(salt >>> 17) % 3];
 }
 
 function specFor(city: City, b: Building, grime: number, variant: Variant): HouseSpec {
@@ -421,6 +435,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     salt: salt >>> 11,
     shopfront: fam.shop === true && b.w * b.d >= 1,
     sign: fam.shop === true,
+    signGlyph: fam.shop === true && (b.kind === 'shop' || b.kind === 'pub') ? glyphFor(b, salt) : undefined,
     awning: gradeHex(pickFrom(AWNINGS, salt, 7), variant),
     // Dormers need a slope deep enough to sit one on.
     dormers: fam.dormers && roofH >= 12 && shape !== 'sawtooth' ? fam.dormers : 0,
