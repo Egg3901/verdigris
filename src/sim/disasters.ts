@@ -121,6 +121,28 @@ function nearbyFloodBuildings(city: City, buildingId: number): number[] {
     .map((b) => b.id);
 }
 
+/**
+ * Whether the ward boss may loose this disaster on this building right now, and
+ * the plain reason when not. Mirrors the guards inside startDisaster so a power
+ * can be greyed out before it is pressed.
+ */
+export function canStartDisaster(city: City, kind: DisasterKind, buildingId: number): string | null {
+  const st = city.disasters;
+  if (st.events.length >= 2) return 'Too much is already going wrong at once.';
+  if (st.events.some((e) => e.kind === kind)) return 'That is already happening somewhere.';
+  const b = city.buildings[buildingId];
+  if (!b) return 'Nothing there to strike.';
+  if (!isFirmTarget(city, buildingId)) return 'Only a workplace can be struck like this.';
+  if (disasterAt(city, buildingId)) return 'That building already has trouble enough.';
+  if (kind === 'flood') {
+    const riverY = city.river.centre[b.doorX];
+    if (riverY < 0 || Math.abs(b.doorY - riverY) > city.river.halfWidth[b.doorX] + 4) {
+      return 'No water near enough to flood this.';
+    }
+  }
+  return null;
+}
+
 /** Start an explicitly selected disaster, or return null when the slot is unavailable. */
 export function startDisaster(city: City, kind: DisasterKind, buildingId?: number): Disaster | null {
   const st = city.disasters;

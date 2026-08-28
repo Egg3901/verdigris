@@ -8,6 +8,7 @@ export type Verb =
   | 'nudgeRumour' | 'nudgeGas' | 'nudgeTram' | 'nudgeTip' | 'nudgeStrike'
   | 'nudgeStory' | 'nudgeQuarantine' | 'nudgeBunting' | 'nudgeWorks' | 'nudgeDeputation'
   | 'nudgeShelter'
+  | 'nudgeFire' | 'nudgeFlood' | 'nudgeCondemn'
   | 'vestry'
   | 'pause' | 'slower' | 'faster'
   | 'scrubBack' | 'scrubOn' | 'help';
@@ -53,6 +54,9 @@ export const BINDINGS: readonly Binding[] = [
   { verb: 'nudgeWorks', keys: ['o'], label: 'Order repairs', group: 'nudges' },
   { verb: 'nudgeDeputation', keys: ['u'], label: 'Send a delegation', group: 'nudges' },
   { verb: 'nudgeShelter', keys: ['e'], label: 'Open a shelter', group: 'nudges' },
+  { verb: 'nudgeFire', keys: ['i'], label: 'Set it alight', group: 'nudges' },
+  { verb: 'nudgeFlood', keys: ['j'], label: 'Flood it out', group: 'nudges' },
+  { verb: 'nudgeCondemn', keys: ['n'], label: 'Condemn it', group: 'nudges' },
 
   { verb: 'selectNear', keys: ['Shift + arrows'], label: 'Move the selection about the district', group: 'verbs' },
 
@@ -81,6 +85,9 @@ export const NUDGE_VERBS: Record<string, string> = {
   nudgeWorks: 'fileWorks',
   nudgeDeputation: 'callDeputation',
   nudgeShelter: 'openShelter',
+  nudgeFire: 'setFire',
+  nudgeFlood: 'floodOut',
+  nudgeCondemn: 'condemn',
 };
 
 export function keycapFor(verb: Verb): string {

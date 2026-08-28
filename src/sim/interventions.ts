@@ -25,6 +25,8 @@ import type { InterventionKind, Target } from './types';
 import { canFileWorks, fileWorks } from './works';
 import { canCallDeputation, callDeputation } from './deputations';
 import { canOpenShelter, openShelter } from './shelters';
+import { canStartDisaster, startDisaster } from './disasters';
+import { weatherAt } from './weather';
 import { noteMatterResponse } from './matters';
 import { DEFS } from './buildings';
 import { isRunning } from './firms';
@@ -59,6 +61,8 @@ export interface InterventionForecast {
 
 const PUBLIC_INTERVENTIONS = new Set<InterventionKind>([
   'fundBunting', 'fileWorks', 'callDeputation', 'openShelter', 'quarantine',
+  // A fire, a flood or a collapse is about as public as an act can be.
+  'setFire', 'floodOut', 'condemn',
 ]);
 
 export function exposureOf(kind: InterventionKind): InterventionForecast['exposure'] {
@@ -407,6 +411,46 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
       return `${b?.name ?? 'The building'} has opened its doors. ${admitted} people are making for shelter.`;
     },
   },
+
+  // The ward boss's cruel powers: loose a disaster on a workplace. Each is very
+  // public and lands a heavy blow on order and mood, which the meters report. A
+  // fire will spread on its own; a flood needs water near enough to let in.
+  setFire: {
+    kind: 'setFire',
+    label: 'Set it alight',
+    blurb: 'Start a fire in this workplace. It will spread to whatever it can reach.',
+    heat: 260,
+    targets: ['building'],
+    can: (city, t) => canStartDisaster(city, 'fire', t.id),
+    apply: (city, t) => {
+      startDisaster(city, 'fire', t.id);
+      return `You have Verdigris put to the torch at ${city.buildings[t.id]?.name ?? 'the site'}.`;
+    },
+  },
+  floodOut: {
+    kind: 'floodOut',
+    label: 'Flood it out',
+    blurb: 'Let the river in. The water will rise through the low streets while the rain holds.',
+    heat: 210,
+    targets: ['building'],
+    can: (city, t) => canStartDisaster(city, 'flood', t.id),
+    apply: (city, t) => {
+      startDisaster(city, 'flood', t.id);
+      return `You have the wall breached at ${city.buildings[t.id]?.name ?? 'the site'} and the water let in.`;
+    },
+  },
+  condemn: {
+    kind: 'condemn',
+    label: 'Condemn it',
+    blurb: 'Bring this building down. What stood there is a cleared, ruined site.',
+    heat: 230,
+    targets: ['building'],
+    can: (city, t) => canStartDisaster(city, 'collapse', t.id),
+    apply: (city, t) => {
+      startDisaster(city, 'collapse', t.id);
+      return `You have ${city.buildings[t.id]?.name ?? 'the building'} pulled down.`;
+    },
+  },
 };
 
 function neighbourList(city: City, id: number): number[] {
@@ -494,6 +538,21 @@ export function forecastIntervention(city: City, kind: InterventionKind, target:
   }
   if (kind === 'callDeputation') {
     return note('unclear', 'The street must arrive together, and the hall must hear it.');
+  }
+  if (kind === 'setFire') {
+    const dry = weatherAt(city.seed, city.tick).precipitation === 0;
+    return note(dry ? 'contested' : 'settled', dry
+      ? 'Dry weather: the fire will jump to whatever stands near it.'
+      : 'The rain will hold the flames to this one building.');
+  }
+  if (kind === 'floodOut') {
+    const hard = weatherAt(city.seed, city.tick).precipitation === 2;
+    return note('contested', hard
+      ? 'Hard rain: the water will climb the street quickly.'
+      : 'The water will spread only while the rain holds.');
+  }
+  if (kind === 'condemn') {
+    return note('settled', 'The building comes down at once, and stays down until it is rebuilt.');
   }
   const b = building(city, target);
   const served = Boolean(b

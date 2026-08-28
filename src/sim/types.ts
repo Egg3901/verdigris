@@ -91,7 +91,8 @@ export type OrdinanceKind =
 export type InterventionKind =
   | 'rumour' | 'cutGas' | 'delayTram' | 'tipOff'
   | 'fundStrike' | 'plantStory' | 'quarantine' | 'fundBunting' | 'fileWorks'
-  | 'callDeputation' | 'openShelter';
+  | 'callDeputation' | 'openShelter'
+  | 'setFire' | 'floodOut' | 'condemn';
 
 export type TargetKind = 'soul' | 'building' | 'street' | 'segment' | 'firm' | 'claim' | 'line' | 'square';
 

@@ -22,6 +22,22 @@ describe('interventions', () => {
     expect(canApply(c, 'fundBunting', { kind: 'square', id: 0 })).not.toBe('Nothing left today.');
   });
 
+  it('lets the ward boss set a workplace alight as a public act', () => {
+    const c = newCity('verdigris');
+    warp(c, 600);
+    const id = firstOfKind(c, 'workshop');
+    expect(id).toBeGreaterThanOrEqual(0);
+    const target = { kind: 'building' as const, id };
+    expect(canApply(c, 'setFire', target)).toBeNull();
+    const suspicionBefore = pressureOf(c.press, 'suspicion');
+    expect(apply(c, 'setFire', target)).toBe(true);
+    // A real fire event now owns the building, and the act cost order (suspicion up).
+    expect(c.disasters.events.some((e) => e.kind === 'fire' && e.buildingId === id)).toBe(true);
+    expect(pressureOf(c.press, 'suspicion')).toBeGreaterThan(suspicionBefore);
+    // It cannot be done twice: one fire of a kind at a time.
+    expect(canApply(c, 'setFire', target)).not.toBeNull();
+  });
+
   it('cutting a gas main removes service from real buildings downstream', () => {
     // Not a pressure poke: a specific segment breaks and a specific set of
     // buildings loses service. If this ever passes without the count changing,
