@@ -58,7 +58,7 @@ describe("the alderman's matters", () => {
     tickMatters(city);
     expect(matter.status).toBe('kept');
     warp(city, visit.resolvesAt - city.tick);
-    expect(city.log.some((event) => event.text.includes('came to Civic Hall after their promise was kept'))).toBe(true);
+    expect(city.log.some((event) => event.text.includes('came to thank you'))).toBe(true);
   });
 
   it('lets a patron physically speak for the chair after a kept promise', () => {

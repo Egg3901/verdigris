@@ -32,23 +32,23 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 const RESPONSE: Record<string, string> = {
-  fileWorks: 'a works case',
-  callDeputation: 'a public deputation',
-  fundStrike: 'a strike fund',
-  openShelter: 'a storm refuge',
-  quarantine: 'a street cordon',
-  plantStory: 'a printed account',
-  tipOff: 'a constabulary tip',
-  fundBunting: 'a public show of support',
+  fileWorks: 'ordered repairs',
+  callDeputation: 'sent a delegation',
+  fundStrike: 'backed a strike',
+  openShelter: 'opened a shelter',
+  quarantine: 'sealed off the street',
+  plantStory: 'planted a story',
+  tipOff: 'set the police on it',
+  fundBunting: 'put on a celebration',
 };
 
 const WAY_IN: Record<Matter['kind'], string> = {
-  repair: 'WAYS IN · File a works case. If the number stalls, bring the street to Civic Hall.',
-  labour: 'WAYS IN · Fund the strike, or decline and keep your influence for another promise.',
-  refuge: 'WAYS IN · Wait for the rain, inspect this public building, then open the refuge.',
-  sanitation: 'WAYS IN · Quarantine the street, or repair the failed drain when there is one.',
-  inquiry: 'WAYS IN · Hold a named witness, or put a credible account into the paper.',
-  turnout: 'WAYS IN · Bring friends with bunting, or remove a named opponent before the sitting.',
+  repair: 'HOW TO ANSWER · Order repairs. If the work stalls, send a delegation to press it.',
+  labour: 'HOW TO ANSWER · Back the strike, or decline and save your effort for another promise.',
+  refuge: 'HOW TO ANSWER · Wait for the rain, look over this public building, then open a shelter.',
+  sanitation: 'HOW TO ANSWER · Seal off the street, or repair the failed drain if there is one.',
+  inquiry: 'HOW TO ANSWER · Have someone arrested, or get a believable story into the paper.',
+  turnout: 'HOW TO ANSWER · Rally support with a celebration, or take out an opponent before the vote.',
 };
 
 function dueLabel(matter: Matter): string {

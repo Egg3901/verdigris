@@ -169,7 +169,7 @@ function openRepair(city: City): boolean {
   const parties = residentParties(city, candidate.id);
   const need = worksNeededAt(city, candidate.id) ?? 'fabric';
   const street = city.streets[candidate.streetId]?.name ?? city.squareName;
-  const defect = need === 'fabric' ? 'failing fabric' : need === 'drain' ? 'failed drains' : 'a failed gas main';
+  const defect = need === 'fabric' ? 'failing fabric' : need === 'drain' ? 'failed drains' : 'failed gas';
   const matter = addMatter(city, {
     kind: 'repair',
     openedAt: city.tick,
@@ -177,10 +177,10 @@ function openRepair(city: City): boolean {
     target: { kind: 'building', id: candidate.id },
     subjectId: candidate.id,
     partyIds: parties,
-    title: `${street}: a house that will not wait`,
-    petition: `${names(city, parties)} ask the hall to answer ${candidate.name}'s ${defect}.`,
+    title: `${street}: a home needs repairs`,
+    petition: `${names(city, parties)} want the ${defect} at ${candidate.name} put right.`,
     cause: `Fabric ${candidate.fabric}/1000; treasury ${pressureOf(city.press, 'coin')}/1000; civic rot ${pressureOf(city.press, 'rot')}/1000.`,
-    test: 'A real repair must be completed. A number, scaffold or fresh paint is not enough.',
+    test: 'Actually repair it. A survey mark, scaffold or fresh paint alone does not count.',
   });
   // Competence is not punished. If the address was already in the register,
   // the new petition attaches to that exact live order instead of demanding a
@@ -223,10 +223,10 @@ function openLabour(city: City): boolean {
     target: { kind: 'building', id: candidate.firm.buildingId },
     subjectId: candidate.firm.id,
     partyIds: parties,
-    title: `${candidate.firm.name}: the hands want an answer`,
-    petition: `${names(city, parties)} ask for backing before the next rent falls due.`,
+    title: `${candidate.firm.name}: the workers want backing`,
+    petition: `${names(city, parties)} want you to back them before the rent falls due.`,
     cause: `${candidate.firm.workerIds.length} hands average ${candidate.grievance}/1000 grievance; treasury ${pressureOf(city.press, 'coin')}/1000.`,
-    test: 'Their stoppage must hold beyond the constables\' first attempt to clear it.',
+    test: 'Their strike must survive the first attempt to break it up.',
   });
   return true;
 }
@@ -270,10 +270,10 @@ function openRefuge(city: City): boolean {
     target: { kind: 'building', id: provider.b.id },
     subjectId: watch,
     partyIds: vulnerable,
-    title: `${weatherLabel(weather)}: a public door`,
-    petition: `${names(city, vulnerable)} are among those who will need a dry room when the weather turns.`,
+    title: `${weatherLabel(weather)}: people will need shelter`,
+    petition: `${names(city, vulnerable)} will need somewhere dry when the weather turns.`,
     cause: `${provider.b.name} has room for ${provider.room}; gas ${provider.gas ? 'served' : 'failed'}; drains ${provider.drains ? 'served' : 'failed'}.`,
-    test: 'Open the refuge while the rain is falling, and somebody vulnerable must reach it.',
+    test: 'Open a shelter while the rain falls, and someone who needs it must reach it.',
   });
   return true;
 }
@@ -312,10 +312,10 @@ function openSanitation(city: City): boolean {
     kind: 'sanitation', openedAt: city.tick, dueAt: city.tick + 720,
     target: { kind: 'building', id: candidate.target.id }, subjectId: candidate.street.id,
     partyIds: parties,
-    title: `${candidate.street.name}: sickness behind the doors`,
-    petition: `${names(city, parties)} ask the hall to contain sickness before another household takes ill.`,
+    title: `${candidate.street.name}: sickness is spreading`,
+    petition: `${names(city, parties)} want the sickness stopped before more fall ill.`,
     cause: `${candidate.sick.length} residents on the street are below 500 health; drains at ${candidate.target.name} ${serviceAt(city.networks.drain, candidate.target.id) ? 'are served' : 'have failed'}.`,
-    test: 'After six hours, no more residents may be sick; a completed drain repair also keeps the promise.',
+    test: 'Within six hours, no one else falls sick. Fixing the drains also counts.',
   });
   matter.baseline = candidate.sick.length;
   return true;
@@ -342,10 +342,10 @@ function openInquiry(city: City): boolean {
     kind: 'inquiry', openedAt: city.tick, dueAt: city.tick + 1440,
     target: { kind: 'building', id: incident.placeId }, subjectId: incident.id,
     partyIds: parties,
-    title: `${city.buildings[incident.placeId]?.name ?? 'The hall'}: an account will be printed`,
-    petition: `${names(city, parties)} ask which account of the incident will stand before the inquiry closes.`,
+    title: `${city.buildings[incident.placeId]?.name ?? 'The hall'}: the story is disputed`,
+    petition: `${names(city, parties)} want to know whose account of it will stand.`,
     cause: `${incident.defId} was witnessed here by ${incident.soulIds.length}; paper credibility ${city.paperCredibility}/1000; suspicion ${pressureOf(city.press, 'suspicion')}/1000.`,
-    test: 'A named detention must still hold after an hour, or a credible account must remain in the paper.',
+    test: 'A named arrest must still hold after an hour, or a believable account must stay in the paper.',
   });
   matter.baseline = city.paperCredibility;
   return true;
@@ -365,10 +365,10 @@ function openTurnout(city: City): boolean {
     kind: 'turnout', openedAt: city.tick, dueAt: city.matters.nextMeetingAt,
     target: { kind: 'building', id: hall }, subjectId: city.matters.nextMeetingAt,
     partyIds: parties,
-    title: `${city.squareName}: confidence will be counted`,
-    petition: `${names(city, parties)} ask the chair to bring enough friends into the square to carry confidence.`,
+    title: `${city.squareName}: a confidence vote is near`,
+    petition: `${names(city, parties)} want you to rally enough support to win the vote.`,
     cause: `${visit.actorIds.length} ratepayers are called; standing ${city.matters.standing}/1000; ${city.matters.relations.filter((item) => item.regard < 0).length} named opponents remain.`,
-    test: 'Confidence must actually carry when the people present are counted.',
+    test: 'The vote must actually pass when those who turn up are counted.',
   });
   matter.baseline = visit.actorIds.length;
   return true;

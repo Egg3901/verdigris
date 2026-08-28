@@ -183,12 +183,12 @@ function resolveVisit(city: City, visit: CivicVisit): SoulId[] | null {
       const company = presentIds.length > 1 ? ` and ${presentIds.length - 1} other${presentIds.length === 2 ? '' : 's'}` : '';
       const subject = matter?.title ?? 'a petition';
       const text = matter?.status === 'kept'
-        ? `${lead}${company} came to Civic Hall after their promise was kept: ${subject}.`
+        ? `${lead}${company} came to thank you: ${subject}.`
         : matter?.status === 'failed' || matter?.status === 'declined'
-          ? `${lead}${company} came to Civic Hall to protest the answer: ${subject}.`
+          ? `${lead}${company} came to complain you let them down: ${subject}.`
           : matter?.status === 'overtaken'
-            ? `${lead}${company} came to Civic Hall to put the overtaken petition on record: ${subject}.`
-            : `${lead}${company} presented ${subject} at Civic Hall.`;
+            ? `${lead}${company} came to say it sorted itself out: ${subject}.`
+            : `${lead}${company} brought you a problem: ${subject}.`;
       pushLog(city, text, matter?.status === 'kept' ? 'gain'
         : matter?.status === 'failed' || matter?.status === 'declined' ? 'loss' : 'info');
     }
