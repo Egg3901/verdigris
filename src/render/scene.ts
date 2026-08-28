@@ -37,7 +37,7 @@ import { isDeputationActive } from '../sim/deputations';
 import { activePublicVisit } from '../sim/civic-visits';
 import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters';
 import type { WardKind } from '../sim/gen/wards';
-import { weatherAt } from '../sim/weather';
+import { weatherAt, WEATHER_WATCH_MINUTES } from '../sim/weather';
 import { isShelterActive } from '../sim/shelters';
 
 export interface StaticSprite {
@@ -529,6 +529,11 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   const ground = makeCanvas(b.w, b.h);
   const gctx = ctxOf(ground);
   const d = city.district;
+  // Whether the PREVIOUS watch rained, for the drying puddles below. Derived,
+  // like the weather itself, from (seed, tick) alone.
+  const lastWatchRain = city.tick >= WEATHER_WATCH_MINUTES
+    ? weatherAt(city.seed, city.tick - WEATHER_WATCH_MINUTES).precipitation
+    : 0;
   const floodedCells = new Set<number>();
   for (const id of floodedBuildings) {
     const building = city.buildings[id];
@@ -623,6 +628,21 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
         if ((wetRoll & 3) === 0) {
           lineHard(gctx, { x: cx - 1, y: cy - 1 }, { x: cx + 2, y: cy - 1 }, gradeHex(PAL.rivGlint, variant));
         }
+      } else if (weather.precipitation === 0 && lastWatchRain > 0 && wettable
+        && d.buildingId[k] < 0
+        && (mix(city.seed, Stream.Weather, weather.watch - 1, k) % 100)
+          < (lastWatchRain === 2 ? 11 : 6)) {
+        // Drying out. For one watch after the rain stops, the deepest ruts still
+        // hold water: the same cells that puddled last watch (same hash), only
+        // the ones that pooled deepest, smaller and without the wind streak. The
+        // streets dry the way streets dry, instead of snapping to bone dry the
+        // minute the weather turns.
+        const cx = originX + isoX(tx, ty);
+        const cy = originY + isoY(tx, ty) + 2;
+        ditherPolyHard(gctx, [
+          { x: cx, y: cy - 2 }, { x: cx + 5, y: cy },
+          { x: cx, y: cy + 2 }, { x: cx - 5, y: cy },
+        ], gradeHex(PAL.riv1, variant), 4);
       }
 
       // Dither the step between depth bands. A hard step made the channel read as
