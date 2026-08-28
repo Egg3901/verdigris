@@ -711,6 +711,7 @@ function detailSkin(spec: HouseSpec): DetailSkin {
     glassLit: spec.skin.windowLit === true,
     trim: spec.skin.trim,
     outline: spec.skin.outline,
+    occupants: spec.damage === 'none' && !spec.scorched && !spec.boarded,
     // Stone dressings around the openings on the kept-up masonry buildings.
     dress: spec.polite && !spec.scorched
       && (spec.material === 'brick' || spec.material === 'ashlar' || spec.material === 'stucco')

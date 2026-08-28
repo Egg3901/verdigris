@@ -51,6 +51,9 @@ export interface DetailSkin {
   /** Dressed stone for lintels and sills on the better buildings. When unset the
    *  window openings fall back to wall-derived colours. */
   dress?: string;
+  /** After dark, bake a few panes lit with a figure at the glass. Off for
+   *  burning and scorched shells, where a silhouette would read as a casualty. */
+  occupants?: boolean;
 }
 
 /**
@@ -244,10 +247,25 @@ export function drawWindowGrid(
     for (let c = 0; c < cols; c++) {
       const t = (c + 0.5) / cols;
       const halfW = Math.min(0.12, 3 / Math.max(1, f.span));
-      faceQuad(ctx, f, t - halfW, t + halfW, h, h + 4, cold);
+      const paneHash = (hash + r * 71 + c * 131) >>> 0;
+      // After dark, one pane in nine is baked LIT with somebody standing at the
+      // glass: a head and shoulders against the lamp behind them. These panes
+      // stay out of the per-frame lamplighter so the figure is never painted
+      // over; the rest of the house keeps its own schedule around them.
+      const occupied = skin.occupants === true && skin.glassLit && paneHash % 9 === 0;
+      faceQuad(ctx, f, t - halfW, t + halfW, h, h + 4, occupied ? PAL.litWindow : cold);
       // The meeting rail: the one horizontal bar that divides upper and lower
       // sash. A single line, but it is the mark that says "sash window".
       lineHard(ctx, f.at(t - halfW, h + 2), f.at(t + halfW, h + 2), frame);
+      if (occupied) {
+        const drift = (((paneHash >>> 4) % 3) - 1) * 0.02;
+        const p = f.at(t + drift, h);
+        const px = Math.round(p.x);
+        const py = Math.round(p.y);
+        ctx.fillStyle = PAL.soot1;
+        ctx.fillRect(px, py + 1, 1, 1);
+        ctx.fillRect(px - 1, py + 2, 3, 2);
+      }
       // A cool reflection catch in the top corner, on the lit face.
       if (f.lit) {
         const g = f.at(t - halfW, h);
@@ -262,11 +280,12 @@ export function drawWindowGrid(
       lineHard(ctx, f.at(t - halfW - 0.01, h + 4), f.at(t + halfW + 0.01, h + 4),
         skin.dress ? shadeHex(skin.dress, -0.05) : shadeHex(skin.wall, 0.14));
       // Record the pane for the per-frame lamplighter: its top edge in sprite
-      // coordinates, and a stable hash for its own on/off schedule.
-      if (lights) {
+      // coordinates, and a stable hash for its own on/off schedule. An occupied
+      // pane is already lit in the bake and stays off the register.
+      if (lights && !occupied) {
         const a = f.at(t - halfW, h);
         const b = f.at(t + halfW, h);
-        lights.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, hash: (hash + r * 71 + c * 131) >>> 0 });
+        lights.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, hash: paneHash });
       }
     }
   }
