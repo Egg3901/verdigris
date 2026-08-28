@@ -29,7 +29,7 @@ import { hardenAlpha, ditherPolyHard, lineHard, fillPolyHard } from './raster';
 import { buildCartRoutes } from './fx';
 import type { CartRoute } from './fx';
 import type { HouseSpec, HouseSkin, RoofShape, Finial, Frontage } from './house';
-import type { WallMaterial, WindowLight } from './detail';
+import type { RoofKind, SignGlyph, WallMaterial, WindowLight } from './detail';
 import { mix, Stream } from '../sim/rng';
 import { buildMarketProps, buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
@@ -210,6 +210,20 @@ function plotOf(city: City, b: Building): 'x' | 'y' {
   return p.dir === 2 || p.dir === 3 ? 'x' : 'y';
 }
 
+/**
+ * What the hanging sign shows. Read off the building's NAME, so Mr Hobbs the
+ * Bootmaker actually hangs a boot: the sign and the prose agree, which is the
+ * whole point of a trade sign. Trades outside the four glyphs fall back to a
+ * hashed pick, pubs always hang the tankard.
+ */
+function glyphFor(b: Building, salt: number): SignGlyph {
+  if (b.kind === 'pub') return 'tankard';
+  if (/Bootmaker|Cobbler/.test(b.name)) return 'boot';
+  if (/Baker|Grocer|Confectioner/.test(b.name)) return 'loaf';
+  if (/Draper|Milliner|Tailor/.test(b.name)) return 'scissors';
+  return (['boot', 'loaf', 'scissors'] as const)[(salt >>> 17) % 3];
+}
+
 function specFor(city: City, b: Building, grime: number, variant: Variant): HouseSpec {
   const fam = FAMILY[b.kind] ?? DEFAULT_FAMILY;
   const def = DEFS[b.kind];
@@ -320,6 +334,14 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     }
   }
 
+  // The covering family, read off the roof colours before they are washed. It
+  // drives baked texture only, never geometry.
+  const roofKind: RoofKind =
+    roof[0] === PAL.verd0 || roof[0] === PAL.verd1 || roof[0] === PAL.verd2 || roof[0] === PAL.verd3 ? 'copper'
+      : roof[0] === PAL.thatch1 || roof[0] === PAL.thatch2 ? 'thatch'
+        : roof[0] === PAL.tileRed0 || roof[0] === PAL.tileRed1 || roof[0] === PAL.tileRed2 ? 'clay'
+          : 'slate';
+
   const skin: HouseSkin = {
     wallLit: wash(wall[0], wallWash + tired),
     wallShade: wash(wall[1], wallWash + tired - 0.06),
@@ -413,6 +435,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     salt: salt >>> 11,
     shopfront: fam.shop === true && b.w * b.d >= 1,
     sign: fam.shop === true,
+    signGlyph: fam.shop === true && (b.kind === 'shop' || b.kind === 'pub') ? glyphFor(b, salt) : undefined,
     awning: gradeHex(pickFrom(AWNINGS, salt, 7), variant),
     // Dormers need a slope deep enough to sit one on.
     dormers: fam.dormers && roofH >= 12 && shape !== 'sawtooth' ? fam.dormers : 0,
@@ -451,6 +474,10 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     cresting: fam.cresting === true || ((wardKind === 'garden' || polite) && b.kind === 'villa'),
     railings: (polite || wardKind === 'garden' || wardKind === 'civic')
       && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall' || b.kind === 'terrace'),
+    // Iron balconies over the merchant-row shopfronts: living quarters above the
+    // shop, dressed for the street below. About half the row, hashed per address.
+    balcony: wardKind === 'merchant' && fam.shop === true && storeys >= 2
+      && ((salt >>> 13) & 1) === 0,
     worksStage,
     drainState,
     // A mill or foundry has a fire in it around the clock; a scorched shell does
@@ -459,6 +486,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     rainStrength: weatherAt(city.seed, city.tick).precipitation,
     finial,
     finialH: fam.finialH ?? 0,
+    roofKind,
   };
 }
 

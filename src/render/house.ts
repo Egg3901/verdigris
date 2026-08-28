@@ -19,13 +19,15 @@ import { fillPolyHard, ditherPolyHard, lineHard } from './raster';
 import { PAL } from './palette';
 import {
   makeFace, drawDoor, drawShopfront, drawSign, drawWindowGrid, drawBoarded,
-  drawCourses, drawDormer, drawBunting,
+  drawCourses, drawDormer, drawBunting, drawQuoins, drawStringCourse,
+  drawPartyPipe, drawAreaRailing,
   drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
   drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
   drawVerdigrisStreaks, drawWallPosters,
 } from './detail';
-import type { DetailSkin, WallMaterial, WindowLight } from './detail';
+import { drawRoofTexture, drawRidgeTiles } from './detail';
+import type { DetailSkin, RoofKind, SignGlyph, WallMaterial, WindowLight } from './detail';
 import { drawFinial, drawMooringMast } from './landmarks';
 import type { Corners } from './landmarks';
 
@@ -69,6 +71,8 @@ export interface HouseSpec {
   shopfront?: boolean;
   /** A hanging signboard. */
   sign?: boolean;
+  /** What the hanging sign says, for the customer who cannot read. */
+  signGlyph?: SignGlyph;
   /** Dormers on the near roof slope. */
   dormers?: number;
   /** Windows boarded over: the rot, on the building itself. */
@@ -107,6 +111,8 @@ export interface HouseSpec {
   washing?: boolean;
   cresting?: boolean;
   railings?: boolean;
+  /** Iron balconies under the first-floor windows: merchant-row dressing. */
+  balcony?: boolean;
   /** 1 survey notice, 2 scaffold and tarpaulin, 3 signed-off plaque. */
   worksStage?: 0 | 1 | 2 | 3;
   /** 0 no drain needed, 1 served, 2 disconnected or behind a broken main. */
@@ -115,6 +121,8 @@ export interface HouseSpec {
   rainStrength?: 0 | 1 | 2;
   finial: Finial;
   finialH: number;
+  /** Covering family, for the baked roof texture. Defaults to clay. */
+  roofKind?: RoofKind;
 }
 
 interface Pt { x: number; y: number }
@@ -200,6 +208,11 @@ export function drawHouse(
 
   const alongX = spec.ridgeAlongX ?? w >= d;
   const roofQuad = drawRoof(ctx, eave, spec, alongX);
+  // The covering texture goes down before wear and repairs, so a missing slate
+  // is missing FROM something.
+  if (roofQuad && spec.roofKind && !spec.scorched && spec.damage !== 'burning') {
+    drawRoofTexture(ctx, roofQuad, spec.roofKind, skin.roofLit, skin.roofShade, spec.salt ?? 0);
+  }
   if (roofQuad && spec.roofWear) {
     drawRoofPatina(ctx, roofQuad, spec.roofWear, spec.salt ?? 0, skin.roofLit, skin.roofShade, skin.roofRidge);
   }
@@ -211,7 +224,7 @@ export function drawHouse(
   if (roofQuad && spec.dormers) {
     const n = Math.min(3, spec.dormers);
     for (let i = 0; i < n; i++) {
-      drawDormer(ctx, roofQuad, (i + 1) / (n + 1), detailSkin(spec), spec.skin.roofLit);
+      drawDormer(ctx, roofQuad, (i + 1) / (n + 1), detailSkin(spec), spec.skin.roofLit, (spec.salt ?? 0) + i * 7);
     }
   }
   if (roofQuad && spec.patched) {
@@ -632,6 +645,12 @@ function drawMaterials(
     switch (material) {
       case 'brick':
         drawBrickFace(ctx, f, wallH, mortar);
+        // A better brick building dresses its corner in stone. Same quoins the
+        // ashlar face carries, on brick they read as the merchant spending money
+        // where the street can see it.
+        if (spec.polite || spec.frontage === 'civic') {
+          drawQuoins(ctx, f, wallH, shadeHex(skin.wallLit, 0.25), mortar, 3);
+        }
         break;
       case 'ashlar':
         drawAshlarFace(ctx, f, wallH, mortar, shadeHex(skin.wallLit, 0.1));
@@ -649,8 +668,28 @@ function drawMaterials(
         drawStuccoMottle(ctx, f.lit ? litPts : shadePts, shadeHex(skin.wallLit, f.lit ? 0.08 : -0.1), salt ?? 0);
         break;
     }
+    // String courses between storeys on the taller masonry facades. The band
+    // uses the window grid's own spacing, so it lands between the rows.
+    if ((material === 'brick' || material === 'ashlar' || material === 'stucco')
+      && wallH >= 17 && spec.windowRows >= 2 && (spec.polite || spec.frontage === 'civic')) {
+      drawStringCourse(ctx, f, wallH, spec.windowRows,
+        shadeHex(skin.wallLit, 0.15), shadeHex(skin.wallShade, -0.15), spec.shopfront === true);
+    }
     if (!spec.polite) drawSootStreaks(ctx, f, wallH, shadeHex(PAL.soot1, 0), salt ?? 0);
-    if (spec.facadeWear) drawFacadePatina(ctx, f, wallH, material, spec.facadeWear, spec.drainState ?? 0, salt ?? 0, ds);
+    // A cast iron downpipe hugging the party wall on the terraced streets. The
+    // drain-driven pipe at t 0.9 belongs to the drain network; this one is just
+    // the joint between two houses doing what such joints did.
+    if ((material === 'brick' || material === 'timber' || material === 'wood')
+      && !spec.shopfront && wallH >= 14 && (((salt ?? 0) >>> 5) % 3) === 0) {
+      drawPartyPipe(ctx, f, wallH, spec.polite ? PAL.soot2 : PAL.soot1, (salt ?? 0) + (f.lit ? 0 : 1));
+    }
+    // The rot concentrates low and behind. A gilded frontage keeps its face: the
+    // lit side of a trimmed building shows one step less wear than the shade
+    // side, which is the district's whole act performed by a single facade.
+    if (spec.facadeWear) {
+      const shown = f.lit && skin.trim ? (spec.facadeWear - 1) as 0 | 1 | 2 : spec.facadeWear;
+      if (shown) drawFacadePatina(ctx, f, wallH, material, shown, spec.drainState ?? 0, salt ?? 0, ds);
+    }
     // Pasted bills on the working bank's brick and timber, lit face only, and
     // never over a shopfront, which carries its own signage. Drawn here so the
     // door and windows, drawn later, sit over the paper the way real joinery
@@ -672,6 +711,11 @@ function detailSkin(spec: HouseSpec): DetailSkin {
     glassLit: spec.skin.windowLit === true,
     trim: spec.skin.trim,
     outline: spec.skin.outline,
+    occupants: (spec.damage ?? 'none') === 'none' && !spec.scorched && !spec.boarded,
+    // Stone dressings around the openings on the kept-up masonry buildings.
+    dress: spec.polite && !spec.scorched
+      && (spec.material === 'brick' || spec.material === 'ashlar' || spec.material === 'stucco')
+      ? shadeHex(spec.skin.wallLit, 0.2) : undefined,
   };
 }
 
@@ -694,9 +738,16 @@ function drawFacade(
   for (const f of [lit, shade]) {
     if (f.span < 8) continue;
     if (spec.material !== 'glazed') {
-      drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true, salt + (f.lit ? 0 : 5), lights);
+      drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true,
+        salt + (f.lit ? 0 : 5), lights,
+        spec.balcony && f.lit && !spec.boarded ? PAL.soot2 : undefined);
     }
     if (spec.boarded) drawBoarded(ctx, f, spec.wallH, skin);
+  }
+
+  // Area railings guard the light well in front of a civic frontage.
+  if (spec.frontage === 'civic' && !spec.scorched && lit.span >= 14) {
+    drawAreaRailing(ctx, lit, spec.wallH, PAL.soot2);
   }
 
   // A furnace throws warm light out of the ground floor before the door is even
@@ -705,7 +756,7 @@ function drawFacade(
 
   // The shopfront and the door go on the lit face: the one the camera can see.
   if (spec.shopfront && lit.span >= 10) {
-    drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed);
+    drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed, salt);
   } else if (lit.span >= 8 && spec.material !== 'glazed') {
     const t = 0.28 + ((salt % 5) / 12);
     if (spec.frontage === 'works' || spec.frontage === 'warehouse' || spec.frontage === 'wharf') {
@@ -716,7 +767,7 @@ function drawFacade(
       drawDoor(ctx, lit, t, spec.wallH, skin);
     }
   }
-  if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin);
+  if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin, spec.signGlyph, salt);
   if (spec.bunting && lit.span >= 12) drawBunting(ctx, lit, spec.wallH);
   if (spec.deputationBanner && lit.span >= 18) drawDeputationBanner(ctx, lit, spec.wallH);
 }
@@ -1061,7 +1112,26 @@ function drawSawtooth(
 function ridgeLine(
   ctx: CanvasRenderingContext2D, a: Pt, b: Pt, colour: string, spec?: HouseSpec,
 ): void {
-  lineHard(ctx, a, b, colour);
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  if (spec && (spec.roofWear ?? 0) >= 2 && len >= 10 && spec.damage !== 'burning') {
+    // The worst roofs sag: the purlin has gone and the ridge dips toward the
+    // middle. Two straight runs through a dropped midpoint, and a shadow pixel
+    // under the low point where the slates have opened up.
+    const sag = 1 + ((spec.salt ?? 0) & 1);
+    const m = { x: (a.x + b.x) / 2 + (((spec.salt ?? 0) >>> 3) % 3) - 1, y: (a.y + b.y) / 2 + sag };
+    lineHard(ctx, a, m, colour);
+    lineHard(ctx, m, b, colour);
+    ctx.fillStyle = PAL.soot1;
+    ctx.fillRect(Math.round(m.x), Math.round(m.y) + 1, 2, 1);
+  } else {
+    lineHard(ctx, a, b, colour);
+    // Ridge tiles cap the sound roofs. Cresting outranks them, and a sagging
+    // ridge has shed its caps already.
+    if (spec && !spec.cresting && !spec.scorched
+      && (spec.roofKind === 'clay' || spec.roofKind === 'slate')) {
+      drawRidgeTiles(ctx, a, b, colour, spec.salt ?? 0);
+    }
+  }
   if (spec?.cresting) {
     drawRidgeCrest(ctx, a, b, spec.skin.trim ?? spec.skin.roofRidge, spec.polite);
   }
@@ -1103,14 +1173,20 @@ function chimneys(ctx: CanvasRenderingContext2D, r0: Pt, r1: Pt, spec: HouseSpec
     }
     // Terracotta pots on the cap: one or two, the London-brown skyline detail
     // that turns a brick stub into a chimney. Sit clear of the flaunching line.
-    const pots = 1 + (((i + (spec.salt ?? 0)) >>> 1) & 1);
+    // Pot patterns vary per stack: a pair of squat cans, one tall chimney can,
+    // or a mismatched pair where a sweep replaced a cracked pot with whatever
+    // the yard had. The mismatch is the period detail.
+    const style = ((spec.salt ?? 0) + i * 5) >>> 1;
+    const pots = 1 + (style & 1);
     const pot = spec.polite ? PAL.tileRed2 : PAL.ochre1;
     for (let p = 0; p < pots; p++) {
       const px = x - 1 + p * 2;
-      ctx.fillStyle = pot;
-      ctx.fillRect(px, y - h - 3, 1, 2);
+      const tall = ((style >>> (1 + p)) & 1) === 1;
+      const ph = tall ? 3 : 2;
+      ctx.fillStyle = (style & 4) !== 0 && p === 1 ? PAL.soot2 : pot;
+      ctx.fillRect(px, y - h - 1 - ph, 1, ph);
       ctx.fillStyle = shadeHex(pot, 0.18);
-      ctx.fillRect(px, y - h - 3, 1, 1);
+      ctx.fillRect(px, y - h - 1 - ph, 1, 1);
     }
   }
 }
