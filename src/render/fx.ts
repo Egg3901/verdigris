@@ -550,12 +550,13 @@ export function drawWeatherFx(
     if (!insideIsland(d, tx, ty)) continue;
     const tile = d.tile[cellKey(d, tx, ty)];
     if (tile === Tile.Water) {
-      // A dimple ring on the water.
+      // A dimple ring on the water, down on the surface the river actually has.
+      const wy = y + riverDropAt(city.seed, city.tick);
       ctx.fillStyle = glint;
-      ctx.fillRect(x - 1, y, 1, 1);
-      ctx.fillRect(x + 1, y, 1, 1);
-      ctx.fillRect(x, y - 1, 1, 1);
-      if ((h & 3) === 0) ctx.fillRect(x, y + 1, 1, 1);
+      ctx.fillRect(x - 1, wy, 1, 1);
+      ctx.fillRect(x + 1, wy, 1, 1);
+      ctx.fillRect(x, wy - 1, 1, 1);
+      if ((h & 3) === 0) ctx.fillRect(x, wy + 1, 1, 1);
       calls++;
     } else if (tile === Tile.Street || tile === Tile.Alley || tile === Tile.Square
       || tile === Tile.Embankment || tile === Tile.Wharf || tile === Tile.Bridge) {
@@ -768,6 +769,11 @@ export function drawFog(
     const low = 0.42 + ((i * 37) % 100) / 170;
     const cy = wb.minY + wb.h * low + Math.sin((t * 0.03 + i) * 1) * 4;
     if (cx < tl.wx - 60 || cx > br.wx + 60 || cy < tl.wy - 20 || cy > br.wy + 20) continue;
+    // Fog lies in the streets. A bank whose centre has drifted off the island
+    // would hang in the void as a grey smear, so it is skipped until it wraps.
+    const fogTx = Math.round(cx / TILE_W + cy / TILE_H);
+    const fogTy = Math.round(cy / TILE_H - cx / TILE_W);
+    if (!insideIsland(city.district, fogTx, fogTy)) continue;
     const w = heavy ? 34 + (i % 4) * 8 : 26;
     const h = heavy ? 9 : 6;
     const bank = [
