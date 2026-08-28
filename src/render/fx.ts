@@ -520,15 +520,18 @@ export function drawLamps(
   let calls = 0;
   for (const b of city.buildings) {
     if (b.gasSeg < 0 || !serviceAt(city.networks.gas, b.id)) continue;
+    // Not every door carries a street lamp: they stand at intervals, and some are
+    // out of service, so the light is uneven rather than a bulb at every house.
+    if ((mix(city.seed, 63, b.id) % 100) >= 58) continue;
     const threshold = (mix(city.seed, 61, b.id) % 1000) / 1000;
     if (level <= threshold) continue;
     const lx = isoX(b.doorX, b.doorY);
     const ly = isoY(b.doorX, b.doorY);
     if (lx < tl.wx - 24 || lx > br.wx + 24 || ly < tl.wy - 24 || ly > br.wy + 24) continue;
-    // Just-caught lamps and the occasional flicker burn dim; a settled lamp burns
-    // full. Dim drops the bright inner rings, so the pool visibly gutters.
+    // Just-caught lamps and the frequent gaslight flicker burn dim; a settled
+    // lamp burns full. Dim drops the bright inner rings, so the pool gutters.
     const ramp = (level - threshold) / 0.1;
-    const dim = ramp < 0.55 || (mix(city.seed, 62, b.id, flickFrame) % 13) === 0;
+    const dim = ramp < 0.55 || (mix(city.seed, 62, b.id, flickFrame) % 7) === 0;
     const rings: Array<[number, number, string]> = dim
       ? [[1.8, 3, gas1], [1.0, 5, gas1]]
       : [[2.6, 2, gas0], [1.9, 3, gas1], [1.2, 5, gas1], [0.7, 8, gas2]];

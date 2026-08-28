@@ -98,6 +98,12 @@ export interface HouseSpec {
   /** A furnace burns inside: warm light leaks from the ground floor and a wide
    *  charging door, day and night. Mills and foundries. */
   furnace?: boolean;
+  /** Share of windows lit, 0 to 1, decided per window against a stable hash so
+   *  the house lights and empties one window at a time through the night. */
+  litFraction?: number;
+  /** Night-lighting phase, folded into the per-window hash so the lit set shifts
+   *  from one bake to the next rather than the same panes always burning. */
+  lightPhase?: number;
   polite: boolean;
   patched?: boolean;
   /** Physical wear, derived from fabric and district conditions. */
@@ -653,6 +659,8 @@ function detailSkin(spec: HouseSpec): DetailSkin {
     timber: shadeHex(spec.skin.wallShade, -0.3),
     glass: spec.skin.window ?? PAL.darkWindow,
     glassLit: spec.skin.windowLit === true,
+    litFraction: spec.litFraction ?? 0,
+    lightPhase: spec.lightPhase ?? 0,
     trim: spec.skin.trim,
     outline: spec.skin.outline,
   };

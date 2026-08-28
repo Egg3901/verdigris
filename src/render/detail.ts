@@ -46,6 +46,10 @@ export interface DetailSkin {
   timber: string;
   glass: string;
   glassLit: boolean;
+  /** Share of windows lit right now, 0..1. */
+  litFraction?: number;
+  /** Night phase, mixed into the per-window hash so the lit set shifts. */
+  lightPhase?: number;
   trim?: string;
   outline: string;
 }
@@ -138,33 +142,46 @@ export function drawWindowGrid(
   // as a window rather than a hole. Warm on the working bank, near-white on the
   // polite one where the joinery is kept up.
   const frame = shadeHex(skin.wall, 0.16);
+  // Which panes are lit is decided per pane against the phase's lit fraction, so
+  // a house is lit and emptied one window at a time as the night wears on rather
+  // than glowing whole and holding it till dawn.
+  const litFraction = skin.litFraction ?? 0;
+  const phase = skin.lightPhase ?? 0;
+  const lightingOn = skin.glassLit && litFraction > 0;
+  const cold = shadeHex(PAL.darkWindow, f.lit ? 0.06 : 0);
   for (let r = 0; r < rows; r++) {
     const h = 4 + r * stepY;
     if (h + 5 > bottom) break;
     for (let c = 0; c < cols; c++) {
       const t = (c + 0.5) / cols;
-      // Not every pane is lit, or a lit town reads as a string of fairy lights.
-      const dark = skin.glassLit && ((hash + r * 7 + c * 13) % 3 === 0);
-      const lit = skin.glassLit && !dark;
-      const glass = lit ? skin.glass : shadeHex(PAL.darkWindow, f.lit ? 0.06 : 0);
+      // A stable per-pane roll, shifted by the phase so the pattern changes bake
+      // to bake. A pane is lit when its roll falls under the fraction awake.
+      const key = ((hash + r * 71 + c * 131 + phase * 907) >>> 0) % 1000;
+      const lit = lightingOn && key < litFraction * 1000;
+      // A few lit rooms burn warmer than the rest, for life.
+      const glass = lit ? (key % 6 === 0 ? PAL.litWindow2 : skin.glass) : cold;
       const halfW = Math.min(0.12, 3 / Math.max(1, f.span));
       faceQuad(ctx, f, t - halfW, t + halfW, h, h + 4, glass);
       // The meeting rail: the one horizontal bar that divides upper and lower
-      // sash. A single line, but it is the mark that says "sash window" at a
-      // scale too small to carry a full glazing grid.
+      // sash. A single line, but it is the mark that says "sash window".
       lineHard(ctx, f.at(t - halfW, h + 2), f.at(t + halfW, h + 2), frame);
-      // A cool reflection catch in the top corner of the lit face by day; a warm
-      // inner sill-glow at night. Either way the flat pane gets a second value.
       if (!lit) {
-        if (f.lit) {
+        // A cool reflection catch in a dark pane, on the lit face by day.
+        if (f.lit && !lightingOn) {
           const g = f.at(t - halfW, h);
           ctx.fillStyle = PAL.arc0;
           ctx.fillRect(Math.round(g.x), Math.round(g.y), 1, 1);
         }
       } else {
+        // A lit pane spills warm light: a bright inner corner, and a soft wash
+        // down the wall below the sill, so the window reads as a light source.
         const g = f.at(t + halfW - 0.01, h + 3);
         ctx.fillStyle = PAL.litWindow2;
         ctx.fillRect(Math.round(g.x), Math.round(g.y), 1, 1);
+        ditherPolyHard(ctx, [
+          f.at(t - halfW, h + 4), f.at(t + halfW, h + 4),
+          f.at(t + halfW - 0.01, h + 7), f.at(t - halfW + 0.01, h + 7),
+        ], PAL.gas1, 5);
       }
       // Lintel above, sill below: two one-pixel lines that do most of the work of
       // making a hole in a wall look like a window.

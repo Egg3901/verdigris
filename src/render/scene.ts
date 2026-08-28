@@ -65,6 +65,9 @@ export interface Scene {
   weatherRevision: number;
   shelterRevision: number;
   occasionRevision: number;
+  /** The night-lighting phase this was baked at, so windows re-flatten as the
+   *  district goes to bed. */
+  lightPhase: number;
   ground: HTMLCanvasElement;
   props: Prop[];
   idBuffer: HTMLCanvasElement;
@@ -203,10 +206,35 @@ function plotOf(city: City, b: Building): 'x' | 'y' {
   return p.dir === 2 || p.dir === 3 ? 'x' : 'y';
 }
 
+/**
+ * Which stage of the night the district is in, for its lighting. The bake keys
+ * off this, so the window pattern re-flattens a handful of times a night as the
+ * ward goes to bed rather than switching to "all lit" and staying there.
+ *
+ *   0 day, 1 dusk (lamps catching), 2 evening (most awake), 3 late evening,
+ *   4 deep night (few windows), 5 the small hours before waking.
+ */
+export function lightPhase(minute: number): number {
+  if (minute >= 1140 && minute < 1260) return 1;
+  if (minute >= 1260) return 2;
+  if (minute < 120) return 3;
+  if (minute < 330) return 4;
+  if (minute < 450) return 5;
+  return 0;
+}
+
+/** The share of windows lit at each phase: a curve that rises through the
+ *  evening and falls away as the district sleeps. */
+function litFractionFor(phase: number): number {
+  return [0, 0.3, 0.68, 0.44, 0.15, 0.32][phase] ?? 0;
+}
+
 function specFor(city: City, b: Building, grime: number, variant: Variant): HouseSpec {
   const fam = FAMILY[b.kind] ?? DEFAULT_FAMILY;
   const def = DEFS[b.kind];
   const salt = mix(city.seed, 41, b.id);
+  const litPhase = lightPhase(minuteOfDay(city.tick));
+  const litFraction = litFractionFor(litPhase);
   const polite = city.district.polite[cellKey(city.district, b.ox, b.oy)] === 1;
   // Soot on the same ladder as everything else, in five steps rather than 255.
   // The working bank carries more of it: that is the class geography, rendered.
@@ -331,11 +359,11 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // Lit windows at dusk and after. A gaslight-era city with no lit window in it
     // was the single most conspicuous absence in the build: variantFor and the
     // palette entries both existed and neither had ever been called.
-    // Windows light only at full night. Through dusk they stay dark while the
-    // street lamps come on one by one, so evening arrives in stages rather than
-    // the whole town flipping to lit the instant the light changes.
-    window: variant === 'night' ? PAL.litWindow : gradeHex(PAL.darkWindow, variant),
-    windowLit: variant === 'night',
+    // Lighting is active from dusk on, but WHICH windows are lit is decided per
+    // window in drawWindowGrid against the phase's lit fraction, so the house is
+    // never uniformly lit and empties as the night wears on.
+    window: PAL.litWindow,
+    windowLit: litPhase > 0,
     outline: gradeHex(PAL.soot0, variant),
   };
 
@@ -449,6 +477,8 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // A mill or foundry has a fire in it around the clock; a scorched shell does
     // not, and neither does an idle collapsed one.
     furnace: (b.kind === 'mill' || b.kind === 'foundry') && !scorched && damage === 'none',
+    litFraction,
+    lightPhase: litPhase,
     rainStrength: weatherAt(city.seed, city.tick).precipitation,
     finial,
     finialH: fam.finialH ?? 0,
@@ -865,6 +895,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     weatherRevision: weather.revision,
     shelterRevision: city.shelters.revision,
     occasionRevision: city.occasions.revision,
+    lightPhase: lightPhase(minuteOfDay(city.tick)),
     ground, props, idBuffer, idCtx, statics, originX, originY,
   };
 }
