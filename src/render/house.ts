@@ -1093,11 +1093,34 @@ function drawSawtooth(
     const pk = 0.28;
     const pA = up(lerp(a0, a1, pk), roofH);
     const pB = up(lerp(b0, b1, pk), roofH);
-    // Glazed steep face.
-    const glass = spec.skin.windowLit ? PAL.rivGlint : shadeHex(PAL.darkWindow, 0.1);
-    poly(ctx, [a0, b0, pB, pA], glass, 2);
-    lineHard(ctx, a0, pA, PAL.soot2);
-    lineHard(ctx, b0, pB, PAL.soot2);
+    // North-light glazing: the whole point of a sawtooth shed is that the
+    // steep face is a window wall. It was a flat slab in raw palette colours
+    // that never darkened at night, which is what made a mill roof read as a
+    // grey blank. Now it is glass in an iron frame, graded like everything else.
+    // Not every bay of a shed is worked after dark. A night shift lights some
+    // of the range, hashed per bay, and dimmer than a parlour window: a mill
+    // roof glowing brighter than the houses under it reads as a bonfire.
+    const shift = ((spec.salt ?? 0) >> (i * 2)) & 3;
+    const lit = spec.skin.windowLit === true && (shift & 1) === 1;
+    const glass = lit
+      ? shadeHex(skin.window ?? PAL.litWindow, -0.3)
+      : shadeHex(skin.roofShade, -0.28);
+    const frame = shadeHex(skin.roofShade, -0.45);
+    poly(ctx, [a0, b0, pB, pA], glass);
+    // Glazing bars across the light, and one transom band up its middle. The
+    // bars are what say "window" at this size, more than the colour does.
+    const bars = Math.max(3, Math.round(Math.hypot(b0.x - a0.x, b0.y - a0.y) / 5));
+    for (let g = 1; g < bars; g++) {
+      const t = g / bars;
+      lineHard(ctx, lerp(a0, b0, t), lerp(pA, pB, t), frame);
+    }
+    lineHard(ctx, lerp(a0, pA, 0.5), lerp(b0, pB, 0.5), frame);
+    // A cool sky catch along the head of the glass, warm spill at the foot
+    // when the works is running: glass reflects, it does not just sit there.
+    lineHard(ctx, lerp(pA, a0, 0.12), lerp(pB, b0, 0.12), shadeHex(glass, lit ? 0.2 : 0.16));
+    // The iron frame around the light.
+    lineHard(ctx, a0, pA, frame);
+    lineHard(ctx, b0, pB, frame);
     // Shallow tiled slope.
     poly(ctx, [pA, pB, b1, a1], skin.roofLit, 3);
     poly(ctx, [pB, b1, b0], skin.roofShade);
