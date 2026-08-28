@@ -3,7 +3,7 @@
 // the last 28 watches of precipitation, which makes the river respond to recent
 // weather without needing stored state. A slow dry-spell bias lowers the level
 // during droughts, and the final level is clamped to 0..4.
-import { weatherAt, WEATHER_WATCH_MINUTES } from './weather';
+import { weatherAt, forcedWeather, WEATHER_WATCH_MINUTES } from './weather';
 import { mix, Stream } from './rng';
 
 export const RIVER_LOOKBACK_WATCHES = 28;
@@ -26,6 +26,13 @@ export function riverLevelAt(seed: number, tick: number): number {
   const dry = mix(seed, Stream.Weather, pressureSystem, 7) % 100;
   if (dry < 12) {
     wet -= 120;
+  }
+
+  // The sandbox drought is faster than any natural dry spell: the bed empties
+  // over hours, not days, draining harder the longer the pin holds.
+  const pinned = forcedWeather();
+  if (pinned.kind === 'drought' && tick >= pinned.since) {
+    wet -= Math.floor((tick - pinned.since) * 2 / 3);
   }
 
   let level: number;

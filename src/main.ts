@@ -32,7 +32,7 @@ import { startMarketDay } from './sim/occasions';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
 import { weatherAt, forceWeather } from './sim/weather';
 import { riverLevelAt } from './sim/hydrology';
-import type { WeatherKind } from './sim/weather';
+import type { ForcedWeather } from './sim/weather';
 import { activeMatters, declineMatter, pressMatter, recommendedFor } from './sim/matters';
 
 const params = new URLSearchParams(location.search);
@@ -293,8 +293,9 @@ shell = mountShell(shellRoot, {
     if (pressMatter(city, id)) shell.toast('A clerk has been sent after it. One influence spent.', 'gain');
   },
   onForceWeather: (kind) => {
-    forceWeather(kind as WeatherKind | null);
-    shell.toast(kind ? `The weather is set to ${kind}.` : 'The weather is back on its own.', 'info');
+    forceWeather(kind as ForcedWeather | null, city.tick);
+    shell.toast(kind === 'drought' ? 'A drought settles on the district. The river will fall through the day.'
+      : kind ? `The weather is set to ${kind}.` : 'The weather is back on its own.', 'info');
   },
   onTriggerDisaster: (kind) => {
     // Prefer the selected building; otherwise find any building it can strike.
@@ -592,7 +593,7 @@ interface QaHook {
   disaster: (kind: string, buildingId: number) => boolean;
   market: () => boolean;
   weather: () => string;
-  forceWeather: (kind: WeatherKind | null) => void;
+  forceWeather: (kind: ForcedWeather | null) => void;
   palette: () => readonly string[];
 }
 
@@ -624,6 +625,6 @@ interface QaHook {
   disaster: (kind, buildingId) => startDisaster(city, kind as DisasterKind, buildingId) !== null,
   market: () => startMarketDay(city) > 0,
   weather: () => weatherAt(city.seed, city.tick).kind,
-  forceWeather: (kind) => forceWeather(kind),
+  forceWeather: (kind) => forceWeather(kind, city.tick),
   palette: () => renderPalette(scene.variant),
 };

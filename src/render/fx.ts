@@ -17,10 +17,11 @@ import { Tile } from '../sim/types';
 import { cellKey, insideIsland } from '../sim/district';
 import { isDisasterActive } from '../sim/disasters';
 import { weatherAt } from '../sim/weather';
+import { riverLevelAt, riverSurfaceDrop } from '../sim/hydrology';
 
 export interface VehicleDraw {
-  /** 0 tram, 1 cart. */
-  kind: 0 | 1;
+  /** 0 tram, 1 cart, 2 barge. */
+  kind: 0 | 1 | 2;
   /** Cart body family. Ignored by trams. */
   cartKind: 0 | 1 | 2;
   wx: number;
@@ -182,9 +183,9 @@ export function collectVehicles(
   out: VehicleDraw[],
 ): number {
   let n = 0;
-  const add = (kind: VehicleDraw['kind'], cartKind: VehicleDraw['cartKind'], cx: number, cy: number, along: boolean) => {
+  const add = (kind: VehicleDraw['kind'], cartKind: VehicleDraw['cartKind'], cx: number, cy: number, along: boolean, dy = 0) => {
     const wx = isoX(cx, cy);
-    const wy = isoY(cx, cy);
+    const wy = isoY(cx, cy) + dy;
     // Include the tram pole and cart body above their ground point in the cull.
     if (wx < tl.wx - 12 || wx > br.wx + 12 || wy < tl.wy - 24 || wy > br.wy + 4) return;
     const slot = out[n] ?? (out[n] = { kind: 0, cartKind: 0, wx: 0, wy: 0, depth: 0, along: false });
@@ -226,6 +227,38 @@ export function collectVehicles(
     add(1, r.kind, cx, cy, false);
   }
 
+  // Barges work the channel, deterministic in (seed, tick) like everything
+  // else that moves. Fewer as the river falls, none on a dry bed, and a boat
+  // under a bridge is skipped: the deck and parapet are what hide it.
+  const level = riverLevelAt(city.seed, city.tick);
+  if (level > 0) {
+    const surfaceY = riverSurfaceDrop(level) + (level === 1 ? 2 : 0);
+    const riv = city.river;
+    let x0 = -1;
+    let x1 = -1;
+    for (let x = 0; x < city.district.width; x++) {
+      if (riv.centre[x] >= 0 && insideIsland(city.district, x, riv.centre[x])) {
+        if (x0 < 0) x0 = x;
+        x1 = x;
+      }
+    }
+    const span = x1 - x0 - 4;
+    if (span > 8) {
+      const boats = level >= 3 ? 3 : level === 2 ? 2 : 1;
+      for (let i = 0; i < boats; i++) {
+        // Triangle wave along the reach: down with the current, then poled back.
+        const ph = ((t * 0.22 + (i * span * 2) / boats) % (span * 2) + span * 2) % (span * 2);
+        const along = ph <= span ? ph : span * 2 - ph;
+        const bx = x0 + 2 + along;
+        const bi = Math.min(x1 - 1, Math.floor(bx));
+        const f = bx - bi;
+        const by = riv.centre[bi] + (riv.centre[bi + 1] - riv.centre[bi]) * f;
+        if (riv.bridges.some((bridge) => Math.abs(bx - bridge.x) < (bridge.stone ? 2.2 : 1.6))) continue;
+        add(2, (i % 3) as VehicleDraw['cartKind'], bx, by, ph <= span, surfaceY);
+      }
+    }
+  }
+
   // Vehicles move only a fraction of a cell per frame, so insertion sort keeps
   // the nearly sorted list ordered without allocating.
   for (let i = 0; i < n - 1; i++) {
@@ -244,6 +277,43 @@ export function collectVehicles(
 export function drawVehicle(ctx: CanvasRenderingContext2D, vehicle: VehicleDraw, variant: Variant): number {
   const x = Math.round(vehicle.wx);
   const y = Math.round(vehicle.wy);
+  if (vehicle.kind === 2) {
+    // A working river barge: low freeboard, so it clears every arch on the
+    // river. The cargo tells the boats apart; the tiller man stands aft.
+    const hull = gradeHex(PAL.wood0, variant);
+    const deck = gradeHex(PAL.wood2, variant);
+    const east = vehicle.along;
+    fillPolyHard(ctx, [
+      { x: x - 8, y: y - 2 }, { x: x + 8, y: y - 2 },
+      { x: x + 6, y: y + 2 }, { x: x - 6, y: y + 2 },
+    ], hull);
+    fillPolyHard(ctx, [
+      { x: x - 7, y: y - 3 }, { x: x + 7, y: y - 3 }, { x: x + 7, y: y - 2 }, { x: x - 7, y: y - 2 },
+    ], deck);
+    // The bow leads whichever way the boat is working.
+    ctx.fillStyle = hull;
+    ctx.fillRect(east ? x + 8 : x - 9, y - 2, 1, 3);
+    if (vehicle.cartKind === 0) {
+      ctx.fillStyle = gradeHex(PAL.wood1, variant);
+      ctx.fillRect(x - 4, y - 6, 3, 3);
+      ctx.fillRect(x, y - 5, 3, 2);
+    } else if (vehicle.cartKind === 1) {
+      fillPolyHard(ctx, [
+        { x: x - 5, y: y - 3 }, { x: x - 3, y: y - 6 }, { x: x + 4, y: y - 6 }, { x: x + 6, y: y - 3 },
+      ], gradeHex(PAL.buntBlue, variant));
+    } else {
+      fillPolyHard(ctx, [
+        { x: x - 5, y: y - 3 }, { x: x - 1, y: y - 6 }, { x: x + 3, y: y - 4 }, { x: x + 5, y: y - 3 },
+      ], gradeHex(PAL.soot1, variant));
+    }
+    ctx.fillStyle = gradeHex(PAL.soot0, variant);
+    ctx.fillRect(east ? x - 6 : x + 5, y - 5, 1, 3);
+    // The wake trails astern and glints.
+    ctx.fillStyle = gradeHex(PAL.rivGlint, variant);
+    ctx.fillRect(east ? x - 10 : x + 9, y, 1, 1);
+    ctx.fillRect(east ? x - 12 : x + 11, y + 1, 1, 1);
+    return 8;
+  }
   if (vehicle.kind === 0) {
     const body = gradeHex(PAL.buntRed, variant);
     const roof = gradeHex(PAL.verd2, variant);

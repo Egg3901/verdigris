@@ -597,19 +597,39 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       let colour = GROUND_COLOUR[tile] ?? PAL.soot2;
       if (tile === Tile.Water) {
         const dep = depth[k];
+        // The bed is not a flat floor: it terraces down toward the channel,
+        // two pixels per depth band, which is what the falling water exposes.
+        const bedAt = (dd: number) => drop + Math.min(3, Math.max(0, dd - 1)) * 2;
         // The channel keeps its water longest: shallows dry out first as the
         // level falls, and in a drought only a mid-channel trickle is left.
         const dryBed = riverLevel === 0 ? dep <= 2 : riverLevel === 1 ? dep <= 1 : false;
+        // What water remains at low levels sits down in the terraces it still fills.
+        const wetY = riverLevel === 0 ? drop + 4 : riverLevel === 1 ? drop + 2 : drop;
         const cx0 = originX + isoX(tx, ty);
         const cy0 = originY + isoY(tx, ty);
-        drawBankWalls(gctx, d, tx, ty, cx0, cy0, drop, riverLevel, variant);
+        drawBankWalls(gctx, d, tx, ty, cx0, cy0, dryBed ? bedAt(dep) : wetY, riverLevel, variant);
         if (dryBed) {
-          drawDryBed(gctx, cx0, cy0 + drop, mix(city.seed, 57, tx, ty), variant);
+          const bd = bedAt(dep);
+          // Terrace faces where this bed steps down from a shallower dry neighbour.
+          for (const [nx, ny] of [[tx - 1, ty], [tx, ty - 1]]) {
+            if (nx < 0 || ny < 0) continue;
+            const nk = cellKey(d, nx, ny);
+            if (d.tile[nk] !== Tile.Water) continue;
+            const nbd = bedAt(depth[nk]);
+            if (nbd >= bd) continue;
+            const a = nx < tx ? { x: cx0 - TILE_W / 2, y: cy0 } : { x: cx0, y: cy0 - TILE_H / 2 };
+            const b = nx < tx ? { x: cx0, y: cy0 - TILE_H / 2 } : { x: cx0 + TILE_W / 2, y: cy0 };
+            fillPolyHard(gctx, [
+              { x: a.x, y: a.y + nbd }, { x: b.x, y: b.y + nbd },
+              { x: b.x, y: b.y + bd }, { x: a.x, y: a.y + bd },
+            ], gradeHex(shadeHex(PAL.dirt0, -0.42), variant));
+          }
+          drawDryBed(gctx, cx0, cy0 + bd, mix(city.seed, 57, tx, ty), variant);
         } else {
           // Shallows at the bank, deep water in the channel.
           const wet = dep <= 1 ? PAL.riv2 : dep === 2 ? PAL.riv1 : shadeHex(PAL.riv1, -0.15);
-          drawIsoDiamond(gctx, cx0, cy0 + drop, gradeHex(wet, variant));
-          textureCell(gctx, city.seed, tx, ty, tile, originX, originY + drop, variant, d.polite[k] === 1);
+          drawIsoDiamond(gctx, cx0, cy0 + wetY, gradeHex(wet, variant));
+          textureCell(gctx, city.seed, tx, ty, tile, originX, originY + wetY, variant, d.polite[k] === 1);
         }
       }
       if (tile !== Tile.Water) {
@@ -1014,7 +1034,7 @@ function drawBankWalls(
     // Face material follows what stands on the lip above it.
     const ashlar = nTile === Tile.Embankment || nTile === Tile.Bridge || nTile === Tile.Square;
     const timber = nTile === Tile.Wharf;
-    const face = ashlar ? PAL.stone1 : timber ? PAL.wood1 : PAL.dirt0;
+    const face = ashlar ? shadeHex(PAL.stone1, -0.22) : timber ? shadeHex(PAL.wood1, -0.12) : shadeHex(PAL.dirt0, -0.1);
     const dark = ashlar ? PAL.stone0 : timber ? PAL.wood0 : shadeHex(PAL.dirt0, -0.3);
     const a = side === 0 ? { x: cx - HW, y: cy } : { x: cx, y: cy - HH };
     const b = side === 0 ? { x: cx, y: cy - HH } : { x: cx + HW, y: cy };
@@ -1035,6 +1055,22 @@ function drawBankWalls(
         ctx.fillStyle = gradeHex(dark, variant);
         ctx.fillRect(px, py + 1, 1, drop - 1);
       }
+    }
+    // A bridge face is a pier wall with an arch through it, so the crossing
+    // reads as a structure standing IN the river, not paint on top of it.
+    if (nTile === Tile.Bridge && drop >= 4) {
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const half = Math.abs(b.x - a.x) * 0.3;
+      const top = 2;
+      const arch = [
+        { x: mx - half, y: my + drop }, { x: mx - half, y: my + top + 2 },
+        { x: mx, y: my + top }, { x: mx + half, y: my + top + 2 },
+        { x: mx + half, y: my + drop },
+      ];
+      fillPolyHard(ctx, arch, gradeHex(shadeHex(PAL.riv1, -0.5), variant));
+      lineHard(ctx, { x: mx - half, y: my + top + 2 }, { x: mx, y: my + top }, gradeHex(PAL.stone2, variant));
+      lineHard(ctx, { x: mx, y: my + top }, { x: mx + half, y: my + top + 2 }, gradeHex(PAL.stone2, variant));
     }
     // The waterline stains the foot of the wall, and a falling river leaves
     // pale tide marks above it.

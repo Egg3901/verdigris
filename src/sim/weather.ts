@@ -27,16 +27,29 @@ const WIND: readonly (-1 | 0 | 1)[] = [-1, -1, 0, 1, 1];
 // is cleared. Bumping a generation counter on every change moves the render
 // revision, which is what makes the compositor rebake the baked fog and puddles
 // for the new sky rather than only the per-frame rain.
-let forcedKind: WeatherKind | null = null;
+/** 'drought' is a sandbox condition, not a WeatherKind: the sky shows fair
+ *  while the river is drained on its own clock in hydrology.ts. */
+export type ForcedWeather = WeatherKind | 'drought';
+
+let forcedKind: ForcedWeather | null = null;
+let forcedSince = 0;
 let forcedGen = 0;
 
-export function forceWeather(kind: WeatherKind | null): void {
+/**
+ * The pin applies from the moment it is set, never retroactively. History
+ * before sinceTick keeps the natural weather, so anything integrated over
+ * trailing watches, the river level above all, moves gradually after a pin
+ * instead of teleporting: pinning rain fills the river over days, pinning
+ * fair drains it over days.
+ */
+export function forceWeather(kind: ForcedWeather | null, sinceTick = 0): void {
   forcedKind = kind;
+  forcedSince = sinceTick;
   forcedGen++;
 }
 
-export function forcedWeather(): WeatherKind | null {
-  return forcedKind;
+export function forcedWeather(): { kind: ForcedWeather | null; since: number } {
+  return { kind: forcedKind, since: forcedSince };
 }
 
 /** A pure snapshot, unless the player has pinned the weather from the sandbox. */
@@ -60,14 +73,16 @@ export function weatherAt(seed: number, tick: number): Weather {
   else if (roll < fogAt) kind = 'fog';
   else if (roll < cloudAt) kind = 'overcast';
   else kind = 'fair';
-  if (forcedKind !== null) kind = forcedKind;
+  if (forcedKind !== null && tick >= forcedSince) {
+    kind = forcedKind === 'drought' ? 'fair' : forcedKind;
+  }
 
   const precipitation: Weather['precipitation'] = kind === 'storm' ? 2 : kind === 'rain' ? 1 : 0;
   const chill: Weather['chill'] = kind === 'storm' || kind === 'fog' ? 2
     : kind === 'rain' || kind === 'overcast' ? 1 : 0;
   const visibility: Weather['visibility'] = kind === 'fog' ? 2 : kind === 'storm' ? 1 : 0;
   const windX = WIND[mix(seed, Stream.Weather, watch, 2) % WIND.length];
-  const revision = forcedKind !== null ? 1_000_000 + forcedGen : watch;
+  const revision = forcedKind !== null ? 1_000_000 + forcedGen * 4096 + watch : watch;
   return { kind, precipitation, chill, visibility, windX, watch, revision };
 }
 
