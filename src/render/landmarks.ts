@@ -124,21 +124,14 @@ export function drawMooringMast(
   ctx.fillRect(Math.round(c.x) - 1, Math.round(c.y - H) - 8, 3, 2);
 }
 
-/**
- * A mill or foundry chimney stack: a tall brick shaft with a flared lip, rising
- * from the west (lit) corner so it catches the light.
- */
-export function drawStack(
-  ctx: CanvasRenderingContext2D, ground: Corners, eave: Corners, spec: FinialSpec,
+/** One brick chimney shaft, lit on the west face, sooted at the crown. */
+function drawOneStack(
+  ctx: CanvasRenderingContext2D, base: Pt, H: number, bw: number, brick: string,
 ): void {
-  const H = spec.wallH + spec.roofH + spec.finialH;
-  const brick = spec.skin.chimney ?? PAL.brick1;
   const lit = shadeHex(brick, 0.18);
   const shade = shadeHex(brick, -0.22);
-  const base = lerp(ground.W, ground.S, 0.18);
-  const bw = 6;
+  const mortar = shadeHex(brick, -0.28);
   const topY = base.y - H;
-  // Iso shaft: lit west face, shaded east face, dark lip.
   poly(ctx, [
     { x: base.x - bw, y: base.y - 2 }, { x: base.x, y: base.y + 2 },
     { x: base.x, y: topY + 4 }, { x: base.x - bw, y: topY },
@@ -147,15 +140,16 @@ export function drawStack(
     { x: base.x, y: base.y + 2 }, { x: base.x + bw, y: base.y - 1 },
     { x: base.x + bw, y: topY + 1 }, { x: base.x, y: topY + 4 },
   ], shade, 2);
-  // Courses.
-  const mortar = shadeHex(brick, -0.28);
   for (let y = 6; y < H - 6; y += 3) {
-    lineHard(ctx,
-      { x: base.x - bw, y: base.y - 2 - y },
-      { x: base.x, y: base.y + 2 - y },
-      mortar);
+    lineHard(ctx, { x: base.x - bw, y: base.y - 2 - y }, { x: base.x, y: base.y + 2 - y }, mortar);
   }
-  // Flared lip and a dark flue.
+  // The crown is sooted black from years of firing, then a flared lip and a
+  // dark flue mouth. This is what makes a chimney read as a working flue.
+  const soot = Math.min(H - 8, 10);
+  poly(ctx, [
+    { x: base.x - bw, y: topY + soot }, { x: base.x, y: topY + soot + 2 },
+    { x: base.x, y: topY + 4 }, { x: base.x - bw, y: topY },
+  ], shadeHex(PAL.soot1, 0.05), 3);
   poly(ctx, [
     { x: base.x - bw - 2, y: topY }, { x: base.x + bw + 2, y: topY + 2 },
     { x: base.x + bw, y: topY + 5 }, { x: base.x - bw, y: topY + 3 },
@@ -164,6 +158,24 @@ export function drawStack(
     { x: base.x - 2, y: topY + 1 }, { x: base.x + 2, y: topY + 2 },
     { x: base.x + 1, y: topY + 4 }, { x: base.x - 1, y: topY + 3 },
   ], PAL.soot0);
+}
+
+/**
+ * A mill or foundry chimney range: not one stack but a cluster, a tall main
+ * shaft with one or two shorter ones behind it, which is the silhouette that
+ * says "works" across the whole district. Rising from the west corners so they
+ * catch the light and overlap into a mass.
+ */
+export function drawStack(
+  ctx: CanvasRenderingContext2D, ground: Corners, eave: Corners, spec: FinialSpec,
+): void {
+  const H = spec.wallH + spec.roofH + spec.finialH;
+  const brick = spec.skin.chimney ?? PAL.brick1;
+  const big = spec.w * spec.d >= 6;
+  // Draw far/shorter stacks first so the tall near one overlaps them.
+  drawOneStack(ctx, lerp(ground.N, ground.E, 0.32), Math.round(H * 0.7), 4, shadeHex(brick, -0.06));
+  if (big) drawOneStack(ctx, lerp(ground.W, ground.N, 0.5), Math.round(H * 0.82), 5, brick);
+  drawOneStack(ctx, lerp(ground.W, ground.S, 0.18), H, 6, brick);
   void eave;
 }
 

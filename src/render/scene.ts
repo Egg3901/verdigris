@@ -443,6 +443,9 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
       && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall' || b.kind === 'terrace'),
     worksStage,
     drainState,
+    // A mill or foundry has a fire in it around the clock; a scorched shell does
+    // not, and neither does an idle collapsed one.
+    furnace: (b.kind === 'mill' || b.kind === 'foundry') && !scorched && damage === 'none',
     rainStrength: weatherAt(city.seed, city.tick).precipitation,
     finial,
     finialH: fam.finialH ?? 0,

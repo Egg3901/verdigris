@@ -95,6 +95,9 @@ export interface HouseSpec {
   material: WallMaterial;
   /** What the visible threshold is for, distinct from the broad material family. */
   frontage?: Frontage;
+  /** A furnace burns inside: warm light leaks from the ground floor and a wide
+   *  charging door, day and night. Mills and foundries. */
+  furnace?: boolean;
   polite: boolean;
   patched?: boolean;
   /** Physical wear, derived from fabric and district conditions. */
@@ -678,6 +681,10 @@ function drawFacade(
     if (spec.boarded) drawBoarded(ctx, f, spec.wallH, skin);
   }
 
+  // A furnace throws warm light out of the ground floor before the door is even
+  // drawn, so it reads under whatever threshold sits on top of it.
+  if (spec.furnace && lit.span >= 8) drawFurnace(ctx, lit, spec.wallH);
+
   // The shopfront and the door go on the lit face: the one the camera can see.
   if (spec.shopfront && lit.span >= 10) {
     drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed);
@@ -694,6 +701,34 @@ function drawFacade(
   if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin);
   if (spec.bunting && lit.span >= 12) drawBunting(ctx, lit, spec.wallH);
   if (spec.deputationBanner && lit.span >= 18) drawDeputationBanner(ctx, lit, spec.wallH);
+}
+
+/**
+ * The furnace inside a works, leaking out. A hot band low on the wall where the
+ * firebox glows through the openings, a bright charging door, and a couple of
+ * sparks. Emissive, so it burns whatever the hour: a mill worked around the
+ * clock, and a foundry that has gone dark reads as a foundry that has shut.
+ */
+function drawFurnace(ctx: CanvasRenderingContext2D, f: ReturnType<typeof makeFace>, wallH: number): void {
+  const top = Math.max(3, wallH - 7);
+  // A hot band along the whole ground floor: the firebox seen through the works
+  // front. Drawn first, so a charging door laid on top reads as a dark shape
+  // against the glow. Dithered so the light falls off toward the eave.
+  const band = [f.at(0.04, top), f.at(0.96, top), f.at(0.96, wallH - 1), f.at(0.04, wallH - 1)];
+  fillPolyHard(ctx, band, PAL.gas1);
+  ditherPolyHard(ctx, [f.at(0.04, top - 3), f.at(0.96, top - 3), f.at(0.96, top), f.at(0.04, top)], PAL.gas1, 6);
+  // Fiercer cores where the furnace mouths are, and a spark or two at the sill.
+  const mouths = Math.max(2, Math.round(f.span / 12));
+  for (let i = 0; i < mouths; i++) {
+    const t = (i + 0.5) / mouths;
+    const half = Math.min(0.06, 2 / Math.max(1, f.span));
+    fillPolyHard(ctx, [f.at(t - half, top + 1), f.at(t + half, top + 1), f.at(t + half, wallH - 1), f.at(t - half, wallH - 1)], PAL.gas2);
+    if ((i & 1) === 0) {
+      const s = f.at(t, wallH - 1);
+      ctx.fillStyle = PAL.buntRedHi;
+      ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1);
+    }
+  }
 }
 
 /** A plain civic cloth, legible as a temporary public demand rather than signage. */
