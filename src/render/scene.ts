@@ -331,8 +331,11 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // Lit windows at dusk and after. A gaslight-era city with no lit window in it
     // was the single most conspicuous absence in the build: variantFor and the
     // palette entries both existed and neither had ever been called.
-    window: variant === 'day' ? gradeHex(PAL.darkWindow, variant) : PAL.litWindow,
-    windowLit: variant !== 'day',
+    // Windows light only at full night. Through dusk they stay dark while the
+    // street lamps come on one by one, so evening arrives in stages rather than
+    // the whole town flipping to lit the instant the light changes.
+    window: variant === 'night' ? PAL.litWindow : gradeHex(PAL.darkWindow, variant),
+    windowLit: variant === 'night',
     outline: gradeHex(PAL.soot0, variant),
   };
 
@@ -699,15 +702,17 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     const ty = (k - tx) / d.width;
     const cx = originX + isoX(tx, ty);
     const cy = originY + isoY(tx, ty);
-    drawIsoDiamond(gctx, cx, cy, gradeHex(PAL.riv1, variant));
-    ditherPolyHard(gctx, [
+    const diamond = [
       { x: cx, y: cy - TILE_H / 2 }, { x: cx + TILE_W / 2, y: cy },
       { x: cx, y: cy + TILE_H / 2 }, { x: cx - TILE_W / 2, y: cy },
-    ], gradeHex(PAL.riv2, variant), 5);
-    ditherPolyHard(gctx, [
-      { x: cx, y: cy - TILE_H / 2 }, { x: cx + TILE_W / 2, y: cy },
-      { x: cx, y: cy + TILE_H / 2 }, { x: cx - TILE_W / 2, y: cy },
-    ], gradeHex(PAL.rivGlint, variant), 2);
+    ];
+    // Standing flood water, read as water: a solid river-blue fill, a heavier
+    // wash of the brighter shade, and a scatter of glints. Deeper and more
+    // obvious than a faint stain, because a flood the player called for should
+    // plainly be there.
+    drawIsoDiamond(gctx, cx, cy, gradeHex(PAL.riv2, variant));
+    ditherPolyHard(gctx, diamond, gradeHex(PAL.riv1, variant), 8);
+    ditherPolyHard(gctx, diamond, gradeHex(PAL.rivGlint, variant), 3);
   }
 
   // The rails. Drawn as a polyline along the route rather than as tiles: the
@@ -826,38 +831,10 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     drawRoadWorks(gctx, wx, wy, order.kind, variant);
   }
 
-  // Lamp pools are baked INTO THE GROUND, not drawn per frame over everything.
-  //
-  // The old pass ran after the whole merge walk with no depth participation and
-  // no height term, so soft cream squares floated in the middle of roofs and up
-  // walls. A street lamp lights the street: baking the pool under the buildings
-  // is both correct occlusion and free, because lamps do not move and the ground
-  // is already rebaked once per lighting variant.
-  if (variant !== 'day') {
-    for (const bld of city.buildings) {
-      if (bld.gasSeg < 0 || !serviceAt(city.networks.gas, bld.id)) continue;
-      const lx = originX + isoX(bld.doorX, bld.doorY);
-      const ly = originY + isoY(bld.doorX, bld.doorY);
-      // Concentric DITHERED diamonds, not alpha rings and certainly not a radial
-      // gradient. Density falls off instead of opacity, so every pixel in the
-      // pool is still a palette colour. A pool of blended half-alpha cream is the
-      // classic modern-lighting-over-pixel-art tell.
-      // Densities halved. At night, with a lamp at almost every door, the pools
-      // overlap and the dither adds up: on a phone the streets read as large
-      // orange checkerboard patches rather than as light on wet cobbles.
-      const rings: [number, number, string][] = [
-        [2.6, 2, PAL.gas0], [1.9, 3, PAL.gas1], [1.2, 5, PAL.gas1], [0.7, 8, PAL.gas2],
-      ];
-      for (const [scale, density, colour] of rings) {
-        ditherPolyHard(gctx, [
-          { x: lx, y: ly - (TILE_H / 2) * scale },
-          { x: lx + (TILE_W / 2) * scale, y: ly },
-          { x: lx, y: ly + (TILE_H / 2) * scale },
-          { x: lx - (TILE_W / 2) * scale, y: ly },
-        ], colour, density);
-      }
-    }
-  }
+  // Lamp pools are NO LONGER baked here. They are drawn per frame, right after
+  // the ground blit and before the buildings, so they still occlude correctly
+  // under walls but can now light one at a time as evening falls and flicker as
+  // gaslight does. See drawLamps in render/fx.ts.
 
   // Collapse all generated washes into the finite lighting palette once, at
   // bake time. The frame now has art-directed colour ramps rather than hundreds

@@ -483,6 +483,67 @@ export function drawWeatherFx(
 }
 
 /**
+ * How lit the district's gaslight is at a given minute, 0 to 1.
+ *
+ * Evening: the lamplighter works from 7pm and finishes by 9pm, so the level
+ * ramps across those two hours. It holds full through the night and fades back
+ * over the two hours after 5:30am as the lamps are put out. Each lamp then
+ * lights when the level crosses ITS own threshold, so they come on one by one
+ * rather than all together.
+ */
+function lampLevel(m: number): number {
+  if (m >= 1140) return Math.min(1, (m - 1140) / 120);
+  if (m < 330) return 1;
+  if (m < 450) return 1 - (m - 330) / 120;
+  return 0;
+}
+
+/**
+ * Gaslight, lit one lamp at a time as evening falls, and flickering.
+ *
+ * Drawn per frame right after the ground and before the buildings, so a pool
+ * still occludes correctly under a wall, but can now catch as the light fades
+ * instead of the whole street flipping to lit at a variant boundary. Each lamp
+ * has its own threshold and its own flicker, both hashed off the building id.
+ */
+export function drawLamps(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const level = lampLevel((minuteOfDay(city.tick) + fracMin) % 1440);
+  if (level <= 0) return 0;
+  const t = city.tick + fracMin;
+  const flickFrame = Math.floor(t * 3);
+  const gas0 = gradeHex(PAL.gas0, variant, true);
+  const gas1 = gradeHex(PAL.gas1, variant, true);
+  const gas2 = gradeHex(PAL.gas2, variant, true);
+  let calls = 0;
+  for (const b of city.buildings) {
+    if (b.gasSeg < 0 || !serviceAt(city.networks.gas, b.id)) continue;
+    const threshold = (mix(city.seed, 61, b.id) % 1000) / 1000;
+    if (level <= threshold) continue;
+    const lx = isoX(b.doorX, b.doorY);
+    const ly = isoY(b.doorX, b.doorY);
+    if (lx < tl.wx - 24 || lx > br.wx + 24 || ly < tl.wy - 24 || ly > br.wy + 24) continue;
+    // Just-caught lamps and the occasional flicker burn dim; a settled lamp burns
+    // full. Dim drops the bright inner rings, so the pool visibly gutters.
+    const ramp = (level - threshold) / 0.1;
+    const dim = ramp < 0.55 || (mix(city.seed, 62, b.id, flickFrame) % 13) === 0;
+    const rings: Array<[number, number, string]> = dim
+      ? [[1.8, 3, gas1], [1.0, 5, gas1]]
+      : [[2.6, 2, gas0], [1.9, 3, gas1], [1.2, 5, gas1], [0.7, 8, gas2]];
+    for (const [scale, density, colour] of rings) {
+      ditherPolyHard(ctx, [
+        { x: lx, y: ly - (TILE_H / 2) * scale }, { x: lx + (TILE_W / 2) * scale, y: ly },
+        { x: lx, y: ly + (TILE_H / 2) * scale }, { x: lx - (TILE_W / 2) * scale, y: ly },
+      ], colour, density);
+    }
+    calls++;
+  }
+  return calls;
+}
+
+/**
  * Drifting street-level fog and haze.
  *
  * Not the baked river bank, which sits still on the water plane, but a moving

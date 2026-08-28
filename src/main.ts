@@ -309,8 +309,15 @@ shell = mountShell(shellRoot, {
       return;
     }
     if (startDisaster(city, kind, id)) {
+      // Take the camera to it, or the disaster happens off-screen and reads as
+      // nothing having happened at all.
+      const b = city.buildings[id];
       sel.buildingId = id;
       sel.soulId = -1;
+      follow = -1;
+      if (cam.zoom < 2) setZoom(2);
+      centreOn(cam, viewW, viewH, isoX(b.ox, b.oy), isoY(b.ox, b.oy));
+      clampCamera(cam, viewW, viewH, shell.insets());
       shell.toast(city.log[city.log.length - 1]?.text ?? 'Done.', 'loss');
     }
   },
