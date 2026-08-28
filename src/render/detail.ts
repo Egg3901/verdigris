@@ -168,8 +168,8 @@ export type SignGlyph = 'boot' | 'loaf' | 'scissors' | 'tankard';
 // survive one pixel per bit: a boot in profile, a slashed cob loaf, open
 // scissors, a tankard with its handle.
 const GLYPHS: Record<SignGlyph, number[]> = {
-  boot: [0b01100, 0b01100, 0b01100, 0b01110, 0b11111],
-  loaf: [0b00000, 0b01110, 0b11111, 0b10101, 0b11111],
+  boot: [0b11000, 0b11000, 0b11000, 0b11100, 0b11111],
+  loaf: [0b01110, 0b11111, 0b11011, 0b11111, 0b01110],
   scissors: [0b10001, 0b01010, 0b00100, 0b01010, 0b11011],
   tankard: [0b11100, 0b11111, 0b11101, 0b11111, 0b11100],
 };
