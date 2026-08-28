@@ -105,17 +105,90 @@ function bakeFountain(variant: Variant): HTMLCanvasElement {
 
 function bakeStall(salt: number, variant: Variant): HTMLCanvasElement {
   const c = document.createElement('canvas');
-  c.width = 26; c.height = 24;
+  c.width = 26;
+  c.height = 26;
   const ctx = c.getContext('2d') as CanvasRenderingContext2D;
   const g = (x: string) => gradeHex(x, variant);
   const cloth = [PAL.buntRed, PAL.buntBlue, PAL.verd1, PAL.ochre1][salt % 4];
-  // Trestle, then a canopy over it, then the poles.
-  fillPolyHard(ctx, [{x:13,y:12},{x:24,y:17},{x:13,y:22},{x:2,y:17}], g(PAL.wood1));
-  fillPolyHard(ctx, [{x:13,y:2},{x:25,y:8},{x:13,y:14},{x:1,y:8}], g(cloth));
-  ditherPolyHard(ctx, [{x:13,y:2},{x:25,y:8},{x:13,y:14},{x:1,y:8}], g(shadeHex(cloth, 0.25)), 7);
+
+  // 1. Back poles
   ctx.fillStyle = g(PAL.wood0);
-  ctx.fillRect(2, 8, 1, 9);
-  ctx.fillRect(24, 8, 1, 9);
+  ctx.fillRect(2, 9, 1, 10);
+  ctx.fillRect(24, 9, 1, 10);
+
+  // 2. Table top iso diamond
+  fillPolyHard(ctx, [{x:13,y:14},{x:22,y:18},{x:13,y:22},{x:4,y:18}], g(PAL.wood2));
+
+  // 3. Table front-left face
+  fillPolyHard(ctx, [{x:4,y:18},{x:13,y:22},{x:13,y:24},{x:4,y:20}], g(PAL.wood1));
+
+  // 4. Table front-right face
+  fillPolyHard(ctx, [{x:13,y:22},{x:22,y:18},{x:22,y:20},{x:13,y:24}], g(shadeHex(PAL.wood1, 0.2)));
+
+  // 5. Table legs
+  ctx.fillStyle = g(PAL.wood0);
+  ctx.fillRect(4, 20, 1, 4);
+  ctx.fillRect(21, 20, 1, 4);
+  ctx.fillRect(12, 24, 1, 2);
+
+  // 6. Goods on the table top diamond
+  const goods = salt % 4;
+  if (goods === 0) {
+    fillPolyHard(ctx, [{x:8,y:17},{x:10,y:17},{x:9,y:19}], g(PAL.ochre2));
+    fillPolyHard(ctx, [{x:12,y:16},{x:14,y:16},{x:13,y:18}], g(PAL.grass0));
+    fillPolyHard(ctx, [{x:16,y:17},{x:18,y:17},{x:17,y:19}], g(PAL.buntRed));
+    fillPolyHard(ctx, [{x:12,y:19},{x:14,y:19},{x:13,y:21}], g(PAL.ochre2));
+  } else if (goods === 1) {
+    ctx.fillStyle = g(PAL.buntBlue);
+    ctx.fillRect(8, 17, 4, 2);
+    ctx.fillStyle = g(PAL.buntRed);
+    ctx.fillRect(12, 18, 4, 2);
+    ctx.fillStyle = g(PAL.cream2);
+    ctx.fillRect(16, 19, 4, 2);
+  } else if (goods === 2) {
+    ctx.fillStyle = g(PAL.cream1);
+    ctx.fillRect(8, 17, 2, 1);
+    ctx.fillRect(11, 16, 2, 1);
+    ctx.fillRect(14, 17, 2, 1);
+    ctx.fillRect(17, 18, 2, 1);
+    ctx.fillRect(12, 19, 2, 1);
+  } else {
+    ctx.fillStyle = g(PAL.stone2);
+    ctx.fillRect(7, 17, 4, 1);
+    ctx.fillRect(11, 16, 4, 1);
+    ctx.fillRect(15, 17, 4, 1);
+    ctx.fillRect(18, 18, 4, 1);
+  }
+
+  // 7. Canopy shaded (right) slope, lower slope
+  fillPolyHard(ctx, [{x:7,y:3},{x:18,y:8},{x:13,y:14},{x:2,y:9}], g(shadeHex(cloth, 0.25)));
+
+  // 8. Canopy lit (upper) slope
+  fillPolyHard(ctx, [{x:13,y:4},{x:24,y:9},{x:18,y:8},{x:7,y:3}], g(cloth));
+
+  // 9. Stripes on the lower slope
+  fillPolyHard(ctx, [{x:8,y:5},{x:19,y:10},{x:18,y:11},{x:7,y:6}], g(PAL.buntCream));
+  fillPolyHard(ctx, [{x:5,y:7},{x:16,y:12},{x:15,y:13},{x:4,y:8}], g(PAL.buntCream));
+
+  // 10. Valance hanging 2px from front eaves
+  fillPolyHard(ctx, [{x:2,y:9},{x:13,y:14},{x:13,y:16},{x:2,y:11}], g(cloth));
+  fillPolyHard(ctx, [{x:13,y:14},{x:24,y:9},{x:24,y:11},{x:13,y:16}], g(cloth));
+  fillPolyHard(ctx, [{x:2,y:11},{x:13,y:16},{x:13,y:17},{x:2,y:12}], g(shadeHex(cloth, 0.35)));
+  fillPolyHard(ctx, [{x:13,y:16},{x:24,y:11},{x:24,y:12},{x:13,y:17}], g(shadeHex(cloth, 0.35)));
+
+  // 11. Front pole
+  if (salt % 2 === 0) {
+    ctx.fillStyle = g(PAL.wood1);
+    ctx.fillRect(12, 16, 1, 8);
+  }
+
+  // 12. Crate beside the left legs
+  if (salt % 3 === 0) {
+    fillPolyHard(ctx, [{x:3,y:20},{x:6,y:21},{x:3,y:23},{x:0,y:21}], g(PAL.wood2));
+    fillPolyHard(ctx, [{x:0,y:21},{x:3,y:23},{x:3,y:25},{x:0,y:23}], g(PAL.wood1));
+    fillPolyHard(ctx, [{x:3,y:23},{x:6,y:21},{x:6,y:23},{x:3,y:25}], g(PAL.wood0));
+  }
+
   hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
@@ -149,7 +222,7 @@ export function buildSquareProps(
       let sprite = stalls.get(variantIdx);
       if (!sprite) { sprite = bakeStall(variantIdx, variant); stalls.set(variantIdx, sprite); }
       out.push({
-        sprite, ax: 13, ay: 22,
+        sprite, ax: 13, ay: 24,
         wx: isoX(x, y), wy: isoY(x, y),
         depth: depthKey(x, y, LAYER_STRUCT),
       });

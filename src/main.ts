@@ -590,6 +590,7 @@ interface QaHook {
   disaster: (kind: string, buildingId: number) => boolean;
   market: () => boolean;
   weather: () => string;
+  forceWeather: (kind: WeatherKind | null) => void;
   palette: () => readonly string[];
 }
 
@@ -621,5 +622,6 @@ interface QaHook {
   disaster: (kind, buildingId) => startDisaster(city, kind as DisasterKind, buildingId) !== null,
   market: () => startMarketDay(city) > 0,
   weather: () => weatherAt(city.seed, city.tick).kind,
+  forceWeather: (kind) => forceWeather(kind),
   palette: () => renderPalette(scene.variant),
 };
