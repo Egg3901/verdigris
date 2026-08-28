@@ -20,6 +20,7 @@ import { PAL } from './palette';
 import {
   makeFace, drawDoor, drawShopfront, drawSign, drawWindowGrid, drawBoarded,
   drawCourses, drawDormer, drawBunting, drawQuoins, drawStringCourse,
+  drawPartyPipe, drawAreaRailing,
   drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
   drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
@@ -107,6 +108,8 @@ export interface HouseSpec {
   washing?: boolean;
   cresting?: boolean;
   railings?: boolean;
+  /** Iron balconies under the first-floor windows: merchant-row dressing. */
+  balcony?: boolean;
   /** 1 survey notice, 2 scaffold and tarpaulin, 3 signed-off plaque. */
   worksStage?: 0 | 1 | 2 | 3;
   /** 0 no drain needed, 1 served, 2 disconnected or behind a broken main. */
@@ -663,6 +666,13 @@ function drawMaterials(
         shadeHex(skin.wallLit, 0.15), shadeHex(skin.wallShade, -0.15), spec.shopfront === true);
     }
     if (!spec.polite) drawSootStreaks(ctx, f, wallH, shadeHex(PAL.soot1, 0), salt ?? 0);
+    // A cast iron downpipe hugging the party wall on the terraced streets. The
+    // drain-driven pipe at t 0.9 belongs to the drain network; this one is just
+    // the joint between two houses doing what such joints did.
+    if ((material === 'brick' || material === 'timber' || material === 'wood')
+      && !spec.shopfront && wallH >= 14 && (((salt ?? 0) >>> 5) % 3) === 0) {
+      drawPartyPipe(ctx, f, wallH, spec.polite ? PAL.soot2 : PAL.soot1, (salt ?? 0) + (f.lit ? 0 : 1));
+    }
     if (spec.facadeWear) drawFacadePatina(ctx, f, wallH, material, spec.facadeWear, spec.drainState ?? 0, salt ?? 0, ds);
     // Pasted bills on the working bank's brick and timber, lit face only, and
     // never over a shopfront, which carries its own signage. Drawn here so the
@@ -711,9 +721,16 @@ function drawFacade(
   for (const f of [lit, shade]) {
     if (f.span < 8) continue;
     if (spec.material !== 'glazed') {
-      drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true, salt + (f.lit ? 0 : 5), lights);
+      drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true,
+        salt + (f.lit ? 0 : 5), lights,
+        spec.balcony && f.lit && !spec.boarded ? PAL.soot2 : undefined);
     }
     if (spec.boarded) drawBoarded(ctx, f, spec.wallH, skin);
+  }
+
+  // Area railings guard the light well in front of a civic frontage.
+  if (spec.frontage === 'civic' && !spec.scorched && lit.span >= 14) {
+    drawAreaRailing(ctx, lit, spec.wallH, PAL.soot2);
   }
 
   // A furnace throws warm light out of the ground floor before the door is even

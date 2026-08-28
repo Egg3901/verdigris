@@ -451,6 +451,10 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     cresting: fam.cresting === true || ((wardKind === 'garden' || polite) && b.kind === 'villa'),
     railings: (polite || wardKind === 'garden' || wardKind === 'civic')
       && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall' || b.kind === 'terrace'),
+    // Iron balconies over the merchant-row shopfronts: living quarters above the
+    // shop, dressed for the street below. About half the row, hashed per address.
+    balcony: wardKind === 'merchant' && fam.shop === true && storeys >= 2
+      && ((salt >>> 13) & 1) === 0,
     worksStage,
     drainState,
     // A mill or foundry has a fire in it around the clock; a scorched shell does

@@ -142,13 +142,14 @@ export function drawSign(
  */
 export function drawWindowGrid(
   ctx: CanvasRenderingContext2D, f: Face, wallH: number, rows: number, skin: DetailSkin,
-  skipGround: boolean, hash: number, lights?: WindowLight[],
+  skipGround: boolean, hash: number, lights?: WindowLight[], balconyIron?: string,
 ): void {
   const cols = Math.max(1, Math.round(f.span / 13));
   const bottom = skipGround ? wallH - 15 : wallH - 3;
   const usable = bottom - 4;
   if (usable < 6 || rows < 1) return;
   const stepY = Math.max(7, Math.floor(usable / rows));
+  let lowestRow = -1;
 
   // The painted frame: sash timber, lighter than the glass so the opening reads
   // as a window rather than a hole. Warm on the working bank, near-white on the
@@ -161,6 +162,7 @@ export function drawWindowGrid(
   for (let r = 0; r < rows; r++) {
     const h = 4 + r * stepY;
     if (h + 5 > bottom) break;
+    lowestRow = h;
     for (let c = 0; c < cols; c++) {
       const t = (c + 0.5) / cols;
       const halfW = Math.min(0.12, 3 / Math.max(1, f.span));
@@ -188,6 +190,23 @@ export function drawWindowGrid(
         const b = f.at(t + halfW, h);
         lights.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, hash: (hash + r * 71 + c * 131) >>> 0 });
       }
+    }
+  }
+  // Iron balconies under the first-floor windows of the merchant rows: a shallow
+  // platform proud of the sill and three uprights in front of the glass. Drawn
+  // after the panes so the rail reads against the window behind it.
+  if (balconyIron && lowestRow >= 0 && f.span >= 12) {
+    const h = lowestRow;
+    for (let c = 0; c < cols; c++) {
+      const t = (c + 0.5) / cols;
+      const halfW = Math.min(0.12, 3 / Math.max(1, f.span));
+      for (const u of [-1, 0, 1]) {
+        const p = f.at(t + u * halfW, h + 2);
+        ctx.fillStyle = balconyIron;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 3);
+      }
+      lineHard(ctx, f.at(t - halfW - 0.02, h + 2), f.at(t + halfW + 0.02, h + 2), balconyIron);
+      lineHard(ctx, f.at(t - halfW - 0.02, h + 5), f.at(t + halfW + 0.02, h + 5), shadeHex(balconyIron, -0.1));
     }
   }
 }
@@ -709,6 +728,48 @@ export function drawRoofPatch(
   ];
   fillPolyHard(ctx, patch, colour);
   ditherPolyHard(ctx, patch, shadeHex(colour, -0.12), 6);
+}
+
+/**
+ * A cast iron downpipe against the party wall. Terraces drained down the joint
+ * between houses, so the pipe hugs the edge of the face where two buildings
+ * meet, with two brackets and a shoe kicking out at the pavement.
+ */
+export function drawPartyPipe(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, iron: string, salt: number,
+): void {
+  if (f.span < 12) return;
+  const t = (salt & 1) === 0 ? 0.04 : 0.96;
+  lineHard(ctx, f.at(t, 2), f.at(t, wallH - 1), iron);
+  for (const h of [Math.round(wallH * 0.3), Math.round(wallH * 0.68)]) {
+    const p = f.at(t, h);
+    ctx.fillStyle = shadeHex(iron, 0.15);
+    ctx.fillRect(Math.round(p.x) - 1, Math.round(p.y), 3, 1);
+  }
+  const foot = f.at(t, wallH - 1);
+  ctx.fillStyle = iron;
+  ctx.fillRect(Math.round(foot.x) + (t < 0.5 ? 0 : -1), Math.round(foot.y), 2, 1);
+}
+
+/**
+ * Area railings along a civic frontage: the iron fence that guards the light
+ * well in front of a public building. Two runs either side of the doorway band,
+ * uprights every few pixels under a single rail.
+ */
+export function drawAreaRailing(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, iron: string,
+): void {
+  if (f.span < 14) return;
+  const top = wallH - 4;
+  for (const [a, b] of [[0.03, 0.2], [0.8, 0.97]] as const) {
+    lineHard(ctx, f.at(a, top), f.at(b, top), iron);
+    const n = Math.max(2, Math.round((f.span * (b - a)) / 3));
+    for (let i = 0; i <= n; i++) {
+      const p = f.at(a + ((b - a) * i) / n, top);
+      ctx.fillStyle = iron;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 4);
+    }
+  }
 }
 
 /** Iron railings along an eave, for polite villas and the bank. */
