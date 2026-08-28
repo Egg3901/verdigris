@@ -9,7 +9,7 @@ import { isRunning } from '../sim/firms';
 import { PAL, gradeHex, shadeHex } from './palette';
 import type { Variant } from './palette';
 import { minuteOfDay } from '../sim/clock';
-import { TILE_W, TILE_H, isoX, isoY, depthKey, LAYER_AGENT, LAYER_OVERHEAD } from './iso';
+import { TILE_W, TILE_H, isoX, isoY, depthKey, worldBounds, LAYER_AGENT, LAYER_OVERHEAD } from './iso';
 import { fillPolyHard, lineHard, ditherPolyHard } from './raster';
 import { mix, Stream } from '../sim/rng';
 import { stepToward } from '../sim/graph';
@@ -678,21 +678,26 @@ export function drawFog(
   const heavy = weather.kind === 'fog';
   if (!heavy && weather.kind !== 'overcast' && weather.kind !== 'storm') return 0;
   const t = city.tick + fracMin;
-  const spanX = Math.max(1, br.wx - tl.wx);
-  const spanY = Math.max(1, br.wy - tl.wy);
   const pale = gradeHex(PAL.smoke2, variant);
   const dim = gradeHex(PAL.smoke1, variant);
-  const banks = heavy ? 16 : 6;
   const dir = weather.windX || 1;
+  // Banks live in WORLD space and wrap across the district's own extent, so
+  // panning the camera moves past the fog instead of dragging it along. The
+  // viewport only culls. The count scales with the district so the streets
+  // hold the same density the old per-viewport spread had.
+  const wb = worldBounds();
+  const spanX = wb.w + 120;
+  const banks = Math.max(heavy ? 16 : 6, Math.round(spanX / (heavy ? 40 : 107)));
   let calls = 0;
   for (let i = 0; i < banks; i++) {
     // Each bank drifts across and wraps, at its own height and speed. Lower banks
     // (nearer the foreground) are denser, which is what makes it read as fog
     // lying in the streets rather than a flat grey wash over the sky.
     const speed = 4 + (i % 3) * 2;
-    const cx = tl.wx - 60 + (((i * 211 + t * speed * dir) % (spanX + 120)) + (spanX + 120)) % (spanX + 120);
+    const cx = wb.minX - 60 + (((i * 211 + t * speed * dir) % spanX) + spanX) % spanX;
     const low = 0.42 + ((i * 37) % 100) / 170;
-    const cy = tl.wy + spanY * low + Math.sin((t * 0.03 + i) * 1) * 4;
+    const cy = wb.minY + wb.h * low + Math.sin((t * 0.03 + i) * 1) * 4;
+    if (cx < tl.wx - 60 || cx > br.wx + 60 || cy < tl.wy - 20 || cy > br.wy + 20) continue;
     const w = heavy ? 34 + (i % 4) * 8 : 26;
     const h = heavy ? 9 : 6;
     const bank = [
