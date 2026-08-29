@@ -892,6 +892,86 @@ function bakeRopeSpan(variant: Variant, stone: boolean): HTMLCanvasElement {
   return c;
 }
 
+const LIGHTER_W = 46;
+const LIGHTER_H = 26;
+/** Anchor: the middle of the deck. */
+const LIGHTER_AX = 23;
+const LIGHTER_AY = 12;
+
+/**
+ * A lighter: the flat cargo boat that works a cargo between a ship in the
+ * channel and the quay. Long axis up-right, so it lies along the wharf edge.
+ *
+ * Props bake without a tick and the river surface moves with the trailing rain,
+ * so the exact water height is not knowable here. The hull is therefore kept
+ * shallow and set only a few pixels below the bank lip: at any river level it
+ * reads as sitting in the channel against the quay, and at none of them does it
+ * read as beached on the pavement.
+ */
+function bakeLighter(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = LIGHTER_W; c.height = LIGHTER_H;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  // Tarred topsides, pale gunwale, mid deck. A working lighter is nearly black
+  // at the waterline, and that dark band against teal water is what makes the
+  // shape read as a boat rather than as a lump of the quay.
+  const hull = [PAL.wood0, PAL.soot1][salt % 2];
+
+  // Deck: an iso rectangle, three cells long by one wide.
+  const bowIn = { x: 33, y: 3 };
+  const bowOut = { x: 44, y: 8 };
+  const sternOut = { x: 14, y: 21 };
+  const sternIn = { x: 3, y: 16 };
+  fillPolyHard(ctx, [bowIn, bowOut, sternOut, sternIn], g(PAL.wood1));
+  // Gunwale, one row proud of the deck all round.
+  lineHard(ctx, bowIn, bowOut, g(PAL.wood2));
+  lineHard(ctx, sternIn, sternOut, g(PAL.wood2));
+
+  // The near topside, the only hull face the camera sees.
+  fillPolyHard(ctx, [
+    bowOut, sternOut, { x: sternOut.x, y: sternOut.y + 4 }, { x: bowOut.x, y: bowOut.y + 4 },
+  ], g(hull));
+  fillPolyHard(ctx, [
+    sternOut, sternIn, { x: sternIn.x, y: sternIn.y + 3 }, { x: sternOut.x, y: sternOut.y + 3 },
+  ], g(shadeHex(hull, -0.15)));
+  lineHard(ctx, { x: bowOut.x, y: bowOut.y + 4 }, { x: sternOut.x, y: sternOut.y + 4 }, g(PAL.wood0));
+  // A pale rubbing strake along the sheer. Without it the hull loses its outline
+  // against the dark channel and the boat reads as a smudge.
+  lineHard(ctx, { x: bowOut.x, y: bowOut.y + 1 }, { x: sternOut.x, y: sternOut.y + 1 }, g(PAL.cream2));
+  lineHard(ctx, { x: bowIn.x, y: bowIn.y }, { x: bowOut.x, y: bowOut.y }, g(PAL.cream2));
+
+  // Cargo amidships: either a tarpaulin over a mound, or a working pile.
+  if (salt % 3 === 0) {
+    const tarp = [PAL.parch1, PAL.cream1, PAL.soot3][(salt >>> 3) % 3];
+    fillPolyHard(ctx, [
+      { x: 27, y: 7 }, { x: 33, y: 10 }, { x: 20, y: 17 }, { x: 14, y: 14 },
+    ], g(shadeHex(tarp, -0.2)));
+    fillPolyHard(ctx, [
+      { x: 27, y: 7 }, { x: 21, y: 4 }, { x: 8, y: 11 }, { x: 14, y: 14 },
+    ], g(tarp));
+    // Lashings over the tarp.
+    lineHard(ctx, { x: 24, y: 5 }, { x: 30, y: 8 }, g(PAL.soot1));
+    lineHard(ctx, { x: 15, y: 9 }, { x: 21, y: 12 }, g(PAL.soot1));
+  } else {
+    ctx.fillStyle = g(PAL.wood1);
+    ctx.fillRect(24, 6, 7, 6);
+    ctx.fillRect(16, 10, 6, 5);
+    ctx.fillStyle = g(PAL.wood2);
+    ctx.fillRect(24, 6, 7, 1);
+    ctx.fillRect(16, 10, 6, 1);
+    ctx.fillStyle = g(PAL.soot2);
+    ctx.fillRect(27, 6, 1, 6);
+    fillEllipseHard(ctx, 10, 13, 3.4, 2.6, g(PAL.thatch1));
+  }
+  // Sweep oar shipped along the stern quarter, and the bow line running ashore.
+  lineHard(ctx, { x: 6, y: 15 }, { x: 17, y: 20 }, g(PAL.wood0));
+  lineHard(ctx, { x: 34, y: 4 }, { x: 27, y: 1 }, g(PAL.thatch1));
+
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
 function bakeBench(variant: Variant): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = 16; c.height = 13;
@@ -928,6 +1008,8 @@ export function buildStreetProps(
     bakeCrane(variant, true), bakeCrane(variant, false),
     bakeCraneLeft(variant, true), bakeCraneLeft(variant, false),
   ];
+  const lighters = [0, 1, 2, 3].map((s) => bakeLighter(s, variant));
+  const lightersNw = lighters.map(mirrorSprite);
   const cargo = [0, 1, 2, 3, 4, 5].map((s) => bakeCargoGroup(s, variant));
   const sacks = [0, 1, 2].map((s) => bakeSacks(s, variant));
   const barrelStack = bakeBarrelPyramid(variant);
@@ -1020,6 +1102,18 @@ export function buildStreetProps(
           });
         };
 
+        // Moored craft take their own hash: a boat lies off the quay edge, not
+        // on it, so a berth may hold a lighter and still carry cargo behind it.
+        const berth = mix(seed, 96, tx, ty) % 100;
+        if (!nearBridge && front !== 0 && t === Tile.Wharf && berth < 55) {
+          // Moored against the wharf edge, hanging below the bank lip so it sits
+          // in the channel rather than on the pavement.
+          const salt = mix(seed, 92, tx, ty) % 4;
+          const sprite = front === 1 ? lighters[salt] : lightersNw[salt];
+          pushQuay(sprite, LIGHTER_AX, LIGHTER_AY, front * 15, 13,
+            east ? tx + 1 : tx, east ? ty : ty + 1);
+          continue;
+        }
         if (!nearBridge && anyWater && t === Tile.Wharf && q >= 300 && q < 470) {
           // Jib toward the water: east and north are to the right on screen,
           // south and west to the left.
