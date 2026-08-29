@@ -3,7 +3,7 @@
 // the last 28 watches of precipitation, which makes the river respond to recent
 // weather without needing stored state. A slow dry-spell bias lowers the level
 // during droughts, and the final level is clamped to 0..4.
-import { weatherAt, forcedWeather, WEATHER_WATCH_MINUTES } from './weather';
+import { weatherAt, naturalWeatherAt, forcedWeather, WEATHER_WATCH_MINUTES } from './weather';
 import { mix, Stream } from './rng';
 
 export const RIVER_LOOKBACK_WATCHES = 28;
@@ -22,9 +22,12 @@ function wetAt(seed: number, tick: number): number {
     // Prehistory: before tick 0, borrow the seed's own weather a lookback
     // ahead, so the district opens with a real river rather than an empty
     // rain ledger reading as a drought.
-    const at = sampleTick >= 0 ? sampleTick
-      : sampleTick + RIVER_LOOKBACK_WATCHES * WEATHER_WATCH_MINUTES;
-    wet += (RIVER_LOOKBACK_WATCHES - age) * weatherAt(seed, at).precipitation;
+    // Borrowed prehistory reads the natural clock: a pin applies forward, and
+    // reading history through it would let one click drain a week of rain.
+    const p = sampleTick >= 0
+      ? weatherAt(seed, sampleTick).precipitation
+      : naturalWeatherAt(seed, sampleTick + RIVER_LOOKBACK_WATCHES * WEATHER_WATCH_MINUTES).precipitation;
+    wet += (RIVER_LOOKBACK_WATCHES - age) * p;
   }
   wet += BASE_FLOW;
 

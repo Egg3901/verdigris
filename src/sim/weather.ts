@@ -54,6 +54,23 @@ export function forcedWeather(): { kind: ForcedWeather | null; since: number } {
 
 /** A pure snapshot, unless the player has pinned the weather from the sandbox. */
 export function weatherAt(seed: number, tick: number): Weather {
+  return sample(seed, tick, true);
+}
+
+/**
+ * The weather the clock alone would give, ignoring any sandbox pin.
+ *
+ * The river integrates a week of rain, and for the opening week it borrows
+ * that history from ticks a lookback ahead. A pin applies forward, so reading
+ * borrowed history through the pin let a single click on Fair rewrite seven
+ * days of rain at once and empty the channel between two frames. History is
+ * never pinned; only the present is.
+ */
+export function naturalWeatherAt(seed: number, tick: number): Weather {
+  return sample(seed, tick, false);
+}
+
+function sample(seed: number, tick: number, allowPin: boolean): Weather {
   const watch = Math.floor(Math.max(0, tick) / WEATHER_WATCH_MINUTES);
   const pressureSystem = Math.floor(watch / 8);
   const climate = mix(seed, Stream.Weather, pressureSystem, 0) % 100;
@@ -73,7 +90,7 @@ export function weatherAt(seed: number, tick: number): Weather {
   else if (roll < fogAt) kind = 'fog';
   else if (roll < cloudAt) kind = 'overcast';
   else kind = 'fair';
-  if (forcedKind !== null && tick >= forcedSince) {
+  if (allowPin && forcedKind !== null && tick >= forcedSince) {
     kind = forcedKind === 'drought' ? 'fair' : forcedKind;
   }
 
@@ -82,7 +99,8 @@ export function weatherAt(seed: number, tick: number): Weather {
     : kind === 'rain' || kind === 'overcast' ? 1 : 0;
   const visibility: Weather['visibility'] = kind === 'fog' ? 2 : kind === 'storm' ? 1 : 0;
   const windX = WIND[mix(seed, Stream.Weather, watch, 2) % WIND.length];
-  const revision = forcedKind !== null ? 1_000_000 + forcedGen * 4096 + watch : watch;
+  const revision = allowPin && forcedKind !== null
+    ? 1_000_000 + forcedGen * 4096 + watch : watch;
   return { kind, precipitation, chill, visibility, windX, watch, revision };
 }
 
