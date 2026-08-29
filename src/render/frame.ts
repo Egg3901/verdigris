@@ -18,7 +18,7 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawSky, drawSnowCover, drawLamps, drawBirds, drawDoorGlow } from './fx';
+import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawSky, drawAerialHaze, drawSnowCover, drawLamps, drawBirds, drawDoorGlow } from './fx';
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
@@ -196,6 +196,8 @@ export function drawFrame(
   stats.calls += drawSmoke(ctx, city, fracMin, variant, tl, br);
   stats.calls += drawBirds(ctx, city, fracMin, variant, tl, br);
   stats.calls += drawWeatherFx(ctx, city, fracMin, variant, tl, br);
+  // Air last: it stands in front of everything it softens.
+  stats.calls += drawAerialHaze(ctx, variant, tl, br);
 
   // Selection belongs to the ground plane, not to a sprite's rectangular canvas
   // bounds. Four iso corner brackets read as an instrument sight and never expose

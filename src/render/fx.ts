@@ -1010,6 +1010,49 @@ export function drawFog(
  * Runs while the event is active, which is when the water is actually moving.
  */
 /**
+ * Aerial perspective: air has depth, so distance has colour.
+ *
+ * Every roof in the district read at the same contrast whether it stood at
+ * the near corner or the far one, which flattens the whole image no matter
+ * how much detail is on it. Real distance puts air in the way, and air is
+ * pale and cool. This lays a dither of the sky's own colour over the far part
+ * of the world, thickening toward the back edge, so the town recedes.
+ *
+ * It is a veil of ONE palette colour at varying dither density rather than a
+ * blend, so nothing here can invent a colour the palette does not have, and
+ * it draws last because air sits in front of everything it softens.
+ */
+export function drawAerialHaze(
+  ctx: CanvasRenderingContext2D, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  // Night is already dark and low-contrast, and haze over it turns the town to
+  // soup; fog and snow have their own atmosphere and do not want a second.
+  if (variant === 'night' || variant === 'smallhours' || variant === 'fogpale') return 0;
+  const wb = worldBounds();
+  const haze = gradeHex(variant === 'gloom' || variant === 'overcastday'
+    ? PAL.smoke1 : PAL.smoke2, variant);
+  // Only the back of the world hazes, and it comes on with the square of the
+  // distance so the near half is untouched and the far edge is unmistakable.
+  const reach = wb.h * 0.55;
+  const band = 6;
+  const startY = Math.max(tl.wy, wb.minY);
+  const endY = Math.min(br.wy, wb.minY + reach);
+  let calls = 0;
+  for (let y = startY; y < endY; y += band) {
+    const depth = 1 - (y - wb.minY) / reach;
+    const density = Math.round(depth * depth * 5);
+    if (density <= 0) continue;
+    ditherPolyHard(ctx, [
+      { x: tl.wx, y }, { x: br.wx, y },
+      { x: br.wx, y: y + band }, { x: tl.wx, y: y + band },
+    ], haze, density);
+    calls++;
+  }
+  return calls;
+}
+
+/**
  * The sky the district hangs in.
  *
  * The island floated in flat black, which read as a model on a table rather
