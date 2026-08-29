@@ -830,6 +830,105 @@ export function drawFog(
  * flooded footprints, so standing water reads as water rather than a blue stain.
  * Runs while the event is active, which is when the water is actually moving.
  */
+/**
+ * The river, moving.
+ *
+ * The channel was a static slab with a few baked speckles: water that never
+ * goes anywhere reads as painted glass. This drifts glints and streaks
+ * downstream at a rate the wind sets, and after dark hangs broken reflections
+ * of the quay lamps off the bank. Everything is a pure function of
+ * (seed, tick, frame fraction), and everything sits on the sunken surface the
+ * river actually has rather than the old zero plane.
+ */
+export function drawRiverFx(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const d = city.district;
+  const riv = city.river;
+  const level = riverLevelAt(city.seed, city.tick);
+  if (level === 0) return 0;
+  const drop = riverDropAt(city.seed, city.tick);
+  const weather = weatherAt(city.seed, city.tick);
+  const t = city.tick + fracMin;
+  // A storm hurries the surface along and breaks it up; a fair dawn barely
+  // moves it. The current always runs the same way, toward the outfall.
+  const rough = weather.kind === 'storm' ? 2 : weather.precipitation > 0 ? 1 : 0;
+  const speed = 0.05 + rough * 0.06;
+  const perColumn = 2 + rough;
+  const glint = gradeHex(PAL.rivGlint, variant);
+  const streak = gradeHex(PAL.riv2, variant);
+  const dark = gradeHex(shadeHex(PAL.riv1, -0.2), variant);
+  let calls = 0;
+  for (let x = 0; x < d.width; x++) {
+    const cy = riv.centre[x];
+    if (cy < 0) continue;
+    const hw = riv.halfWidth[x];
+    // Cheap column cull before any per-glint work.
+    if (isoX(x, cy) < tl.wx - TILE_W * 2 || isoX(x, cy) > br.wx + TILE_W * 2) continue;
+    for (let i = 0; i < perColumn; i++) {
+      const h = mix(city.seed, Stream.Weather, x, i);
+      // Each glint slides one cell downstream and hands off to the next
+      // column, so the surface reads as continuous flow rather than a row of
+      // blinking dots.
+      const drift = ((t * speed + ((h % 128) / 128)) % 1 + 1) % 1;
+      const fx = x + drift;
+      const off = ((h >>> 9) % (hw * 2 + 1)) - hw;
+      const fy = cy + off;
+      if (!insideIsland(d, Math.round(fx), fy)) continue;
+      if (d.tile[cellKey(d, Math.round(fx), fy)] !== Tile.Water) continue;
+      const wx = Math.round(isoX(fx, fy));
+      const wy = Math.round(isoY(fx, fy)) + drop;
+      if (wx < tl.wx || wx > br.wx || wy < tl.wy || wy > br.wy) continue;
+      // A short streak with a bright head: the shape a ripple makes when the
+      // light is low and behind it.
+      ctx.fillStyle = (h >>> 3) % 5 === 0 ? glint : streak;
+      ctx.fillRect(wx, wy, 2, 1);
+      if (rough > 0 && (h >>> 5) % 3 === 0) {
+        ctx.fillStyle = dark;
+        ctx.fillRect(wx - 2, wy + 1, 2, 1);
+      }
+      calls++;
+    }
+  }
+  // Reflections. Hung off the lamps that are actually burning rather than
+  // sprinkled along the bank, so a light on the water always has a light above
+  // it, and only where open channel lies in front of the lamp.
+  if (isDarkVariant(variant) && lampLevel((minuteOfDay(city.tick) + fracMin) % 1440) > 0) {
+    const lampGlow = gradeHex(PAL.gas1, variant, true);
+    const deep = gradeHex(PAL.brass2, variant, true);
+    for (const b of city.buildings) {
+      if (b.gasSeg < 0 || !serviceAt(city.networks.gas, b.id)) continue;
+      if ((mix(city.seed, 63, b.id) % 100) >= 58) continue;
+      // Find open water out from the door, on whichever side the channel lies:
+      // the polite bank looks south at it and the working bank looks north.
+      let wy0 = -1;
+      for (let step = 1; step <= 3 && wy0 < 0; step++) {
+        for (const dir of [1, -1]) {
+          const ny = b.doorY + step * dir;
+          if (ny < 0 || ny >= d.height) continue;
+          if (d.tile[cellKey(d, b.doorX, ny)] === Tile.Water) { wy0 = ny; break; }
+        }
+      }
+      if (wy0 < 0) continue;
+      const wx = Math.round(isoX(b.doorX, wy0));
+      const wy = Math.round(isoY(b.doorX, wy0)) + drop;
+      if (wx < tl.wx || wx > br.wx || wy < tl.wy - 8 || wy > br.wy) continue;
+      const h = mix(city.seed, 64, b.id);
+      const wob = Math.round(Math.sin(t * 0.4 + b.id) * 1.4);
+      const len = 4 + (h % 3);
+      for (let k = 0; k < len; k++) {
+        // A reflection on moving water is never a solid line.
+        if ((mix(h, k, Math.floor(t * 2)) & 3) === 0) continue;
+        ctx.fillStyle = k < 2 ? lampGlow : deep;
+        ctx.fillRect(wx + (k > 1 ? wob : 0), wy + k * 2, 1, 1);
+      }
+      calls++;
+    }
+  }
+  return calls;
+}
+
 export function drawFloodFx(
   ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
   tl: { wx: number; wy: number }, br: { wx: number; wy: number },
