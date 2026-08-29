@@ -76,9 +76,9 @@ export function generateWorld(seedStr: string): World {
   addJetties(district, seed, river, arch);
   reserveRim(district, seed, arch);
   reserveParks(district, seed, arch);
-  const blocks = subdivideBlocks(district, seed);
+  const blocks = subdivideBlocks(district, seed, arch);
   const wards = assignWards(district, seed, blocks, streetPlan, river);
-  const plots = subdividePlots(district, seed, blocks);
+  const plots = subdividePlots(district, seed, blocks, arch);
   pruneUnreachablePaving(
     district,
     streetPlan.squareX + (streetPlan.squareW >> 1),
@@ -137,9 +137,20 @@ export function generateWorld(seedStr: string): World {
     const empty = blockBuilt[p.blockId] * 5 < blockPlots[p.blockId] * 2;
     const wardKind = wards[p.wardId]?.kind;
     const hard = wardKind === 'works' || wardKind === 'quayside' || wardKind === 'courts';
-    const fill = empty ? (hard ? Tile.Plot : Tile.Park) : Tile.Yard;
     for (const k of p.cells) {
-      if (district.tile[k] === Tile.Plot || district.tile[k] === Tile.Court) district.tile[k] = fill;
+      if (district.tile[k] !== Tile.Plot && district.tile[k] !== Tile.Court) continue;
+      const x = k % district.width;
+      const y = (k - x) / district.width;
+      // An acre of flat brown is as blank as an acre of flat green. A works yard
+      // is broken hardstanding with weeds coming through it and material stacked
+      // on the weeds, so the ground is mixed rather than uniform: props scatter
+      // crates and timber over Yard in a works ward and nothing at all over Plot.
+      const roll = mix(seed, 71, x, y) % 100;
+      const fill = !empty
+        ? Tile.Yard
+        : hard ? (roll < 58 ? Tile.Plot : Tile.Yard)
+          : (roll < 78 ? Tile.Park : Tile.Yard);
+      district.tile[k] = fill;
     }
   }
 

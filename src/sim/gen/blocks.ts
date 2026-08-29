@@ -1,11 +1,13 @@
 // Stage 3: blocks. Flood-fill the land the arterials left behind, then split any
-// block that is too deep with a one-cell alley, until nothing is more than 11
-// cells across. The split position is jittered, which is what stops the result
-// reading as a lattice.
+// block that is too deep with a one-cell alley, until nothing runs further across
+// than the archetype's block span. Those cuts are the back alleys and passages
+// between the rows. The split position is jittered, which is what stops the
+// result reading as a lattice.
 import { Tile } from '../types';
 import type { District } from '../district';
 import { cellKey, inBounds, insideIsland, setTile, tileAt } from '../district';
 import { Stream, mulberry32, mix, range } from '../rng';
+import type { Archetype } from './archetype';
 
 export interface Block {
   id: number;
@@ -24,10 +26,10 @@ const DY = [0, 0, 1, -1];
 // A block must be shallow enough that plots sliced off opposite frontages MEET in
 // the middle. Plots run 2 to 4 cells deep, so a span over 7 leaves a core no
 // frontage pass can reach, and that core turns into a court. Courts are supposed
-// to be the exception that carries the theme, not a third of the district: at
-// MAX_SPAN 11 they were 38% of all plots, which is a generator bug wearing a
-// thematic hat.
-const MAX_SPAN = 7;
+// to be the exception that carries the theme, not a third of the district: at a
+// span of 11 they were 38% of all plots, which is a generator bug wearing a
+// thematic hat. The span is now an archetype dial (arch.blockSpan), held between
+// 6 and 8, so the grain differs by kind of town without reopening that hole.
 const MIN_SPAN = 3;
 
 function floodBlocks(d: District): number[][] {
@@ -89,8 +91,9 @@ function bbox(d: District, cells: number[]) {
   return { x0, y0, x1, y1 };
 }
 
-export function subdivideBlocks(d: District, seed: number): Block[] {
+export function subdivideBlocks(d: District, seed: number, arch: Archetype): Block[] {
   const rng = mulberry32(mix(seed, Stream.GenBlocks, 0));
+  const maxSpan = arch.blockSpan;
 
   // Cut passes: re-flood after every pass so a cut that isolates a lobe is seen.
   for (let pass = 0; pass < 6; pass++) {
@@ -99,7 +102,7 @@ export function subdivideBlocks(d: District, seed: number): Block[] {
       const b = bbox(d, cells);
       const w = b.x1 - b.x0 + 1;
       const h = b.y1 - b.y0 + 1;
-      if (Math.max(w, h) <= MAX_SPAN) continue;
+      if (Math.max(w, h) <= maxSpan) continue;
       const vertical = w >= h;
       const span = vertical ? w : h;
       if (span < MIN_SPAN * 2 + 1) continue;
@@ -138,9 +141,14 @@ export function subdivideBlocks(d: District, seed: number): Block[] {
     // merchant frontages, and the working bank gets terraces. Making every polite
     // block civic-grained is what starves the district of buildings: the count
     // falls by a third and the streets stop reading as streets.
+    // The archetype's grain bonus widens the ordinary frontage by a cell: a
+    // garden borough's houses stand in their own width, a mill town's do not.
     const civic = touchesSquare(d, cells);
-    const grain = civic ? range(rng, 4, 5) : polite ? range(rng, 2, 3) : range(rng, 1, 2);
-    const depth = civic ? 4 : polite ? 3 : range(rng, 2, 3);
+    const bonus = arch.grainBonus;
+    const grain = civic
+      ? range(rng, 4, 5)
+      : polite ? range(rng, 2 + bonus, 3 + bonus) : range(rng, 1 + bonus, 2 + bonus);
+    const depth = civic ? 4 : polite ? 3 + arch.depthBonus : range(rng, 2, 3 + arch.depthBonus);
     blocks.push({ id, wardId: -1, cells, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, polite, grain, depth });
   }
   return blocks;

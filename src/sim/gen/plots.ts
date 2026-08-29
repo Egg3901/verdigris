@@ -10,6 +10,7 @@ import type { District } from '../district';
 import { cellKey, inBounds, insideIsland, setTile, tileAt } from '../district';
 import { Stream, mulberry32, mix, range } from '../rng';
 import type { Block } from './blocks';
+import type { Archetype } from './archetype';
 
 export interface Plot {
   id: number;
@@ -41,7 +42,7 @@ function isStreety(d: District, x: number, y: number): boolean {
   return STREETY[d.tile[cellKey(d, x, y)]] === 1;
 }
 
-export function subdividePlots(d: District, seed: number, blocks: Block[]): Plot[] {
+export function subdividePlots(d: District, seed: number, blocks: Block[], arch: Archetype): Plot[] {
   const rng = mulberry32(mix(seed, Stream.GenPlots, 0));
   const plots: Plot[] = [];
   const taken = new Uint8Array(d.width * d.height);
@@ -77,8 +78,14 @@ export function subdividePlots(d: District, seed: number, blocks: Block[]): Plot
       // block's grain produces both a monotonous street and a third fewer
       // buildings than the district needs.
       const roll = mix(seed, Stream.GenPlots, k, 3) % 100;
-      const wantFront = roll < 55 ? 1 : roll < 82 ? 2 : Math.max(1, block.grain);
-      const wantDepth = roll < 40 ? 2 : roll < 88 ? Math.min(3, block.depth) : block.depth;
+      const narrow = arch.narrowFrontPct;
+      const wantFront = roll < narrow
+        ? 1
+        : roll < narrow + Math.round((100 - narrow) * 0.6) ? 2 : Math.max(1, block.grain);
+      const shallow = arch.shallowPct;
+      const wantDepth = roll < shallow
+        ? 2
+        : roll < shallow + Math.round((100 - shallow) * 0.8) ? Math.min(3, block.depth) : block.depth;
       const maxFront = Math.max(1, Math.min(block.grain, wantFront));
       const maxDepth = Math.max(1, Math.min(block.depth, wantDepth));
 
