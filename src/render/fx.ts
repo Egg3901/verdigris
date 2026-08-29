@@ -1036,11 +1036,17 @@ export function drawAerialHaze(
   // distance so the near half is untouched and the far edge is unmistakable.
   const reach = wb.h * 0.55;
   const band = 6;
-  const startY = Math.max(tl.wy, wb.minY);
+  // The haze used to begin abruptly at the world's far edge, which at a wide
+  // zoom drew a hard horizontal seam right across the sky. It now fades in
+  // above that edge as well as out below it, so the band has no edges of its
+  // own anywhere.
+  const lead = 90;
+  const startY = Math.max(tl.wy, wb.minY - lead);
   const endY = Math.min(br.wy, wb.minY + reach);
   let calls = 0;
   for (let y = startY; y < endY; y += band) {
-    const depth = 1 - (y - wb.minY) / reach;
+    const above = y < wb.minY ? 1 - (wb.minY - y) / lead : 1;
+    const depth = (1 - Math.max(0, y - wb.minY) / reach) * Math.max(0, above);
     const density = Math.round(depth * depth * 5);
     if (density <= 0) continue;
     ditherPolyHard(ctx, [

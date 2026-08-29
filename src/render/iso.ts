@@ -2,7 +2,8 @@
 //
 // THE INTEGER TRANSFORM CONTRACT, which nothing may violate:
 //   dprInt = clamp(round(devicePixelRatio), 1, 2)
-//   zoom is 1, 2 or 3, never fractional
+//   zoom * dprInt is an integer (1, 2 or 3 on a plain display; a phone may
+//   also use 1/dprInt, which is one atlas pixel per device pixel)
 //   setTransform(zoom*dprInt, 0, 0, zoom*dprInt, round(ox*dprInt), round(oy*dprInt))
 //   imageSmoothingEnabled = false
 // Every atlas pixel then lands on an exact N by N block of device pixels. A
@@ -17,8 +18,23 @@ export const TILE_H = 16;
 export const HEAD_ROOM = 120;
 export const FOOT_ROOM = 64;
 
-export type ZoomStep = 1 | 2 | 3;
+export type ZoomStep = number;
 export const ZOOM_STEPS: readonly ZoomStep[] = [1, 2, 3];
+
+/**
+ * The zoom steps a given device may use.
+ *
+ * The contract that matters is that zoom * dprInt is an INTEGER, so every atlas
+ * pixel lands on an exact block of device pixels. It was written down as "zoom
+ * is 1, 2 or 3" because on a plain display those are the only values that
+ * satisfy it. On a 2x or 3x screen, which is to say on a phone, 1/dprInt also
+ * satisfies it exactly: it renders one atlas pixel per DEVICE pixel and shows
+ * twice or three times as much district. That is the honest way to give a
+ * phone a wider view, and it costs nothing in sharpness.
+ */
+export function zoomStepsFor(dprInt: number): readonly ZoomStep[] {
+  return dprInt >= 2 ? [1 / dprInt, 1, 2, 3] : ZOOM_STEPS;
+}
 
 export interface Camera {
   /** CSS-px offset of the world origin. Floats for smooth panning; rounded to

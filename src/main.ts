@@ -15,7 +15,7 @@ import { drawFrame } from './render/frame';
 import type { Selection } from './render/frame';
 import { pickAt } from './render/pick';
 import {
-  clampCamera, clampDpr, defaultCamera, centreOn, isoX, isoY, screenToWorld, worldBounds, zoomTo, ZOOM_STEPS,
+  clampCamera, clampDpr, defaultCamera, centreOn, isoX, isoY, screenToWorld, worldBounds, zoomTo, zoomStepsFor,
 } from './render/iso';
 import type { Camera, ZoomStep } from './render/iso';
 import { mountShell } from './ui/shell';
@@ -118,6 +118,24 @@ function recentre(): void {
   centreOn(cam, viewW, viewH, b.minX + b.w / 2, b.minY + b.h / 2);
 }
 
+/** The steps this display may use, widest first, recomputed as the dpr can
+ *  change when a window moves between screens. */
+function zoomSteps(): readonly ZoomStep[] {
+  return zoomStepsFor(clampDpr(window.devicePixelRatio || 1));
+}
+
+/** Neighbouring zoom step, clamped. Tolerates a camera sitting on a step the
+ *  current display no longer offers, which happens when the dpr changes. */
+function stepFrom(current: ZoomStep, dir: number): ZoomStep {
+  const steps = zoomSteps();
+  let idx = steps.indexOf(current);
+  if (idx < 0) {
+    idx = 0;
+    for (let i = 0; i < steps.length; i++) if (steps[i] <= current) idx = i;
+  }
+  return steps[Math.max(0, Math.min(steps.length - 1, idx + dir))];
+}
+
 function setZoom(step: ZoomStep, ax = viewW / 2, ay = viewH / 2): void {
   zoomTo(cam, step, ax, ay);
   clampCamera(cam, viewW, viewH, shell.insets());
@@ -199,8 +217,8 @@ function doVerb(verb: Verb): void {
     return;
   }
   switch (verb) {
-    case 'zoomIn': setZoom(ZOOM_STEPS[Math.min(2, ZOOM_STEPS.indexOf(cam.zoom) + 1)]); break;
-    case 'zoomOut': setZoom(ZOOM_STEPS[Math.max(0, ZOOM_STEPS.indexOf(cam.zoom) - 1)]); break;
+    case 'zoomIn': setZoom(stepFrom(cam.zoom, 1)); break;
+    case 'zoomOut': setZoom(stepFrom(cam.zoom, -1)); break;
     case 'zoom1': setZoom(1); break;
     case 'zoom2': setZoom(2); break;
     case 'zoom3': setZoom(3); break;
@@ -391,11 +409,10 @@ canvas.addEventListener('pointermove', (ev) => {
   if (pointers.size >= 2) {
     if (pinchStart <= 0) return;
     const ratio = pinchDistance() / pinchStart;
-    const idx = ZOOM_STEPS.indexOf(pinchZoom);
-    // Whole steps only: the integer transform contract forbids a fractional zoom,
-    // so a pinch selects a step rather than scaling continuously.
+    // Whole steps only: the integer transform contract forbids a fractional
+    // device scale, so a pinch selects a step rather than scaling continuously.
     const step = ratio > 1.35 ? 1 : ratio < 0.74 ? -1 : 0;
-    const want = ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + step))];
+    const want = step === 0 ? pinchZoom : stepFrom(pinchZoom, step);
     if (want !== cam.zoom) {
       const c = pinchCentre();
       setZoom(want, c.x, c.y);
@@ -438,9 +455,7 @@ canvas.addEventListener('wheel', (ev) => {
   if (Math.abs(wheelAccum) >= 1) {
     const dir = Math.sign(wheelAccum);
     wheelAccum = 0;
-    const idx = ZOOM_STEPS.indexOf(cam.zoom);
-    const next = ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + dir))];
-    setZoom(next, ev.clientX, ev.clientY);
+    setZoom(stepFrom(cam.zoom, dir), ev.clientX, ev.clientY);
   }
 }, { passive: false });
 
