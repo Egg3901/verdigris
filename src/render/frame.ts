@@ -18,7 +18,7 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawLamps, drawBirds, drawDoorGlow } from './fx';
+import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawSky, drawLamps, drawBirds, drawDoorGlow } from './fx';
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
@@ -54,7 +54,14 @@ export function drawFrame(
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = PAL.void;
+  // The backdrop takes the hour. Daylight lifts it off pure black so the town
+  // hangs in air rather than in a hole; night keeps the deep void it always
+  // had. This stays dark on purpose: the whole palette is built to read
+  // against a dark surround, and a bright sky would fight every roof in it.
+  const daylit = scene.variant === 'day' || scene.variant === 'golden'
+    || scene.variant === 'dawn' || scene.variant === 'overcastday'
+    || scene.variant === 'fogpale';
+  ctx.fillStyle = gradeHex(daylit ? PAL.voidhi : PAL.void, scene.variant);
   ctx.fillRect(0, 0, viewW * dpr, viewH * dpr);
   ctx.setTransform(k, 0, 0, k, Math.round(cam.ox * dpr), Math.round(cam.oy * dpr));
 
@@ -63,6 +70,9 @@ export function drawFrame(
   // Viewport in world coordinates, with a margin for tall sprites hanging above.
   const tl = screenToWorld(cam, -TILE_W * 2, -240);
   const br = screenToWorld(cam, viewW + TILE_W * 2, viewH + TILE_H * 4);
+
+  // The sky the town hangs in, behind everything including the ground.
+  stats.calls += drawSky(ctx, city, fracMin, scene.variant, tl, br);
 
   ctx.drawImage(scene.ground, -scene.originX, -scene.originY);
   stats.calls++;

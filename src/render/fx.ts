@@ -831,6 +831,77 @@ export function drawFog(
  * Runs while the event is active, which is when the water is actually moving.
  */
 /**
+ * The sky the district hangs in.
+ *
+ * The island floated in flat black, which read as a model on a table rather
+ * than a place with weather around it. The backdrop now takes the colour of
+ * the hour, cloud banks drift past below and beside the town, and on a clear
+ * night there are stars behind them. Everything lives in world coordinates
+ * and is culled to the viewport, so panning moves the town THROUGH the sky
+ * instead of dragging the sky along with it.
+ */
+export function drawSky(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const weather = weatherAt(city.seed, city.tick);
+  const t = city.tick + fracMin;
+  const wb = worldBounds();
+  const night = variant === 'night' || variant === 'smallhours';
+  let calls = 0;
+
+  // Stars, only when the sky is actually clear. They sit far out in world
+  // space and are hashed per slot, so they hold still while the town moves.
+  if (night && (weather.kind === 'fair' || weather.kind === 'overcast')) {
+    const star = gradeHex(PAL.cream3, variant, true);
+    const faint = gradeHex(PAL.stone3, variant, true);
+    for (let i = 0; i < 220; i++) {
+      const h = mix(city.seed, 201, i, 0);
+      // The camera clamps to the world box, so the only sky a player can ever
+      // see is the wedge around the island inside that box. Scatter there.
+      const sx = wb.minX + (h % Math.max(1, Math.round(wb.w)));
+      const sy = wb.minY + ((h >>> 11) % Math.max(1, Math.round(wb.h)));
+      if (sx < tl.wx || sx > br.wx || sy < tl.wy || sy > br.wy) continue;
+      // A slow twinkle: two thirds of the stars hold, the rest come and go.
+      if ((h >>> 5) % 3 === 0 && (mix(h, Math.floor(t * 0.7), 0) & 3) === 0) continue;
+      ctx.fillStyle = (h >>> 7) % 4 === 0 ? star : faint;
+      ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+      calls++;
+    }
+  }
+
+  // Cloud banks below and beside the island. Dense and low on a foul day, a
+  // thin drift on a fair one, and always moving with the wind.
+  const heavy = weather.kind === 'storm' || weather.kind === 'fog' || weather.kind === 'overcast';
+  const banks = heavy ? 14 : 8;
+  const dir = weather.windX || 1;
+  const pale = gradeHex(heavy ? PAL.smoke1 : PAL.smoke2, variant);
+  const dim = gradeHex(PAL.smoke0, variant);
+  // Same reasoning as the stars: the reachable sky is the wedge inside the
+  // world box that the island does not cover, so the banks live in the box and
+  // the town simply occludes the ones behind it.
+  const spanX = Math.max(1, Math.round(wb.w));
+  for (let i = 0; i < banks; i++) {
+    const h = mix(city.seed, 202, i, 0);
+    const speed = 1.5 + (i % 4) * 0.8;
+    const cx = wb.minX + ((((h % spanX) + t * speed * dir) % spanX) + spanX) % spanX;
+    const cy = wb.minY + ((h >>> 13) % Math.max(1, Math.round(wb.h)));
+    const w = 60 + (i % 5) * 26;
+    const hh = heavy ? 13 : 9;
+    if (cx + w < tl.wx || cx - w > br.wx || cy + hh < tl.wy || cy - hh > br.wy) continue;
+    const bank = [
+      { x: cx - w, y: cy }, { x: cx - w * 0.55, y: cy - hh },
+      { x: cx + w * 0.5, y: cy - hh + 2 }, { x: cx + w, y: cy + 2 },
+      { x: cx + w * 0.35, y: cy + hh * 0.8 }, { x: cx - w * 0.6, y: cy + hh * 0.9 },
+    ];
+    ditherPolyHard(ctx, bank, pale, heavy ? 7 : 5);
+    ditherPolyHard(ctx, bank, dim, heavy ? 4 : 3);
+    calls += 2;
+  }
+  return calls;
+}
+
+/**
  * The river, moving.
  *
  * The channel was a static slab with a few baked speckles: water that never
