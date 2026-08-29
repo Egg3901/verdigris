@@ -28,10 +28,19 @@ npm install
 npm run dev        # http://localhost:5173
 npm test           # vitest
 npm run build      # tsc && vite build
-./deploy.sh        # build, then rsync dist/ to /var/www/verdigris/
+VERDIGRIS_WEB_ROOT=/path/to/webroot ./deploy.sh   # build, then rsync dist/
 ```
 
 `?seed=coppergate` generates a different district. `?ui=3` scales the panels up.
+
+## Docs
+
+- [Architecture](docs/ARCHITECTURE.md): the layer split, the determinism
+  contract, the render contracts, and the decisions that are load bearing.
+- [Simulation reference](docs/SIMULATION.md): what each system models, and the
+  rule that keeps it honest.
+- [Playing Verdigris](docs/PLAYING.md): what an alderman actually does.
+- [Contributing](CONTRIBUTING.md): the rules a change must not break.
 
 ## Shape of the code
 
