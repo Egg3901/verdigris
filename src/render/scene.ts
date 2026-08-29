@@ -117,7 +117,10 @@ interface Family {
 }
 
 const FAMILY: Partial<Record<string, Family>> = {
-  townhall: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'dome', trim: PAL.gold, dormers: 1, material: 'ashlar', finial: 'dome', finialH: 10, cresting: true },
+  // Lead flats around a copper dome. The roof used to be copper too, so the
+  // dome had nothing to stand against and the whole hall read as one green
+  // shape with a gold ring on it.
+  townhall: { roof: [PAL.slate2, PAL.slate1, PAL.arc0], wall: [PAL.stone4, PAL.stone2], shape: 'dome', trim: PAL.gold, dormers: 1, material: 'ashlar', finial: 'dome', finialH: 10, cresting: true },
   exchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, shop: true, material: 'ashlar', finial: 'cupola', finialH: 14, cresting: true },
   bank: { roof: [PAL.verd1, PAL.verd0, PAL.verd2], wall: [PAL.stone4, PAL.stone2], shape: 'hip', trim: PAL.gold, shop: true, material: 'ashlar', cresting: true },
   postexchange: { roof: [PAL.verd2, PAL.verd1, PAL.verd3], wall: [PAL.stone3, PAL.stone1], shape: 'hip', trim: PAL.brass2, shop: true, material: 'ashlar', finial: 'cupola', finialH: 12 },

@@ -54,7 +54,9 @@ const WARD_BONUS: Partial<Record<BuildingKind, Partial<Record<WardKind, number>>
 
 /** Footprint the plot can actually carry for this kind, respecting the 2x2 cap
  *  on non-landmarks and the frontage axis. */
-export function footprintFor(plot: Plot, kind: BuildingKind, relaxed = false): { w: number; d: number } | null {
+export function footprintFor(
+  plot: Plot, kind: BuildingKind, relaxed = false, areaFloor = 0,
+): { w: number; d: number } | null {
   const def = DEFS[kind];
   if (plot.frontage < (relaxed ? Math.min(2, def.minFrontage) : def.minFrontage)) return null;
   const horizontalFront = plot.dir === 2 || plot.dir === 3;
@@ -70,6 +72,10 @@ export function footprintFor(plot: Plot, kind: BuildingKind, relaxed = false): {
     if (w < Math.min(2, wantW) || d < Math.min(2, wantD)) return null;
     if (w * d < Math.max(4, Math.floor(wantW * wantD * 0.45))) return null;
   }
+  // A relaxed retry still has a floor when the caller sets one. Without it the
+  // fallback would take literally any plot, and the civic hall came out 2 cells
+  // on 4 seeds in 10: a shed with a dome on it, on the best address in town.
+  if (areaFloor > 0 && w * d < areaFloor) return null;
   return { w, d };
 }
 
@@ -174,20 +180,20 @@ export function assignBuildings(
   for (const p of plots) buildable[p.id] = plotIsReachable(d, p) ? 1 : 0;
   const out: Placement[] = [];
 
-  const place = (kind: BuildingKind, relaxed = false): boolean => {
+  const place = (kind: BuildingKind, relaxed = false, areaFloor = 0): boolean => {
     let best = -1;
     let bestScore = -Infinity;
     for (const p of plots) {
       if (used[p.id] || !buildable[p.id]) continue;
       if (p.court !== (kind === 'courtdwelling')) continue;
-      const fp = footprintFor(p, kind, relaxed);
+      const fp = footprintFor(p, kind, relaxed, areaFloor);
       if (!fp) continue;
       const s = scoreOf(ctx, p, kind) + (mix(seed, Stream.GenAssign, p.id, kind.length) % 100) / 25;
       if (s > bestScore) { bestScore = s; best = p.id; }
     }
     if (best < 0) return false;
     const p = plots[best];
-    const fp = footprintFor(p, kind, relaxed);
+    const fp = footprintFor(p, kind, relaxed, areaFloor);
     if (!fp) return false;
     used[p.id] = 1;
     // Anchor to the street end of the plot, so the facade meets the pavement.
@@ -210,6 +216,18 @@ export function assignBuildings(
     const want = range(rng, min, max);
     let got = 0;
     for (let i = 0; i < want; i++) { if (!place(q.kind)) break; got++; }
+    // Step the relaxation down rather than jumping straight to anything-goes,
+    // so a landmark that cannot have its full footprint still gets the biggest
+    // plot available instead of the first one that happens to score well.
+    if (got < min && DEFS[q.kind].landmark) {
+      const cap = DEFS[q.kind].maxFoot;
+      const want2 = Math.max(1, cap[0] * cap[1]);
+      for (const frac of [0.6, 0.4, 0.25]) {
+        const floorArea = Math.max(2, Math.floor(want2 * frac));
+        while (got < min && place(q.kind, true, floorArea)) got++;
+        if (got >= min) break;
+      }
+    }
     while (got < min && place(q.kind, true)) got++;
   }
 

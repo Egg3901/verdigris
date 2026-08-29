@@ -240,63 +240,102 @@ export function drawSpire(
 export function drawDome(
   ctx: CanvasRenderingContext2D, eave: Corners, spec: FinialSpec,
 ): void {
-  const { roofH, skin } = spec;
+  const { skin } = spec;
   const c = mid(mid(eave.W, eave.E), mid(eave.N, eave.S));
   const span = Math.hypot(eave.E.x - eave.W.x, eave.E.y - eave.W.y);
-  const rx = Math.max(8, span * 0.22);
-  const ry = rx * 0.48;
-  const drum = Math.max(4, Math.round(roofH * 0.22));
-  const body = skin.roofLit;
-  const shade = skin.roofShade;
-  // Drum, west-lit.
-  poly(ctx, [
-    { x: c.x - rx, y: c.y }, { x: c.x, y: c.y + ry },
-    { x: c.x, y: c.y + ry - drum }, { x: c.x - rx, y: c.y - drum },
-  ], shadeHex(skin.wallLit, -0.04));
-  poly(ctx, [
-    { x: c.x, y: c.y + ry }, { x: c.x + rx, y: c.y },
-    { x: c.x + rx, y: c.y - drum }, { x: c.x, y: c.y + ry - drum },
-  ], shadeHex(skin.wallShade, -0.04));
-  fillEllipseHard(ctx, c.x, c.y - drum, rx, ry, shade);
-  // Dome: stacked ellipses, light from the west.
-  const dh = Math.max(10, roofH);
-  fillEllipseHard(ctx, c.x, c.y - drum - dh * 0.28, rx, ry, body);
-  fillEllipseHard(ctx, c.x - 1, c.y - drum - dh * 0.28, rx * 0.55, ry * 0.7, shadeHex(body, 0.12));
-  fillEllipseHard(ctx, c.x, c.y - drum - dh * 0.58, rx * 0.72, ry * 0.62, shadeHex(body, 0.06));
-  fillEllipseHard(ctx, c.x - 1, c.y - drum - dh * 0.58, rx * 0.38, ry * 0.4, skin.roofRidge);
-  fillEllipseHard(ctx, c.x, c.y - drum - dh * 0.82, rx * 0.38, ry * 0.32, shade);
-
-  // Ribs down the dome, from the lantern base to the springing line. These are
-  // most of what says "dome" rather than "green blob" at this size.
-  const crown = { x: c.x, y: c.y - drum - dh * 0.8 };
-  for (const k of [-1, -0.5, 0, 0.5, 1]) {
-    const rim = { x: c.x + rx * k, y: c.y - drum - ry * (1 - Math.abs(k)) * 0.3 };
-    lineHard(ctx, crown, rim, shadeHex(k <= 0 ? shadeHex(body, 0.1) : shade, -0.05));
-  }
-  // A gold band at the springing, the one place the civic gilding is spent.
+  const rx = Math.max(7, Math.round(span * 0.17));
+  const ry = Math.max(4, Math.round(rx * 0.48));
+  // The old dome was a stack of ellipses at nearly the same height, in the same
+  // colour as the roof under it, so it read as a pool with a gilt rim painted on
+  // a green field. A dome is a thing with HEIGHT: the drum has to stand above
+  // the roof and the cap has to rise off the drum.
+  const drum = Math.max(7, Math.round(rx * 0.62));
+  const domeH = Math.max(9, Math.round(rx * 0.92));
+  const copper = PAL.verd2;
+  const copperLit = PAL.verd3;
+  const copperDark = PAL.verd1;
+  const stone = skin.wallLit;
   const gild = skin.trim ?? PAL.gold;
-  fillEllipseHard(ctx, c.x, c.y - drum, rx, ry, gild);
-  fillEllipseHard(ctx, c.x, c.y - drum + 1, rx - 1, ry - 1, shadeHex(gild, -0.1));
-  fillEllipseHard(ctx, c.x, c.y - drum, rx - 2, ry - 1, shade);
 
-  // A little arcade of windows around the drum, warm when lit.
-  const drumGlass = skin.windowLit ? PAL.litWindow : PAL.darkWindow;
-  ctx.fillStyle = drumGlass;
-  for (const k of [-0.62, -0.2, 0.2, 0.62]) {
-    const wx = Math.round(c.x + rx * k);
-    ctx.fillRect(wx, Math.round(c.y - drum + 1), 1, Math.max(2, drum - 1));
+  // Podium, so the drum does not grow straight out of the lead.
+  fillEllipseHard(ctx, c.x, c.y, rx + 2, ry + 1, shadeHex(stone, -0.18));
+  fillEllipseHard(ctx, c.x, c.y - 1, rx + 2, ry + 1, stone);
+
+  // Drum: a cylinder drawn as scanlines between its base and top ellipses, so
+  // the wall is solid and the light falls on the west of it.
+  const drumTop = c.y - drum;
+  for (let dx = -rx; dx <= rx; dx++) {
+    const t = dx / rx;
+    const dy = Math.round(ry * Math.sqrt(Math.max(0, 1 - t * t)));
+    const x = Math.round(c.x + dx);
+    ctx.fillStyle = t < -0.25 ? shadeHex(stone, 0.14)
+      : t < 0.35 ? stone : shadeHex(stone, -0.16);
+    ctx.fillRect(x, drumTop - dy, 1, Math.max(1, (c.y + dy) - (drumTop - dy)));
+  }
+  // A colonnade round the drum. Columns say civic at this size more than the
+  // cap above them ever does, and the dark between them is what makes them
+  // read as standing off the wall rather than painted on it.
+  const cols = 9;
+  for (let i = 0; i < cols; i++) {
+    const t = (i / (cols - 1)) * 2 - 1;
+    const dy = Math.round(ry * Math.sqrt(Math.max(0, 1 - t * t)));
+    const x = Math.round(c.x + rx * t * 0.94);
+    const yTop = drumTop - dy + 2;
+    const h = Math.max(2, drum - 3);
+    ctx.fillStyle = shadeHex(stone, t < 0 ? 0.28 : -0.12);
+    ctx.fillRect(x, yTop, 1, h);
+    // Deep shadow in the intercolumniation. Without real dark between them the
+    // columns are just stripes of stone on stone and vanish at any distance.
+    if (i < cols - 1) {
+      ctx.fillStyle = shadeHex(skin.window ?? PAL.darkWindow, -0.25);
+      ctx.fillRect(x + 1, yTop + 1, 1, h - 1);
+    }
+  }
+  // Gilded cornice on top of the drum: the one place the civic money shows.
+  fillEllipseHard(ctx, c.x, drumTop, rx + 1, ry, gild);
+  fillEllipseHard(ctx, c.x, drumTop - 1, rx, ry - 1, shadeHex(gild, -0.22));
+
+  // The cap: a real hemisphere, wide at the springing and narrowing to the
+  // crown, every slice a little higher than the one under it.
+  const slices = Math.max(8, domeH);
+  for (let i = 0; i <= slices; i++) {
+    const t = i / slices;
+    const r = Math.max(1, Math.round(rx * Math.cos(t * Math.PI * 0.5)));
+    const yr = Math.max(1, Math.round(r * 0.48));
+    const y = Math.round(drumTop - t * domeH);
+    fillEllipseHard(ctx, c.x, y, r, yr, copper);
+    // The highlight is a narrow crescent toward the light, not half the dome:
+    // at full width it bleaches the copper to mint.
+    if (r > 2) {
+      fillEllipseHard(ctx, c.x - Math.round(r * 0.42), y,
+        Math.max(1, Math.round(r * 0.3)), Math.max(1, Math.round(yr * 0.45)), copperLit);
+    }
+  }
+  // Ribs from the crown to the springing: the seams of the copper, and the
+  // strongest single cue that this is a dome and not a dome-coloured hill.
+  const crown = { x: c.x, y: drumTop - domeH };
+  for (const k of [-0.92, -0.6, -0.25, 0.25, 0.6, 0.92]) {
+    const rim = { x: Math.round(c.x + rx * k), y: Math.round(drumTop - ry * (1 - Math.abs(k)) * 0.5) };
+    lineHard(ctx, crown, rim, shadeHex(k < 0 ? copperLit : copperDark, 0.12));
   }
 
-  // Lantern, gold needle, and a small flag: the postcard finish.
-  ctx.fillStyle = skin.wallLit;
-  ctx.fillRect(Math.round(c.x) - 2, Math.round(c.y - drum - dh) - 1, 4, 5);
+  // Lantern, needle and flag: the postcard finish.
+  const lanternH = Math.max(4, Math.round(rx * 0.4));
+  const lr = Math.max(2, Math.round(rx * 0.22));
+  ctx.fillStyle = stone;
+  ctx.fillRect(crown.x - lr, crown.y - lanternH, lr * 2, lanternH);
+  ctx.fillStyle = skin.windowLit ? PAL.litWindow : (skin.window ?? PAL.darkWindow);
+  for (let i = -lr + 1; i < lr; i += 2) {
+    ctx.fillRect(crown.x + i, crown.y - lanternH + 1, 1, lanternH - 2);
+  }
+  fillEllipseHard(ctx, crown.x, crown.y - lanternH, lr + 1,
+    Math.max(1, Math.round(lr * 0.5)), copper);
   ctx.fillStyle = gild;
-  ctx.fillRect(Math.round(c.x), Math.round(c.y - drum - dh) - 8, 1, 7);
+  ctx.fillRect(crown.x, crown.y - lanternH - 5, 1, 5);
   ctx.fillStyle = PAL.buntRed;
-  ctx.fillRect(Math.round(c.x) + 1, Math.round(c.y - drum - dh) - 8, 3, 2);
+  ctx.fillRect(crown.x + 1, crown.y - lanternH - 5, 3, 2);
 }
 
-/** A glazed lantern on the ridge: exchange, school. */
 export function drawCupola(
   ctx: CanvasRenderingContext2D, eave: Corners, spec: FinialSpec, alongX: boolean,
 ): void {
