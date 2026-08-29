@@ -781,6 +781,8 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     }
   }
 
+  drawKerbs(gctx, city, d, originX, originY, variant, weather.precipitation);
+  drawBridgeDecks(gctx, city, d, originX, originY, drop, variant);
   drawIslandUnderside(gctx, d, city.seed, originX, originY, drop, variant);
 
   // River fog lies on the water plane, so roofs, bridges, people and cranes are
@@ -1309,6 +1311,195 @@ function drawIslandUnderside(ctx: CanvasRenderingContext2D, d: District, seed: n
             { x: caveX, y: caveY + 3 }
           ], gradeHex(PAL.soot0, variant));
           lineHard(ctx, { x: caveX, y: caveY - 1 }, { x: caveX + 7, y: caveY - 1 }, PAL.stone1);
+        }
+      }
+    }
+  }
+}
+
+
+/** Surfaces a kerb separates: the made road and its footways, not the yards. */
+const PAVED = new Set<number>([
+  Tile.Street, Tile.Alley, Tile.Square, Tile.Embankment, Tile.Wharf, Tile.Rail, Tile.Bridge,
+]);
+
+/**
+ * Kerbs and gutters.
+ *
+ * The streets were the last flat surface in the frame: a made road in 1890
+ * has a raised kerb and a channel running beside it, and without that edge the
+ * paving simply washed into the yards it abuts. The gutter also gives the rain
+ * somewhere to go, which is why it runs only when it is raining.
+ */
+function drawKerbs(
+  ctx: CanvasRenderingContext2D, city: City, d: District,
+  originX: number, originY: number, variant: Variant, precipitation: number,
+): void {
+  const HW = TILE_W / 2;
+  const HH = TILE_H / 2;
+  // Each edge of the diamond, its neighbour, and the inward step that carries
+  // the footway onto the road cell rather than under the building.
+  const EDGES = [
+    { dx: -1, dy: 0, ax: -HW, ay: 0, bx: 0, by: -HH, nx: 2, ny: 1 },
+    { dx: 0, dy: -1, ax: 0, ay: -HH, bx: HW, by: 0, nx: -2, ny: 1 },
+    { dx: 1, dy: 0, ax: HW, ay: 0, bx: 0, by: HH, nx: -2, ny: -1 },
+    { dx: 0, dy: 1, ax: 0, ay: HH, bx: -HW, by: 0, nx: 2, ny: -1 },
+  ];
+  for (let ty = 0; ty < d.height; ty++) {
+    for (let tx = 0; tx < d.width; tx++) {
+      const k = cellKey(d, tx, ty);
+      const tile = d.tile[k];
+      if (!PAVED.has(tile) || tile === Tile.Bridge) continue;
+      if (!insideIsland(d, tx, ty)) continue;
+      const cx = originX + isoX(tx, ty);
+      const cy = originY + isoY(tx, ty);
+      const polite = d.polite[k] === 1;
+      for (const e of EDGES) {
+        const nx = tx + e.dx;
+        const ny = ty + e.dy;
+        if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height) continue;
+        const nk = cellKey(d, nx, ny);
+        const nTile = d.tile[nk];
+        // The footway runs where the road meets a frontage or a plot. Two road
+        // cells share a carriageway, and the quay wall already edges the water.
+        if (PAVED.has(nTile) || nTile === Tile.Water || nTile === Tile.Void) continue;
+        const a = { x: cx + e.ax, y: cy + e.ay };
+        const b = { x: cx + e.bx, y: cy + e.by };
+        // Flagged footway, laid ON the road cell so the building in front of it
+        // does not cover the very thing it fronts onto.
+        const ia = { x: a.x + e.nx * 2, y: a.y + e.ny * 2 };
+        const ib = { x: b.x + e.nx * 2, y: b.y + e.ny * 2 };
+        fillPolyHard(ctx, [a, b, ib, ia],
+          gradeHex(shadeHex(polite ? PAL.stone3 : PAL.stone2, -0.1), variant));
+        // Flag joints across the footway, then the kerb along its road edge.
+        const flags = 3;
+        for (let i = 1; i < flags; i++) {
+          const t = i / flags;
+          lineHard(ctx,
+            { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t },
+            { x: ia.x + (ib.x - ia.x) * t, y: ia.y + (ib.y - ia.y) * t },
+            gradeHex(shadeHex(polite ? PAL.stone3 : PAL.stone2, -0.35), variant));
+        }
+        lineHard(ctx, ia, ib, gradeHex(polite ? PAL.stone4 : PAL.stone3, variant));
+        // The channel, immediately below the kerb on the road side.
+        const g0 = { x: ia.x + e.nx / 2, y: ia.y + e.ny / 2 };
+        const g1 = { x: ib.x + e.nx / 2, y: ib.y + e.ny / 2 };
+        lineHard(ctx, g0, g1, gradeHex(shadeHex(PAL.cobble0, -0.35), variant));
+        if (precipitation > 0) {
+          // Rain finds the channel. Dashes rather than a line, because running
+          // water catches the light in pieces.
+          const h = mix(city.seed, Stream.Weather, k, e.dx * 3 + e.dy);
+          const runs = precipitation === 2 ? 3 : 2;
+          for (let i = 0; i < runs; i++) {
+            const t = 0.15 + (((h >>> (i * 4)) % 65) / 100);
+            const px = Math.round(g0.x + (g1.x - g0.x) * t);
+            const py = Math.round(g0.y + (g1.y - g0.y) * t);
+            ctx.fillStyle = gradeHex((h >>> 12) % 3 === 0 ? PAL.rivGlint : PAL.riv2, variant);
+            ctx.fillRect(px, py, 2, 1);
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * The crossings, as structures rather than painted strips.
+ *
+ * A bridge was a flat run of deck colour with nothing at its edges, so it read
+ * as a plank laid on the water instead of something built. Stone crossings get
+ * an ashlar deck and a balustrade; timber ones get planking and a post rail.
+ * Parapets are drawn after the whole ground plane so the deck the player walks
+ * on is never cut into by the water it spans.
+ */
+function drawBridgeDecks(
+  ctx: CanvasRenderingContext2D, city: City, d: District,
+  originX: number, originY: number, drop: number, variant: Variant,
+): void {
+  const HW = TILE_W / 2;
+  const HH = TILE_H / 2;
+  for (const bridge of city.river.bridges) {
+    const width = bridge.stone ? 2 : 1;
+    for (let ty = bridge.y0; ty <= bridge.y1; ty++) {
+      for (let dx = 0; dx < width; dx++) {
+        const tx = bridge.x + dx;
+        if (tx < 0 || ty < 0 || tx >= d.width || ty >= d.height) continue;
+        const k = cellKey(d, tx, ty);
+        if (d.tile[k] !== Tile.Bridge) continue;
+        const cx = originX + isoX(tx, ty);
+        const cy = originY + isoY(tx, ty);
+        const overWater = ty > bridge.y0 && ty < bridge.y1;
+        // A stone crossing has a stone deck. The ground bake paints every
+        // bridge cell in timber because the tile does not know which kind of
+        // crossing it belongs to, which left ashlar parapets on a plank road.
+        if (bridge.stone) {
+          drawIsoDiamond(ctx, cx, cy, gradeHex(shadeHex(PAL.stone2, -0.2), variant));
+        }
+        // Deck: ashlar blocks across a stone crossing, planks across a timber
+        // one, both running the way the traffic does.
+        // The joint has to clear the quantiser: a two-step wash off the deck
+        // colour lands in the same palette entry and draws nothing at all.
+        const deckLine = gradeHex(
+          bridge.stone ? shadeHex(PAL.stone2, -0.4) : shadeHex(PAL.wood1, -0.3), variant,
+        );
+        const steps = bridge.stone ? 3 : 5;
+        for (let i = 1; i < steps; i++) {
+          const t = i / steps;
+          lineHard(ctx,
+            { x: cx - HW + HW * t, y: cy + HH * t },
+            { x: cx + HW * t, y: cy - HH + HH * t }, deckLine);
+        }
+        // Parapets on the outer edges only, so a two-cell stone bridge does
+        // not grow a wall down the middle of its own carriageway.
+        for (const side of [0, 1]) {
+          if (side === 0 && dx !== 0) continue;
+          if (side === 1 && dx !== width - 1) continue;
+          const a = side === 0 ? { x: cx - HW, y: cy } : { x: cx + HW, y: cy };
+          const b = side === 0 ? { x: cx, y: cy - HH } : { x: cx, y: cy + HH };
+          const H = bridge.stone ? 6 : 5;
+          if (bridge.stone) {
+            fillPolyHard(ctx, [
+              { x: a.x, y: a.y - H }, { x: b.x, y: b.y - H },
+              { x: b.x, y: b.y }, { x: a.x, y: a.y },
+            ], gradeHex(side === 0 ? shadeHex(PAL.stone2, -0.1) : shadeHex(PAL.stone2, -0.22), variant));
+            // Coping along the top, and balusters below it.
+            lineHard(ctx, { x: a.x, y: a.y - H }, { x: b.x, y: b.y - H },
+              gradeHex(PAL.stone3, variant));
+            const n = 5;
+            for (let i = 1; i < n; i++) {
+              const t = i / n;
+              const px = Math.round(a.x + (b.x - a.x) * t);
+              const py = Math.round(a.y + (b.y - a.y) * t);
+              ctx.fillStyle = gradeHex(shadeHex(PAL.stone1, -0.15), variant);
+              ctx.fillRect(px, py - H + 2, 1, H - 3);
+            }
+          } else {
+            // Timber: a top rail on posts, with daylight between them.
+            const n = 4;
+            for (let i = 0; i <= n; i++) {
+              const t = i / n;
+              const px = Math.round(a.x + (b.x - a.x) * t);
+              const py = Math.round(a.y + (b.y - a.y) * t);
+              ctx.fillStyle = gradeHex(PAL.wood0, variant);
+              ctx.fillRect(px, py - H, 1, H);
+            }
+            lineHard(ctx, { x: a.x, y: a.y - H }, { x: b.x, y: b.y - H },
+              gradeHex(PAL.wood1, variant));
+            lineHard(ctx, { x: a.x, y: a.y - H + 3 }, { x: b.x, y: b.y - H + 3 },
+              gradeHex(shadeHex(PAL.wood0, 0.1), variant));
+          }
+        }
+        // A cutwater at the pier: the pointed prow that splits the current,
+        // standing in the channel below the deck on the upstream side.
+        if (overWater && bridge.stone && dx === 0 && drop >= 4) {
+          const px = cx - HW;
+          const py = cy + drop;
+          fillPolyHard(ctx, [
+            { x: px, y: py - drop + 2 }, { x: px - 5, y: py - 1 },
+            { x: px, y: py + 2 },
+          ], gradeHex(shadeHex(PAL.stone1, -0.2), variant));
+          lineHard(ctx, { x: px, y: py - drop + 2 }, { x: px - 5, y: py - 1 },
+            gradeHex(PAL.stone2, variant));
         }
       }
     }
