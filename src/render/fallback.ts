@@ -129,60 +129,128 @@ const LEG = PAL.ink;
 export function drawSoul(
   ctx: CanvasRenderingContext2D, x: number, y: number,
   coat: string, hat: string, step: number, salt = 0, variant: Variant = 'day',
-  umbrella = false, basket = false,
+  umbrella = false, basket = false, figure: 0 | 1 | 2 = 0,
+  head: 0 | 1 | 2 | 3 | 4 | 5 = 0, carry: 0 | 1 | 2 | 3 = 0, lampLit = false,
 ): void {
   const px = Math.round(x);
   const py = Math.round(y);
   const bob = step === 1 ? -1 : step === 3 ? 1 : 0;
+  const child = figure === 2;
+  const woman = figure === 1;
+  // A child is three pixels shorter, all of it taken out of the body and the
+  // legs. Height is the cue that survives at zoom one where the hat does not.
+  const legH = child ? 2 : 3;
+  const bodyH = child ? 4 : 6;
+  const shoulderY = py - legH - bodyH + bob;
+  const headY = shoulderY - 2;
 
   // Contact shadow first, at ground level, never bobbing. Without it every soul
   // in the district floats a pixel above the cobbles.
   ctx.fillStyle = gradeHex(PAL.soot0, variant);
   ctx.fillRect(px - 2, py, 4, 1);
 
-  // Legs. A constant dark, so a cream coat does not produce cream legs.
-  ctx.fillStyle = gradeHex(LEG, variant);
-  if (step === 0 || step === 2) {
-    ctx.fillRect(px - 1, py - 3, 1, 3);
-    ctx.fillRect(px, py - 3, 1, 3);
-  } else {
-    // Mid-stride: one leg forward, one back, which is the whole gait read.
-    ctx.fillRect(px - 2, py - 3, 1, 3);
-    ctx.fillRect(px + 1, py - 3, 1, 3);
-  }
-
-  // Body, two pixels narrower than the old block so there are shoulders.
   const body = gradeHex(coat, variant);
-  ctx.fillStyle = body;
-  ctx.fillRect(px - 2, py - 9 + bob, 4, 6);
-  // A darker side, west light as everywhere else.
-  ctx.fillStyle = quantizeWorldColour(shadeHex(body, -0.15), variant);
-  ctx.fillRect(px + 1, py - 9 + bob, 1, 6);
+  const bodyDark = quantizeWorldColour(shadeHex(body, -0.15), variant);
+
+  if (woman) {
+    // A skirt is wider at the hem than the shoulders are, which is the whole
+    // read: no gait, one dark line for the hem, and the boots below it.
+    ctx.fillStyle = gradeHex(LEG, variant);
+    ctx.fillRect(px - 1, py - 1, 3, 1);
+    ctx.fillStyle = body;
+    fillPolyHard(ctx, [
+      { x: px - 2, y: shoulderY }, { x: px + 2, y: shoulderY },
+      { x: px + 3, y: py - 1 }, { x: px - 3, y: py - 1 },
+    ], body);
+    ctx.fillStyle = bodyDark;
+    ctx.fillRect(px + 1, shoulderY, 1, bodyH + legH - 1);
+    ctx.fillStyle = quantizeWorldColour(shadeHex(body, -0.3), variant);
+    ctx.fillRect(px - 3, py - 2, 6, 1);
+  } else {
+    ctx.fillStyle = gradeHex(LEG, variant);
+    if (step === 0 || step === 2) {
+      ctx.fillRect(px - 1, py - legH, 1, legH);
+      ctx.fillRect(px, py - legH, 1, legH);
+    } else {
+      // Mid-stride: one leg forward, one back, which is the whole gait read.
+      ctx.fillRect(px - 2, py - legH, 1, legH);
+      ctx.fillRect(px + 1, py - legH, 1, legH);
+    }
+    ctx.fillStyle = body;
+    ctx.fillRect(px - 2, shoulderY, 4, bodyH);
+    // A darker side, west light as everywhere else.
+    ctx.fillStyle = bodyDark;
+    ctx.fillRect(px + 1, shoulderY, 1, bodyH);
+  }
 
   // The head. One pixel of skin is all it takes, and it is the whole difference.
   ctx.fillStyle = gradeHex(SKIN[salt % SKIN.length], variant);
-  ctx.fillRect(px - 1, py - 11 + bob, 2, 2);
+  ctx.fillRect(px - 1, headY, 2, 2);
 
-  // Crown narrower than the shoulders, with a brim the full width.
-  ctx.fillStyle = gradeHex(hat, variant);
-  ctx.fillRect(px - 2, py - 12 + bob, 4, 1);
-  ctx.fillRect(px - 1, py - 14 + bob, 2, 2);
+  // Headwear. The brim is what reads at distance, the crown is what says which.
+  const felt = gradeHex(hat, variant);
+  ctx.fillStyle = felt;
+  switch (head) {
+    case 1: // Flat cap: no crown to speak of, and a peak over the west eye.
+      ctx.fillRect(px - 2, headY - 1, 4, 1);
+      ctx.fillRect(px - 3, headY - 1, 1, 1);
+      break;
+    case 2: // Bowler: a low round crown on a full brim.
+      ctx.fillRect(px - 2, headY - 1, 4, 1);
+      ctx.fillRect(px - 1, headY - 2, 2, 1);
+      break;
+    case 3: // Topper: the tallest thing on any head in the district.
+      ctx.fillRect(px - 2, headY - 1, 4, 1);
+      ctx.fillRect(px - 1, headY - 4, 2, 3);
+      break;
+    case 4: // Custodian helmet: domed, with a boss on top.
+      ctx.fillRect(px - 2, headY - 1, 4, 1);
+      ctx.fillRect(px - 1, headY - 3, 2, 2);
+      ctx.fillStyle = gradeHex(PAL.brass2, variant, true);
+      ctx.fillRect(px, headY - 4, 1, 1);
+      break;
+    case 5: // Bonnet: close over the crown with the tie behind.
+      ctx.fillRect(px - 1, headY - 2, 3, 2);
+      ctx.fillStyle = quantizeWorldColour(shadeHex(hat, -0.2), variant);
+      ctx.fillRect(px + 2, headY, 1, 2);
+      break;
+    default:
+      ctx.fillRect(px - 1, headY - 1, 2, 1);
+      break;
+  }
 
   if (umbrella) {
     const cloth = gradeHex([PAL.slate2, PAL.buntRed, PAL.verd2, PAL.buntBlue][salt % 4], variant);
     fillPolyHard(ctx, [
-      { x: px - 5, y: py - 14 + bob }, { x: px, y: py - 18 + bob },
-      { x: px + 5, y: py - 14 + bob }, { x: px + 3, y: py - 13 + bob },
-      { x: px, y: py - 14 + bob }, { x: px - 3, y: py - 13 + bob },
+      { x: px - 5, y: headY - 3 }, { x: px, y: headY - 7 },
+      { x: px + 5, y: headY - 3 }, { x: px + 3, y: headY - 2 },
+      { x: px, y: headY - 3 }, { x: px - 3, y: headY - 2 },
     ], cloth);
-    lineHard(ctx, { x: px, y: py - 17 + bob }, { x: px, y: py - 7 + bob }, gradeHex(PAL.wood0, variant));
+    lineHard(ctx, { x: px, y: headY - 6 }, { x: px, y: shoulderY + 2 }, gradeHex(PAL.wood0, variant));
     ctx.fillStyle = gradeHex(PAL.rivGlint, variant);
-    ctx.fillRect(px - 3, py - 15 + bob, 2, 1);
+    ctx.fillRect(px - 3, headY - 4, 2, 1);
   }
-  if (basket) {
+  if (basket || carry === 1) {
     ctx.fillStyle = gradeHex(PAL.wood2, variant);
-    ctx.fillRect(px + 2, py - 7 + bob, 2, 2);
+    ctx.fillRect(px + 2, shoulderY + 2, 2, 2);
     ctx.fillStyle = gradeHex(PAL.ochre1, variant);
-    ctx.fillRect(px + 2, py - 8 + bob, 1, 1);
+    ctx.fillRect(px + 2, shoulderY + 1, 1, 1);
+  }
+  if (carry === 2) {
+    // A tool over the shoulder: the mark of a man on his way to a job.
+    ctx.fillStyle = gradeHex(PAL.wood0, variant);
+    lineHard(ctx, { x: px + 2, y: shoulderY + 3 }, { x: px + 4, y: headY - 2 }, gradeHex(PAL.wood0, variant));
+    ctx.fillStyle = gradeHex(PAL.stone3, variant);
+    ctx.fillRect(px + 4, headY - 3, 2, 1);
+  }
+  if (carry === 3) {
+    // The lamplighter's pole, with its wick alight once he is working.
+    lineHard(ctx, { x: px + 2, y: py - 1 }, { x: px + 3, y: headY - 5 }, gradeHex(PAL.wood0, variant));
+    if (lampLit) {
+      ctx.fillStyle = gradeHex(PAL.gas2, variant, true);
+      ctx.fillRect(px + 3, headY - 6, 1, 1);
+      ctx.fillStyle = gradeHex(PAL.gas1, variant, true);
+      ctx.fillRect(px + 3, headY - 7, 1, 1);
+    }
   }
 }

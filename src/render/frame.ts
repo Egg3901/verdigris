@@ -10,7 +10,7 @@
 // browser batches it. If this ever needs WebGL, the Renderer interface is where
 // it slots in, but at a few hundred buildings on Canvas2D it does not.
 import type { City } from '../sim/city';
-import { PAL, gradeHex } from './palette';
+import { PAL, gradeHex, isDarkVariant } from './palette';
 import type { Camera } from './iso';
 import { TILE_W, TILE_H, clampDpr, screenToWorld } from './iso';
 import { isoX, isoY } from './iso';
@@ -179,7 +179,8 @@ export function drawFrame(
       if (a.wx > br.wx || a.wy > br.wy || a.wx < tl.wx || a.wy < tl.wy) continue;
       const umbrella = weather.precipitation > 0
         && mix(city.seed, Stream.Weather, weather.watch, a.soulId) % 100 < 78;
-      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId, scene.variant, umbrella, a.vendor);
+      drawSoul(ctx, a.wx, a.wy, a.coat, a.hat, a.step, a.soulId, scene.variant, umbrella,
+        a.vendor, a.figure, a.head, a.carry, isDarkVariant(scene.variant));
       stats.calls++;
     } else {
       stats.calls += drawHazard(ctx, hazardPool[hi++], scene.variant);

@@ -21,6 +21,12 @@ export interface AgentDraw {
   depth: number;
   coat: string;
   hat: string;
+  /** 0 man, 1 woman, 2 child. Drives the silhouette, not the palette. */
+  figure: 0 | 1 | 2;
+  /** 0 bare, 1 flat cap, 2 bowler, 3 top hat, 4 helmet, 5 bonnet. */
+  head: 0 | 1 | 2 | 3 | 4 | 5;
+  /** 0 nothing, 1 basket, 2 tool, 3 lamplighter's pole. */
+  carry: 0 | 1 | 2 | 3;
   step: number;
   vendor: boolean;
 }
@@ -44,6 +50,41 @@ const MARKET_FAN: readonly [side: number, outward: number][] = [
   [-0.28, 0.42], [0.28, 0.42], [-0.52, 0.68], [0.52, 0.68], [0, 0.5],
 ];
 
+/**
+ * What a person is, in three pixels of silhouette.
+ *
+ * A crowd of identical blocks reads as one person repeated however many
+ * colourways it has. Height and hat do more work than colour ever can at this
+ * size: a child is short, a woman's skirt is wider than her shoulders, and the
+ * hat says trade and class from across the district.
+ */
+function figureOf(s: Soul): 0 | 1 | 2 {
+  if (s.trade === 'child' || s.age < 14) return 2;
+  return s.sex === 1 ? 1 : 0;
+}
+
+function headOf(s: Soul): 0 | 1 | 2 | 3 | 4 | 5 {
+  if (s.trade === 'constable') return 4;
+  // The gentry and the counting house go about in a topper; the vestry is the
+  // one place in the district where you can tell rank by headroom.
+  if (s.trade === 'alderman') return 3;
+  if (s.trade === 'clerk' || s.trade === 'curate' || s.trade === 'engineer') return 2;
+  if (figureOf(s) === 1) return 5;
+  if (figureOf(s) === 2) return (s.id & 1) === 0 ? 1 : 0;
+  // Working men in flat caps, tradesmen in bowlers, hashed but stable.
+  const working = s.trade === 'millhand' || s.trade === 'docker'
+    || s.trade === 'lighterman' || s.trade === 'lamplighter';
+  if (working) return 1;
+  return (s.id % 3) === 0 ? 1 : 2;
+}
+
+function carryOf(s: Soul): 0 | 1 | 2 | 3 {
+  if (s.trade === 'lamplighter') return 3;
+  if (s.trade === 'engineer' || s.trade === 'printer') return 2;
+  if (s.trade === 'laundress' || s.trade === 'shopkeeper' || s.trade === 'seamstress') return 1;
+  return 0;
+}
+
 function coatOf(s: Soul): string {
   if (s.trade === 'constable') return PAL.buntBlue;
   if (s.trade === 'child') return PAL.buntCream;
@@ -61,6 +102,7 @@ function fillAgent(
 ): void {
   const slot = out[n] ?? (out[n] = {
     soulId: -1, wx: 0, wy: 0, tx: 0, ty: 0, depth: 0, coat: '', hat: '', step: 0, vendor: false,
+    figure: 0, head: 0, carry: 0,
   });
   slot.soulId = s.id;
   slot.tx = cx;
@@ -70,6 +112,9 @@ function fillAgent(
   slot.depth = depthKey(cx, cy, LAYER_AGENT);
   slot.coat = coatOf(s);
   slot.hat = hatOf(s);
+  slot.figure = figureOf(s);
+  slot.head = headOf(s);
+  slot.carry = carryOf(s);
   slot.step = step;
   slot.vendor = vendor;
 }
