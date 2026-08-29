@@ -3,7 +3,9 @@
 // the last 28 watches of precipitation, which makes the river respond to recent
 // weather without needing stored state. A slow dry-spell bias lowers the level
 // during droughts, and the final level is clamped to 0..4.
-import { weatherAt, naturalWeatherAt, forcedWeather, WEATHER_WATCH_MINUTES } from './weather';
+import {
+  weatherAt, naturalWeatherAt, forcedWeather, precipitationRunoffQuarters, WEATHER_WATCH_MINUTES,
+} from './weather';
 import { mix, Stream } from './rng';
 
 export const RIVER_LOOKBACK_WATCHES = 28;
@@ -17,6 +19,12 @@ const RIVER_SURFACE_DROP: readonly number[] = [10, 8, 6, 4, 2];
 function wetAt(seed: number, tick: number): number {
   const currentWatch = Math.floor(Math.max(0, tick) / WEATHER_WATCH_MINUTES);
   let wet = 0;
+  // Runoff is carried in quarters of one step of rain so that snow can count
+  // for a quarter of what rain counts for without moving the levels a rainy
+  // district has always had. See precipitationRunoffQuarters: snow lies where
+  // it falls, and the thaw that would eventually feed the channel is days away
+  // and not modelled.
+  let quarters = 0;
   for (let age = 0; age < RIVER_LOOKBACK_WATCHES; age++) {
     const sampleTick = tick - age * WEATHER_WATCH_MINUTES;
     // Prehistory: before tick 0, borrow the seed's own weather a lookback
@@ -24,11 +32,12 @@ function wetAt(seed: number, tick: number): number {
     // rain ledger reading as a drought.
     // Borrowed prehistory reads the natural clock: a pin applies forward, and
     // reading history through it would let one click drain a week of rain.
-    const p = sampleTick >= 0
-      ? weatherAt(seed, sampleTick).precipitation
-      : naturalWeatherAt(seed, sampleTick + RIVER_LOOKBACK_WATCHES * WEATHER_WATCH_MINUTES).precipitation;
-    wet += (RIVER_LOOKBACK_WATCHES - age) * p;
+    const w = sampleTick >= 0
+      ? weatherAt(seed, sampleTick)
+      : naturalWeatherAt(seed, sampleTick + RIVER_LOOKBACK_WATCHES * WEATHER_WATCH_MINUTES);
+    quarters += (RIVER_LOOKBACK_WATCHES - age) * precipitationRunoffQuarters(w);
   }
+  wet += Math.floor(quarters / 4);
   wet += BASE_FLOW;
 
   const pressureSystem = Math.floor(currentWatch / 8);
