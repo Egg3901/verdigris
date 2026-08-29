@@ -429,47 +429,70 @@ export function drawCupola(
 
 /** Two gasometers beside a low engine house: the gasworks postcard. */
 export function drawGasometers(
-  ctx: CanvasRenderingContext2D, ground: Corners, spec: FinialSpec,
+  ctx: CanvasRenderingContext2D, ground: Corners, _spec: FinialSpec,
 ): void {
   const c = mid(mid(ground.W, ground.E), mid(ground.N, ground.S));
+  // A holder is painted iron, not brickwork: taking the tank colours off the
+  // building's walls made them read as two enormous wooden barrels.
   const iron = PAL.soot2;
   const ring = PAL.soot3;
-  const body = spec.skin.wallShade;
-  const lit = spec.skin.wallLit;
+  const body = PAL.verd1;
+  const lit = PAL.verd2;
+  // A gas holder is the biggest thing in the works quarter: a round tank that
+  // rises and falls inside its guide frame. It was drawn as two flat quads
+  // split down the middle with straight rings across them, which is a box with
+  // stripes on it. The body is now scanlined off the circular profile, and the
+  // rings follow that profile too, so the drum is actually round.
   const tanks: [number, number, number, number][] = [
-    [c.x - 6, c.y + 3, 12, 26],
-    [c.x + 14, c.y - 3, 10, 20],
+    [c.x - 7, c.y + 4, 14, 34],
+    [c.x + 16, c.y - 3, 11, 25],
   ];
   for (const [cx, cy, rx, h] of tanks) {
-    const ry = rx * 0.45;
-    poly(ctx, [
-      { x: cx - rx, y: cy }, { x: cx, y: cy },
-      { x: cx, y: cy - h }, { x: cx - rx, y: cy - h },
-    ], lit);
-    poly(ctx, [
-      { x: cx, y: cy }, { x: cx + rx, y: cy },
-      { x: cx + rx, y: cy - h }, { x: cx, y: cy - h },
-    ], body);
-    fillEllipseHard(ctx, cx, cy, rx, ry, shadeHex(body, -0.1));
+    const ry = Math.max(3, Math.round(rx * 0.45));
+    // Body. For each column across the drum, the visible side runs a full
+    // height h, offset down by how far the circular section bulges toward us.
+    for (let dx = -rx; dx <= rx; dx++) {
+      const t = dx / rx;
+      const dy = Math.round(ry * Math.sqrt(Math.max(0, 1 - t * t)));
+      const x = Math.round(cx + dx);
+      ctx.fillStyle = t < -0.55 ? shadeHex(lit, 0.14)
+        : t < -0.1 ? lit
+          : t < 0.45 ? body
+            : shadeHex(body, -0.18);
+      ctx.fillRect(x, cy - h + dy, 1, h);
+    }
+    // Crown, and the wrapped rings the plates are riveted along.
     fillEllipseHard(ctx, cx, cy - h, rx, ry, shadeHex(lit, 0.08));
-    // A bright crown highlight, so the drum reads as a filled cylinder.
-    fillEllipseHard(ctx, cx - 1, cy - h, rx * 0.5, ry * 0.6, shadeHex(lit, 0.16));
+    fillEllipseHard(ctx, cx - 1, cy - h, Math.round(rx * 0.45), Math.max(1, Math.round(ry * 0.55)), shadeHex(lit, 0.2));
     for (let i = 1; i < 4; i++) {
-      const y = cy - (h * i) / 4;
-      lineHard(ctx, { x: cx - rx, y }, { x: cx + rx, y }, ring);
+      const yOff = Math.round((h * i) / 4);
+      for (let dx = -rx; dx <= rx; dx++) {
+        const t = dx / rx;
+        const dy = Math.round(ry * Math.sqrt(Math.max(0, 1 - t * t)));
+        ctx.fillStyle = ring;
+        ctx.fillRect(Math.round(cx + dx), cy - yOff + dy, 1, 1);
+      }
     }
 
     // The guide frame: the iron cage a gasholder rises and falls inside, and the
     // thing that makes a gasworks a gasworks rather than two oil drums. Standards
     // stand a little proud of the drum, joined by a top ring above the crown and
     // one tier of diagonal bracing.
+    // Standards only where a cage would actually show: the two outer ones read
+    // as the frame's edge, and a couple inside it. Five heavy uprights across a
+    // fourteen pixel drum was a grid drawn OVER the tank rather than a cage
+    // standing round it.
     const frameH = h + 4;
-    const cols = 5;
+    const cols = 4;
     const standX: number[] = [];
     for (let i = 0; i < cols; i++) {
       const x = Math.round(cx - rx + (2 * rx * i) / (cols - 1));
       standX.push(x);
-      lineHard(ctx, { x, y: cy + 1 }, { x, y: cy - frameH }, i === 0 || i === cols - 1 ? iron : ring);
+      const edge = i === 0 || i === cols - 1;
+      const t = (i / (cols - 1)) * 2 - 1;
+      const dy = Math.round(ry * Math.sqrt(Math.max(0, 1 - t * t)));
+      lineHard(ctx, { x, y: cy + 1 + dy }, { x, y: cy - frameH + dy },
+        edge ? iron : shadeHex(ring, 0.1));
     }
     // Top ring and a lower ring, drawn as flattened ellipses on the frame.
     fillEllipseHard(ctx, cx, cy - frameH, rx + 1, ry * 0.7, iron);
