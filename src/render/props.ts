@@ -423,21 +423,106 @@ function bakeCart(salt: number, variant: Variant): HTMLCanvasElement {
   return c;
 }
 
-function bakeCrane(variant: Variant): HTMLCanvasElement {
+/**
+ * Mirror a baked sprite about its vertical centre.
+ *
+ * The iso grid is symmetric about the screen vertical, so a shape drawn along
+ * the up-right axis becomes the up-left one for free. drawImage at scale -1 with
+ * integer bounds and smoothing off is an exact pixel flip, so nothing new enters
+ * the palette and alpha stays 0 or 255.
+ */
+function mirrorSprite(src: HTMLCanvasElement): HTMLCanvasElement {
   const c = document.createElement('canvas');
-  c.width = 22; c.height = 28;
+  c.width = src.width;
+  c.height = src.height;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  ctx.imageSmoothingEnabled = false;
+  ctx.setTransform(-1, 0, 0, 1, src.width, 0);
+  ctx.drawImage(src, 0, 0);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return c;
+}
+
+const CRANE_W = 32;
+const CRANE_H = 44;
+/** Anchor: the foot of the mast, in the middle of its stone sill. */
+const CRANE_AX = 11;
+const CRANE_AY = 42;
+
+/**
+ * A quayside jib crane, mast and angled jib and a hanging block on a hook.
+ *
+ * This is the shape that says "port" from the other side of the district, so it
+ * is deliberately the tallest piece of street furniture in the game: forty-four
+ * pixels against a lamp's twenty-six. At zoom 1 the mast plus the diagonal of
+ * the jib survives as a distinct mark where a lamp is only a dot.
+ *
+ * Drawn jib-right. The jib-left crane is the mirror of this one, with the mast
+ * highlight repainted afterwards so the light still comes from the west.
+ */
+function bakeCrane(variant: Variant, timber: boolean): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = CRANE_W; c.height = CRANE_H;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  ctx.imageSmoothingEnabled = false;
+  const g = (x: string) => gradeHex(x, variant);
+  const body = g(timber ? PAL.wood1 : PAL.soot2);
+  const lit = g(timber ? PAL.wood2 : PAL.soot3);
+  const dark = g(timber ? PAL.wood0 : PAL.soot1);
+
+  // Stone sill. A crane of this size needs a visible foundation or it reads as
+  // standing on the mud.
+  fillPolyHard(ctx, [{ x: 11, y: 34 }, { x: 21, y: 38 }, { x: 11, y: 42 }, { x: 1, y: 38 }], g(PAL.stone1));
+  fillPolyHard(ctx, [{ x: 11, y: 35 }, { x: 19, y: 38 }, { x: 11, y: 41 }, { x: 3, y: 38 }], g(PAL.stone2));
+
+  // Counterweight, on the far side of the pivot from the load.
+  ctx.fillStyle = dark;
+  ctx.fillRect(2, 14, 8, 9);
+  ctx.fillStyle = body;
+  ctx.fillRect(2, 14, 8, 1);
+  ctx.fillRect(2, 18, 8, 1);
+
+  // Mast.
+  ctx.fillStyle = body;
+  ctx.fillRect(9, 2, 4, 35);
+  ctx.fillStyle = lit;
+  ctx.fillRect(9, 2, 1, 35);
+  ctx.fillStyle = dark;
+  ctx.fillRect(12, 2, 1, 35);
+  // Collar at the pivot, and a cap at the head.
+  ctx.fillStyle = dark;
+  ctx.fillRect(8, 13, 6, 2);
+  ctx.fillRect(8, 1, 6, 2);
+
+  // Jib, and the tie rod from the masthead that holds it up. The triangle the
+  // two make is most of the silhouette.
+  fillPolyHard(ctx, [{ x: 13, y: 12 }, { x: 30, y: 2 }, { x: 30, y: 5 }, { x: 13, y: 16 }], body);
+  lineHard(ctx, { x: 13, y: 16 }, { x: 30, y: 5 }, dark);
+  lineHard(ctx, { x: 12, y: 3 }, { x: 29, y: 3 }, dark);
+
+  // Fall, block and hook, hanging free off the jib head.
+  ctx.fillStyle = dark;
+  ctx.fillRect(29, 5, 1, 12);
+  ctx.fillStyle = g(PAL.brassInk);
+  ctx.fillRect(28, 17, 3, 3);
+  ctx.fillStyle = dark;
+  ctx.fillRect(29, 20, 1, 2);
+  ctx.fillRect(28, 21, 1, 1);
+
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** The jib-left crane: the mirror, with the mast highlight put back on the west
+ *  side so the lighting convention holds. */
+function bakeCraneLeft(variant: Variant, timber: boolean): HTMLCanvasElement {
+  const c = mirrorSprite(bakeCrane(variant, timber));
   const ctx = c.getContext('2d') as CanvasRenderingContext2D;
   const g = (x: string) => gradeHex(x, variant);
-  const iron = g(PAL.soot2);
-  ctx.fillStyle = iron;
-  ctx.fillRect(4, 10, 2, 16);
-  ctx.fillRect(3, 25, 5, 2);
-  lineHard(ctx, { x: 5, y: 10 }, { x: 18, y: 4 }, iron);
-  lineHard(ctx, { x: 5, y: 12 }, { x: 18, y: 4 }, g(PAL.soot3));
-  ctx.fillStyle = g(PAL.wood1);
-  ctx.fillRect(16, 4, 3, 2);
-  ctx.fillStyle = g(PAL.soot1);
-  ctx.fillRect(17, 6, 1, 8);
+  ctx.fillStyle = g(timber ? PAL.wood2 : PAL.soot3);
+  ctx.fillRect(19, 2, 1, 35);
+  ctx.fillStyle = g(timber ? PAL.wood0 : PAL.soot1);
+  ctx.fillRect(22, 2, 1, 35);
   hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
@@ -633,7 +718,12 @@ export function buildStreetProps(
   const trough = bakeTrough(variant);
   const columns = [0, 1, 2, 3].map((s) => bakeColumn(s, variant));
   const carts = [0, 1, 2].map((s) => bakeCart(s, variant));
-  const crane = bakeCrane(variant);
+  // Two jib directions and two materials: timber on the older berths, iron on
+  // the newer ones. Four sprites is enough that a run of cranes is not a stamp.
+  const cranes = [
+    bakeCrane(variant, true), bakeCrane(variant, false),
+    bakeCraneLeft(variant, true), bakeCraneLeft(variant, false),
+  ];
   const barrels = bakeBarrels(variant);
   const coal = bakeCoal(variant);
   const urn = bakeUrn(variant);
@@ -671,6 +761,58 @@ export function buildStreetProps(
             : ward === 'garden' ? 17 : ward === 'courts' ? 10 : 14;
         if (roll < lampChance) {
           push(polite && t === Tile.Embankment ? lampArc : lampGas, 7, 25);
+          continue;
+        }
+      }
+      // The working waterfront. Its own hash stream, so adding it shifted none
+      // of the street furniture that was already placed.
+      //
+      // Everything large is required to sit on a cell that touches the water and
+      // is pushed toward that edge, which keeps cranes and cargo off the
+      // frontages where the doors are, and keeps the inland half of the quay
+      // clear enough to still read as a working surface.
+      if (t === Tile.Wharf || t === Tile.Embankment) {
+        const q = mix(seed, 91, tx, ty) % 1000;
+        const water = (nx: number, ny: number): boolean => (
+          nx >= 0 && ny >= 0 && nx < district.width && ny < district.height
+          && district.tile[cellKey(district, nx, ny)] === Tile.Water
+        );
+        const east = water(tx + 1, ty);
+        const south = water(tx, ty + 1);
+        const west = water(tx - 1, ty);
+        const north = water(tx, ty - 1);
+        const anyWater = east || south || west || north;
+        // A crossing needs its approach kept clear.
+        let nearBridge = false;
+        for (let dy = -1; dy <= 1 && !nearBridge; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = tx + dx;
+            const ny = ty + dy;
+            if (nx < 0 || ny < 0 || nx >= district.width || ny >= district.height) continue;
+            if (district.tile[cellKey(district, nx, ny)] === Tile.Bridge) { nearBridge = true; break; }
+          }
+        }
+        const pushQuay = (
+          sprite: HTMLCanvasElement, ax: number, ay: number,
+          ox: number, oy: number, dtx = tx, dty = ty,
+        ) => {
+          out.push({
+            sprite, ax, ay,
+            wx: isoX(tx, ty) + ox,
+            wy: isoY(tx, ty) + oy,
+            depth: depthKey(dtx, dty, LAYER_STRUCT),
+          });
+        };
+
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 300 && q < 470) {
+          // Jib toward the water: east and north are to the right on screen,
+          // south and west to the left.
+          const right = east || north;
+          const timber = ((mix(seed, 93, tx, ty) >>> 4) & 1) === 0;
+          const sprite = cranes[(right ? 0 : 2) + (timber ? 0 : 1)];
+          const ox = (east || north ? 6 : -6);
+          const oy = (east || south ? 3 : -3);
+          pushQuay(sprite, right ? CRANE_AX : CRANE_W - 1 - CRANE_AX, CRANE_AY, ox, oy);
           continue;
         }
       }
@@ -713,10 +855,6 @@ export function buildStreetProps(
       }
       if (t === Tile.Wharf && roll < 6) {
         push(carts[mix(seed, 84, tx, ty) % 3], 9, 13);
-        continue;
-      }
-      if (t === Tile.Wharf && roll >= 6 && roll < 9) {
-        push(crane, 5, 27);
         continue;
       }
       if ((t === Tile.Street || t === Tile.Alley || t === Tile.Wharf)
