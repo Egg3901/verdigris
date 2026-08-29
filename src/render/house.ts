@@ -26,7 +26,7 @@ import {
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
   drawVerdigrisStreaks, drawWallPosters,
 } from './detail';
-import { drawRoofTexture, drawRidgeTiles } from './detail';
+import { drawRoofTexture, drawRidgeTiles, drawRoofSnow } from './detail';
 import type { DetailSkin, RoofKind, SignGlyph, WallMaterial, WindowLight } from './detail';
 import { drawFinial, drawMooringMast } from './landmarks';
 import type { Corners } from './landmarks';
@@ -119,6 +119,9 @@ export interface HouseSpec {
   drainState?: 0 | 1 | 2;
   /** 0 dry, 1 rain, 2 hard rain. Drives only baked roof and gutter runoff. */
   rainStrength?: 0 | 1 | 2;
+  /** Lying snow, 0 to 1000. Unset falls back to the sky the renderer last
+   *  sampled, which is what lets roofs whiten before scene.ts passes it. */
+  snowCover?: number;
   finial: Finial;
   finialH: number;
   /** Covering family, for the baked roof texture. Defaults to clay. */
@@ -207,7 +210,8 @@ export function drawHouse(
   drawMaterials(ctx, lit, shade, litPts, shadePts, spec);
 
   const alongX = spec.ridgeAlongX ?? w >= d;
-  const roofQuad = drawRoof(ctx, eave, spec, alongX);
+  const stacks: Pt[] = [];
+  const roofQuad = drawRoof(ctx, eave, spec, alongX, stacks);
   // The covering texture goes down before wear and repairs, so a missing slate
   // is missing FROM something.
   if (roofQuad && spec.roofKind && !spec.scorched && spec.damage !== 'burning') {
@@ -215,6 +219,18 @@ export function drawHouse(
   }
   if (roofQuad && spec.roofWear) {
     drawRoofPatina(ctx, roofQuad, spec.roofWear, spec.salt ?? 0, skin.roofLit, skin.roofShade, skin.roofRidge);
+  }
+  // Snow goes on after the covering and its wear, because it lies on top of
+  // whatever the roof is made of, and before the dormers, scaffolds and blue
+  // sheeting, which stand proud of it.
+  const lying = roofSnowCover(spec);
+  if (lying > 0) {
+    if (roofQuad) {
+      drawRoofSnow(ctx, roofQuad, lying, spec.salt ?? 0, skin.roofLit, skin.roofShade,
+        stackParams(roofQuad, stacks));
+    } else if (spec.shape === 'flat') {
+      drawFlatRoofSnow(ctx, eave, lying);
+    }
   }
   drawFinial(ctx, ground, eave, spec, alongX);
   drawFacade(ctx, eave, spec, lights);
@@ -870,10 +886,73 @@ function drawShelterEntrance(
   }
 }
 
+/**
+ * How much snow this particular roof is holding.
+ *
+ * A district in the snow is not uniformly white, and the exceptions are the
+ * information. The works roofs stay dark: a mill, a foundry, a gasworks and a
+ * pumphouse are heated buildings with a furnace under the slates, and a sawtooth
+ * shed is half glass over a working floor, so the first thing that happens to
+ * snow landing on any of them is that it melts. That contrast is the industrial
+ * quarter drawing itself: the working bank stays black while the terraces go
+ * white. A burning roof and a burnt-out shell hold nothing either, for the same
+ * physical reason.
+ */
+function roofSnowCover(spec: HouseSpec): number {
+  const cover = spec.snowCover ?? 0;
+  if (cover < 120) return 0;
+  if (spec.damage === 'burning' || spec.damage === 'collapsed' || spec.scorched) return 0;
+  if (spec.furnace || spec.frontage === 'works' || spec.shape === 'sawtooth') return 0;
+  return cover;
+}
+
+/** Where each chimney sits along the top edge of the near slope, 0 to 1. */
+function stackParams(quad: Pt[], stacks: Pt[]): number[] {
+  const a = quad[3];
+  const b = quad[2];
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 0) return [];
+  return stacks.map((p) => ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2);
+}
+
+/**
+ * A flat roof is the one shape that holds everything that lands on it, which is
+ * why a snowed-over city block reads as a white table with chimneys on it. No
+ * ridge to cap and no slope to slide off: the whole deck goes under, thickest in
+ * the middle where nothing has swept it.
+ */
+function drawFlatRoofSnow(
+  ctx: CanvasRenderingContext2D, eave: { W: Pt; N: Pt; E: Pt; S: Pt }, cover: number,
+): void {
+  // The same overhang and deck lift drawRoof uses for a flat roof.
+  const over = 1.5;
+  const lift = 3;
+  const deck = [
+    { x: eave.N.x, y: eave.N.y - over / 2 - lift },
+    { x: eave.E.x + over, y: eave.E.y - lift },
+    { x: eave.S.x, y: eave.S.y + over / 2 - lift },
+    { x: eave.W.x - over, y: eave.W.y - lift },
+  ];
+  const pale = shadeHex(PAL.slate2, 0.72);
+  ditherPolyHard(ctx, deck, pale, cover >= 700 ? 14 : cover >= 380 ? 11 : 7);
+  if (cover >= 380) {
+    const c = {
+      x: (deck[0].x + deck[2].x) / 2,
+      y: (deck[0].y + deck[2].y) / 2,
+    };
+    const inner = deck.map((p) => ({ x: c.x + (p.x - c.x) * 0.72, y: c.y + (p.y - c.y) * 0.72 }));
+    fillPolyHard(ctx, inner, pale);
+  }
+  lineHard(ctx, deck[3], deck[0], PAL.stone4);
+  lineHard(ctx, deck[0], deck[1], shadeHex(PAL.slate2, 0.6));
+}
+
 function drawRoof(
   ctx: CanvasRenderingContext2D,
   eave: { W: Pt; N: Pt; E: Pt; S: Pt },
-  spec: HouseSpec, alongX: boolean,
+  spec: HouseSpec, alongX: boolean, stacks?: Pt[],
 ): Pt[] | null {
   const { roofH, skin } = spec;
   const over = 1.5; // eaves overhang, which is what casts the shadow line
@@ -919,15 +998,15 @@ function drawRoof(
   }
 
   if (spec.shape === 'sawtooth') {
-    return drawSawtooth(ctx, W, N, E, S, spec, alongX);
+    return drawSawtooth(ctx, W, N, E, S, spec, alongX, stacks);
   }
 
   if (spec.shape === 'gambrel') {
-    return drawGambrel(ctx, W, N, E, S, spec, alongX);
+    return drawGambrel(ctx, W, N, E, S, spec, alongX, stacks);
   }
 
   if (spec.shape === 'mansard') {
-    return drawMansard(ctx, W, N, E, S, spec, alongX);
+    return drawMansard(ctx, W, N, E, S, spec, alongX, stacks);
   }
 
   // Gable and hip both have a ridge. Along tx the ridge spans the W-N edge
@@ -952,7 +1031,7 @@ function drawRoof(
       poly(ctx, [W, N, h0], skin.roofLit);
     }
     ridgeLine(ctx, h0, h1, skin.roofRidge, spec);
-    chimneys(ctx, h0, h1, spec);
+    chimneys(ctx, h0, h1, spec, stacks);
     const nearHip: Pt[] = [W, S, h1, h0];
     drawCourses(ctx, nearHip, shadeHex(skin.roofLit, -0.1), 4);
     return nearHip;
@@ -981,7 +1060,7 @@ function drawRoof(
     lineHard(ctx, S, r1, skin.roofRidge);
   }
   ridgeLine(ctx, r0, r1, skin.roofRidge, spec);
-  chimneys(ctx, r0, r1, spec);
+  chimneys(ctx, r0, r1, spec, stacks);
   // Tile courses on the near slope. Four lines, and a roof stops being a plane.
   const near: Pt[] = alongX ? [W, S, r1, r0] : [W, N, r0, r1];
   drawCourses(ctx, near, shadeHex(skin.roofLit, -0.12), 4);
@@ -990,7 +1069,7 @@ function drawRoof(
 
 function drawMansard(
   ctx: CanvasRenderingContext2D, W: Pt, N: Pt, E: Pt, S: Pt,
-  spec: HouseSpec, alongX: boolean,
+  spec: HouseSpec, alongX: boolean, stacks?: Pt[],
 ): Pt[] {
   const { roofH, skin } = spec;
   const c = mid(mid(W, E), mid(N, S));
@@ -1020,13 +1099,13 @@ function drawMansard(
   poly(ctx, [I.N, I.E, h1, h0], shadeHex(skin.roofShade, 0.04));
   poly(ctx, [I.W, I.S, h1, h0], shadeHex(skin.roofLit, 0.06), 2);
   ridgeLine(ctx, h0, h1, skin.roofRidge, spec);
-  chimneys(ctx, h0, h1, spec);
+  chimneys(ctx, h0, h1, spec, stacks);
   return near;
 }
 
 function drawGambrel(
   ctx: CanvasRenderingContext2D, W: Pt, N: Pt, E: Pt, S: Pt,
-  spec: HouseSpec, alongX: boolean,
+  spec: HouseSpec, alongX: boolean, stacks?: Pt[],
 ): Pt[] {
   const { roofH, skin } = spec;
   const r0 = up(alongX ? mid(W, N) : mid(N, E), roofH);
@@ -1066,7 +1145,7 @@ function drawGambrel(
     poly(ctx, [W, S, n1, n0], skin.gableLit);
   }
   ridgeLine(ctx, r0, r1, skin.roofRidge, spec);
-  chimneys(ctx, r0, r1, spec);
+  chimneys(ctx, r0, r1, spec, stacks);
   const near: Pt[] = alongX ? [W, S, n1, n0] : [W, N, r0, n0];
   drawCourses(ctx, near, shadeHex(skin.roofLit, -0.12), 3);
   return near;
@@ -1074,7 +1153,7 @@ function drawGambrel(
 
 function drawSawtooth(
   ctx: CanvasRenderingContext2D, W: Pt, N: Pt, E: Pt, S: Pt,
-  spec: HouseSpec, alongX: boolean,
+  spec: HouseSpec, alongX: boolean, stacks?: Pt[],
 ): Pt[] | null {
   const { roofH, skin } = spec;
   const long = alongX ? spec.w : spec.d;
@@ -1130,7 +1209,7 @@ function drawSawtooth(
   }
   if (lastRidge) {
     ridgeLine(ctx, lastRidge[0], lastRidge[1], skin.roofRidge, spec);
-    chimneys(ctx, lastRidge[0], lastRidge[1], spec);
+    chimneys(ctx, lastRidge[0], lastRidge[1], spec, stacks);
   }
   return lastNear;
 }
@@ -1172,7 +1251,9 @@ function ridgeLine(
  * that is where the flue runs, it is brick or soot rather than stucco, and it is
  * narrow.
  */
-function chimneys(ctx: CanvasRenderingContext2D, r0: Pt, r1: Pt, spec: HouseSpec): void {
+function chimneys(
+  ctx: CanvasRenderingContext2D, r0: Pt, r1: Pt, spec: HouseSpec, stacks?: Pt[],
+): void {
   if (spec.chimneys <= 0) return;
   const n = Math.min(3, spec.chimneys);
   const stops = n === 1 ? [0.12] : n === 2 ? [0.1, 0.9] : [0.1, 0.5, 0.9];
@@ -1182,6 +1263,8 @@ function chimneys(ctx: CanvasRenderingContext2D, r0: Pt, r1: Pt, spec: HouseSpec
     const x = Math.round(r0.x + (r1.x - r0.x) * t);
     const y = Math.round(r0.y + (r1.y - r0.y) * t);
     const h = 4 + ((i + (spec.salt ?? 0)) % 2);
+    // Where the flue meets the roof, for the snow that melts back from it.
+    if (stacks) stacks.push({ x, y });
     ctx.fillStyle = brick;
     ctx.fillRect(x - 1, y - h, 3, h);
     ctx.fillStyle = shadeHex(brick, 0.15);

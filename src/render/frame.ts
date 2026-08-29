@@ -18,7 +18,7 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawSky, drawLamps, drawBirds, drawDoorGlow } from './fx';
+import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawSky, drawSnowCover, drawLamps, drawBirds, drawDoorGlow } from './fx';
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
@@ -76,6 +76,11 @@ export function drawFrame(
 
   ctx.drawImage(scene.ground, -scene.originX, -scene.originY);
   stats.calls++;
+
+  // Lying snow goes straight onto the ground bitmap, before the water, the
+  // lamps and the walls: it is a covering on the street, so the lamp pool
+  // lights it and the building in front of it hides it.
+  stats.calls += drawSnowCover(ctx, city, scene.variant, tl, br);
 
   // Gaslight pools go down between the ground and the buildings, so they light
   // the street and still fall behind the walls that stand in front of them. Drawn

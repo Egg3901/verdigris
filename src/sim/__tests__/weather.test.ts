@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { hashString } from '../rng';
 import {
-  WEATHER_WATCH_MINUTES, weatherAt, weatherErrandQuota, weatherExposurePenalty,
-  weatherFabricWear, weatherOutputPermille,
+  WEATHER_WATCH_MINUTES, YEAR_DAYS, weatherAt, weatherErrandQuota, weatherExposurePenalty,
+  weatherFabricWear, weatherOutputPermille, seasonColdness, snowCoverAt, forceWeather,
 } from '../weather';
+import { MIN_PER_DAY } from '../clock';
+import { riverLevelAt } from '../hydrology';
 import { newCity, tickCity, warp } from '../city';
 import { breakSegment, serviceAt } from '../networks';
 
@@ -26,6 +28,56 @@ describe('derived weather', () => {
       }
     }
     expect(seen).toEqual(new Set(['fair', 'overcast', 'rain', 'storm', 'fog']));
+  });
+
+  it('only snows in the cold part of the year, and most in the deep of it', () => {
+    const seeds = ['verdigris', 'coppergate', 'jubilee', 'blackwater', 'mercy'].map(hashString);
+    const perDay = new Array(YEAR_DAYS).fill(0);
+    for (const seed of seeds) {
+      for (let day = 0; day < YEAR_DAYS; day++) {
+        for (let w = 0; w < 4; w++) {
+          const tick = day * MIN_PER_DAY + w * WEATHER_WATCH_MINUTES;
+          if (weatherAt(seed, tick).kind === 'snow') perDay[day]++;
+        }
+      }
+    }
+    for (let day = 0; day < YEAR_DAYS; day++) {
+      if (seasonColdness(day * MIN_PER_DAY) === 0) expect(perDay[day]).toBe(0);
+    }
+    const total = perDay.reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThan(0);
+    // Midwinter carries more of the year's snow than the shoulders of it.
+    const deep = perDay.slice(33, 40).reduce((a, b) => a + b, 0);
+    expect(deep * 2).toBeGreaterThan(total);
+  });
+
+  it('lays snow while it falls and thaws it afterwards', () => {
+    const seed = hashString('verdigris');
+    forceWeather(null);
+    const start = 30 * MIN_PER_DAY;
+    forceWeather('snow', start);
+    expect(snowCoverAt(seed, start)).toBe(0);
+    const laying = snowCoverAt(seed, start + WEATHER_WATCH_MINUTES * 3);
+    expect(laying).toBeGreaterThan(500);
+    forceWeather('fair', start + WEATHER_WATCH_MINUTES * 3);
+    const thawing = snowCoverAt(seed, start + WEATHER_WATCH_MINUTES * 5);
+    expect(thawing).toBeLessThan(laying);
+    expect(snowCoverAt(seed, start + WEATHER_WATCH_MINUTES * 9)).toBe(0);
+    forceWeather(null);
+  });
+
+  it('does not swell the river the way rain of the same depth would', () => {
+    const seed = hashString('verdigris');
+    forceWeather(null);
+    const start = 30 * MIN_PER_DAY;
+    const read = (kind: 'rain' | 'snow') => {
+      forceWeather(kind, start);
+      return riverLevelAt(seed, start + WEATHER_WATCH_MINUTES * 20);
+    };
+    const rained = read('rain');
+    const snowed = read('snow');
+    forceWeather(null);
+    expect(snowed).toBeLessThan(rained);
   });
 
   it('reduces optional errands without erasing street life', () => {

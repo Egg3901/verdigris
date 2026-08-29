@@ -336,6 +336,9 @@ export function variantFor(minuteOfDay: number, weather?: WeatherKind): Variant 
     if (weather === 'storm') return 'gloom';
     if (weather === 'fog') return 'fogpale';
     if (weather === 'overcast' || weather === 'rain') return 'overcastday';
+    // Snow comes out of the same flat white sky as overcast, and the light
+    // off the lying snow is if anything paler than the sky itself.
+    if (weather === 'snow') return 'fogpale';
   }
   return band;
 }

@@ -40,6 +40,7 @@ import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters
 import type { WardKind } from '../sim/gen/wards';
 import { weatherAt, WEATHER_WATCH_MINUTES } from '../sim/weather';
 import { riverLevelAt, riverDropAt } from '../sim/hydrology';
+import { snowCoverAt } from '../sim/weather';
 import { isShelterActive } from '../sim/shelters';
 
 export interface StaticSprite {
@@ -491,7 +492,11 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // A mill or foundry has a fire in it around the clock; a scorched shell does
     // not, and neither does an idle collapsed one.
     furnace: (b.kind === 'mill' || b.kind === 'foundry') && !scorched && damage === 'none',
-    rainStrength: weatherAt(city.seed, city.tick).precipitation,
+    // Snow is precipitation, but it does not run off a roof or pool in a
+    // gutter, so a snow watch gets no drips and no puddles.
+    rainStrength: weatherAt(city.seed, city.tick).kind === 'snow'
+      ? 0 : weatherAt(city.seed, city.tick).precipitation,
+    snowCover: snowCoverAt(city.seed, city.tick),
     finial,
     finialH: fam.finialH ?? 0,
     roofKind,

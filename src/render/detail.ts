@@ -1043,3 +1043,106 @@ export function drawEaveRail(
   }
   lineHard(ctx, { x: a.x, y: a.y - 3 }, { x: b.x, y: b.y - 3 }, colour);
 }
+
+/**
+ * Snow lying on a roof.
+ *
+ * The single most convincing winter cue in an isometric town: the ground is
+ * mostly hidden by buildings from this angle, so a district reads as snowed on
+ * or not by its roofs alone.
+ *
+ * It is a cap, not a coat. Snow holds at the ridge and slides off the eave, so
+ * the cover starts at the ridge line and comes down the slope by an amount that
+ * depends on how much has fallen and how steep the pitch is: a shallow roof
+ * carries it nearly to the gutter, a steep one keeps a stripe along the ridge
+ * and little else. The lower edge is walked in steps with a per-building jitter,
+ * because a straight snow line across a roof reads as paint.
+ *
+ * Melt patches around the chimneys are what makes it look like weather rather
+ * than a decal. A working flue is warm masonry and the snow retreats from it,
+ * so each stack sits in a ring of bare tile.
+ */
+export function drawRoofSnow(
+  ctx: CanvasRenderingContext2D, quad: readonly Pt[], cover: number, salt: number,
+  roofLit: string, roofShade: string, stacks: readonly number[],
+): void {
+  if (quad.length < 4 || cover <= 0) return;
+  // quad is [eaveA, eaveB, ridgeB, ridgeA]. u runs along the roof, v from the
+  // eave at 0 to the ridge at 1, the same frame drawRoofPatina uses.
+  const at = (u: number, v: number): Pt => {
+    const a = { x: quad[0].x + (quad[1].x - quad[0].x) * u, y: quad[0].y + (quad[1].y - quad[0].y) * u };
+    const b = { x: quad[3].x + (quad[2].x - quad[3].x) * u, y: quad[3].y + (quad[2].y - quad[3].y) * u };
+    return { x: a.x + (b.x - a.x) * v, y: a.y + (b.y - a.y) * v };
+  };
+  const eaveMid = at(0.5, 0);
+  const ridgeMid = at(0.5, 1);
+  // How steep the slope is, in screen terms: a steep pitch climbs mostly in y,
+  // a shallow one runs away from the camera in x.
+  const climb = Math.max(0, eaveMid.y - ridgeMid.y);
+  const run = Math.max(1, Math.abs(ridgeMid.x - eaveMid.x));
+  const pitch = Math.max(0.4, Math.min(1.35, 1.55 - 0.36 * (climb / run)));
+  const depth = Math.max(0.18, Math.min(0.82, (0.26 + (cover / 1000) * 0.36) * pitch));
+  const foot = 1 - depth;
+
+  const pale = shadeHex(PAL.slate2, 0.72);
+  const shadow = shadeHex(PAL.slate2, 0.46);
+
+  // The cover, with a ragged lower edge. Walked as a strip of quads so each
+  // step can carry its own snow line without leaving a gap at the joins. The
+  // solid part of the cover is walked with the same jitter: a straight edge
+  // anywhere in this shape, on the dither line or on the fill, immediately
+  // reads as a sheet thrown over the roof.
+  const steps = 7;
+  const jitter = (n: number) => ((((salt + n * 37) % 11) - 5) / 100) * 1.3;
+  for (let i = 0; i < steps; i++) {
+    const u0 = i / steps;
+    const u1 = (i + 1) / steps;
+    const v0 = Math.max(0.05, foot + jitter(i));
+    const v1 = Math.max(0.05, foot + jitter(i + 1));
+    ditherPolyHard(ctx, [at(u0, v0), at(u1, v1), at(u1, 1), at(u0, 1)], pale,
+      cover >= 700 ? 13 : cover >= 380 ? 10 : 7);
+    if (cover >= 380) {
+      const lip = depth * (cover >= 700 ? 0.62 : 0.4);
+      const s0 = Math.min(0.95, Math.max(0.1, 1 - lip + jitter(i + 3)));
+      const s1 = Math.min(0.95, Math.max(0.1, 1 - lip + jitter(i + 4)));
+      fillPolyHard(ctx, [at(u0, s0), at(u1, s1), at(u1, 1), at(u0, 1)], pale);
+      // A shaded underside where the cover overhangs the tiles it sits on.
+      ditherPolyHard(ctx, [
+        at(u0, s0), at(u1, s1),
+        at(u1, Math.max(0.05, s1 - 0.09)), at(u0, Math.max(0.05, s0 - 0.09)),
+      ], shadow, 6);
+    }
+    // A tongue of snow left in a hollow further down the slope than the rest.
+    if (cover >= 380 && ((salt >>> (i % 5)) & 3) === 0) {
+      const t0 = (i + 0.2) / steps;
+      const t1 = (i + 0.8) / steps;
+      ditherPolyHard(ctx, [
+        at(t0, Math.max(0.04, foot - 0.13)), at(t1, Math.max(0.04, foot - 0.13)),
+        at(t1, foot + 0.04), at(t0, foot + 0.04),
+      ], pale, 6);
+    }
+  }
+
+  // The cap stands proud of the ridge tiles by a pixel: without this the ridge
+  // line cuts the snow off flat and the roof looks shaved.
+  if (cover >= 380) {
+    const a = at(0.02, 1);
+    const b = at(0.98, 1);
+    lineHard(ctx, { x: a.x, y: a.y - 1 }, { x: b.x, y: b.y - 1 }, PAL.stone4);
+    lineHard(ctx, a, b, pale);
+  }
+
+  // Bare tile around every flue.
+  for (const u of stacks) {
+    if (u < -0.1 || u > 1.1) continue;
+    const w = 0.13;
+    const u0 = Math.max(0, u - w);
+    const u1 = Math.min(1, u + w);
+    if (u1 - u0 < 0.02) continue;
+    const melt = [at(u0, foot + 0.06), at(u1, foot + 0.06), at(u1, 1), at(u0, 1)];
+    fillPolyHard(ctx, melt, roofLit);
+    ditherPolyHard(ctx, melt, roofShade, 5);
+    // Wet tile at the edge of the melt, where the snow is going.
+    ditherPolyHard(ctx, [at(u0, foot + 0.06), at(u1, foot + 0.06), at(u1, foot + 0.2), at(u0, foot + 0.2)], shadow, 4);
+  }
+}

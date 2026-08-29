@@ -16,7 +16,8 @@ import { stepToward } from '../sim/graph';
 import { Tile } from '../sim/types';
 import { cellKey, insideIsland } from '../sim/district';
 import { isDisasterActive } from '../sim/disasters';
-import { weatherAt } from '../sim/weather';
+import { weatherAt, snowCoverAt } from '../sim/weather';
+import type { Weather } from '../sim/weather';
 import { riverLevelAt, riverDropAt } from '../sim/hydrology';
 
 export interface VehicleDraw {
@@ -532,12 +533,85 @@ export function drawSmoke(
   return calls;
 }
 
+/**
+ * Falling snow.
+ *
+ * Rain is a viewport effect and gets away with it because a streak crosses the
+ * frame in a few tenths of a second. Snow hangs in the air long enough for the
+ * eye to hold one flake, so anchoring it to the viewport would drag the whole
+ * fall sideways every time the camera panned, which is the bug that used to put
+ * fog on the viewport corners. The field is therefore laid out in WORLD space,
+ * as a repeating cell of flakes; the camera only decides which cells are worth
+ * visiting, so density per acre of city is the same at every zoom and the cost
+ * is proportional to what is on screen rather than to the district.
+ *
+ * Flakes drift instead of streaking: each one slides across its cell on the
+ * wind, sways on its own phase, and falls at a speed set by its size, so the
+ * big near flakes come down through the small far ones.
+ */
+function drawSnowfall(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant, weather: Weather,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const t = city.tick + fracMin;
+  // Snow comes in waves the way rain gusts, but slower and shallower: a squall
+  // of flakes, then a lull, never a downpour.
+  const gust = 0.62 + 0.3 * (0.5 + 0.5 * Math.sin(t * 0.012))
+    + 0.2 * (0.5 + 0.5 * Math.sin(t * 0.031 + 2.2));
+  const perCell = Math.max(3, Math.round(8 * gust));
+  // A flake is lit from every side by a white sky, and at night it catches the
+  // gas and the arc lamps. Grading a warm cream into the night palette gave
+  // flakes darker than the roofs they fell past: present, and invisible. The
+  // near flakes therefore use the emissive arc white, which is lifted after
+  // dark rather than dimmed, and the far ones stay a plain cold grey so the
+  // fall keeps its depth.
+  const near = gradeHex(PAL.arc1, variant, true);
+  const far = gradeHex(PAL.stone4, variant);
+  const d = city.district;
+  const cx0 = Math.floor((tl.wx - SNOW_CELL_W) / SNOW_CELL_W);
+  const cx1 = Math.ceil(br.wx / SNOW_CELL_W);
+  const cy0 = Math.floor((tl.wy - SNOW_CELL_H) / SNOW_CELL_H);
+  const cy1 = Math.ceil(br.wy / SNOW_CELL_H);
+  let calls = 0;
+  for (let cy = cy0; cy <= cy1; cy++) {
+    for (let cx = cx0; cx <= cx1; cx++) {
+      for (let i = 0; i < perCell; i++) {
+        const h = mix(city.seed, Stream.Weather, cx * 131 + cy * 17, weather.watch * 8 + i) >>> 0;
+        // Three flake sizes. A bigger flake is nearer, so it falls faster and
+        // leans further on the wind: the parallax is what gives the fall depth.
+        const size = (h % 9) === 0 ? 2 : 1;
+        const fall = (0.55 + size * 0.35) * t;
+        const sway = Math.sin(t * 0.045 + (h >>> 4) % 63) * (size === 2 ? 2.4 : 1.4);
+        const lean = weather.windX * t * 0.28 * size;
+        const x = cx * SNOW_CELL_W
+          + (((h % SNOW_CELL_W) + lean + sway) % SNOW_CELL_W + SNOW_CELL_W) % SNOW_CELL_W;
+        const y = cy * SNOW_CELL_H
+          + (((h >>> 9) % SNOW_CELL_H + fall) % SNOW_CELL_H + SNOW_CELL_H) % SNOW_CELL_H;
+        if (x < tl.wx || x > br.wx || y < tl.wy || y > br.wy) continue;
+        // Snow over the void looks like dust on the screen. It falls on the
+        // district, the same rule the rain and the fog banks keep.
+        const tx = Math.round(x / TILE_W + y / TILE_H);
+        const ty = Math.round(y / TILE_H - x / TILE_W);
+        if (!insideIsland(d, tx, ty)) continue;
+        ctx.fillStyle = size === 2 ? near : far;
+        ctx.fillRect(Math.round(x), Math.round(y), size, size);
+        calls++;
+      }
+    }
+  }
+  return calls;
+}
+
+const SNOW_CELL_W = 96;
+const SNOW_CELL_H = 72;
+
 /** Viewport rain, generated from the current watch and animation frame. */
 export function drawWeatherFx(
   ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
   tl: { wx: number; wy: number }, br: { wx: number; wy: number },
 ): number {
   const weather = weatherAt(city.seed, city.tick);
+  if (weather.kind === 'snow') return drawSnowfall(ctx, city, fracMin, variant, weather, tl, br);
   if (weather.precipitation === 0) return 0;
   const storm = weather.precipitation === 2;
   const t = city.tick + fracMin;
@@ -604,6 +678,111 @@ export function drawWeatherFx(
     }
   }
   return calls;
+}
+
+/**
+ * Snow lying on the open ground.
+ *
+ * A dithered pale cover over every open cell that is not water and not built
+ * on, deepening while it snows and thinning as it thaws. It is baked into one
+ * world-sized canvas and blitted, for the same reason the ground itself is: a
+ * quarter of a million ordered-dither pixels is a bake, not a frame.
+ *
+ * The cover is keyed on four things only, so it is rebuilt when the depth
+ * crosses a step or the light changes and never per frame. Cobbled streets take
+ * less than gardens do: boots, wheels and hooves clear a thoroughfare, and the
+ * difference between a white yard and a grey street is what stops the district
+ * reading as a bedsheet thrown over it.
+ */
+let SNOW_LAYER: HTMLCanvasElement | null = null;
+let SNOW_LAYER_KEY = '';
+
+function snowLevel(cover: number): number {
+  if (cover < 120) return 0;
+  if (cover < 380) return 1;
+  if (cover < 700) return 2;
+  return 3;
+}
+
+export function drawSnowCover(
+  ctx: CanvasRenderingContext2D, city: City, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const level = snowLevel(snowCoverAt(city.seed, city.tick));
+  if (level === 0) return 0;
+  if (!SNOW_LAYER) SNOW_LAYER = document.createElement('canvas');
+  const layer = SNOW_LAYER;
+  const wb = worldBounds();
+  const key = `${city.seed}|${level}|${variant}|${Math.round(wb.w)}x${Math.round(wb.h)}`;
+  if (SNOW_LAYER_KEY !== key) {
+    layer.width = Math.max(1, Math.round(wb.w));
+    layer.height = Math.max(1, Math.round(wb.h));
+    const sctx = layer.getContext('2d') as CanvasRenderingContext2D;
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.clearRect(0, 0, layer.width, layer.height);
+    sctx.setTransform(1, 0, 0, 1, -wb.minX, -wb.minY);
+    paintSnowCover(sctx, city, variant, level);
+    SNOW_LAYER_KEY = key;
+  }
+  // Cull the blit itself: off screen, the layer costs nothing.
+  if (wb.minX > br.wx || wb.minY > br.wy || wb.maxX < tl.wx || wb.maxY < tl.wy) return 0;
+  ctx.drawImage(layer, wb.minX, wb.minY);
+  return 1;
+}
+
+function paintSnowCover(
+  ctx: CanvasRenderingContext2D, city: City, variant: Variant, level: number,
+): void {
+  const d = city.district;
+  const pale = gradeHex(PAL.stone4, variant);
+  const blue = gradeHex(shadeHex(PAL.slate2, 0.5), variant);
+  // Trodden ground takes about two thirds of what open ground takes.
+  const open = level === 3 ? 13 : level === 2 ? 9 : 5;
+  const trodden = level === 3 ? 7 : level === 2 ? 4 : 2;
+  for (let y = 0; y < d.height; y++) {
+    for (let x = 0; x < d.width; x++) {
+      if (!insideIsland(d, x, y)) continue;
+      const k = cellKey(d, x, y);
+      if (d.buildingId[k] >= 0) continue;
+      const tile = d.tile[k];
+      if (tile === Tile.Water) continue;
+      const paved = tile === Tile.Street || tile === Tile.Alley || tile === Tile.Square
+        || tile === Tile.Bridge || tile === Tile.Wharf || tile === Tile.Embankment;
+      // One ordered dither at one density across the whole district is a
+      // chequerboard, not a snowfall: the Bayer grid lines up cell to cell and
+      // the street reads as tiled lino. Every cell therefore takes its own
+      // density and its own drift, hashed off the cell, so the cover is uneven
+      // the way lying snow is uneven.
+      const h = mix(city.seed, Stream.Weather, k, 5) >>> 0;
+      const amount = Math.max(1, Math.min(16, (paved ? trodden : open) + (h % 5) - 2));
+      const cx = isoX(x, y);
+      const cy = isoY(x, y);
+      const diamond = [
+        { x: cx, y: cy - TILE_H / 2 }, { x: cx + TILE_W / 2, y: cy },
+        { x: cx, y: cy + TILE_H / 2 }, { x: cx - TILE_W / 2, y: cy },
+      ];
+      ditherPolyHard(ctx, diamond, pale, amount);
+      // Drifts: a solid lump of snow banked somewhere in the cell, away from
+      // where the traffic runs. Solid pixels are what stop the whole plane
+      // reading as a screen, and their scatter is what stops it reading as a
+      // sheet.
+      // Drifts bank on open ground and in the corners of a yard. A worked
+      // street is cleared by whatever uses it, so it keeps the thin cover and
+      // the setts stay legible under it: the street plan should still read in
+      // the snow, which is also how a real district looks after a night of it.
+      if (level >= 2 && !paved) {
+        const dx = (((h >>> 7) % 9) - 4) * (TILE_W / 32);
+        const dy = (((h >>> 11) % 5) - 2) * (TILE_H / 16);
+        const r = level === 3 ? 0.62 : 0.42;
+        const drift = diamond.map((p) => ({
+          x: cx + dx + (p.x - cx) * r, y: cy + dy + (p.y - cy) * r,
+        }));
+        fillPolyHard(ctx, drift, pale);
+        // The shaded side of the drift, on the away face, so it has a top.
+        ditherPolyHard(ctx, [drift[1], drift[2], drift[3]], blue, 5);
+      }
+    }
+  }
 }
 
 /**

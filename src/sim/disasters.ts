@@ -85,7 +85,10 @@ function eligible(city: City, kind: DisasterKind, buildingId: number): boolean {
     const x = b.doorX;
     const riverY = city.river.centre[x];
     const bank = city.river.halfWidth[x];
-    return weather.precipitation > 0 && pressureOf(city.press, 'sanitation') < 380 && b.fabric < 560
+    // Snow is precipitation that has not run anywhere yet: it floods nothing
+    // until it thaws, and the thaw is not modelled.
+    return weather.precipitation > 0 && weather.kind !== 'snow'
+      && pressureOf(city.press, 'sanitation') < 380 && b.fabric < 560
       && riverY >= 0 && Math.abs(b.doorY - riverY) <= bank + 3
       && b.drainSeg >= 0 && b.drainSeg !== city.networks.drain.root
       && serviceAt(city.networks.drain, b.id);

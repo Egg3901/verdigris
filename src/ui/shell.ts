@@ -52,7 +52,7 @@ export interface ShellHooks {
   onDeclineMatter: (id: number) => void;
   onPressMatter: (id: number) => void;
   /** Sandbox: pin the weather to a kind, or null to hand it back to the clock. */
-  onForceWeather: (kind: 'fair' | 'overcast' | 'rain' | 'storm' | 'fog' | 'drought' | null) => void;
+  onForceWeather: (kind: 'fair' | 'overcast' | 'rain' | 'storm' | 'fog' | 'snow' | 'drought' | null) => void;
   /** Sandbox: loose a disaster on the selected building, or a random fit one. */
   onTriggerDisaster: (kind: 'fire' | 'flood' | 'collapse') => void;
 }
@@ -411,6 +411,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     ['Rain', () => hooks.onForceWeather('rain')],
     ['Storm', () => hooks.onForceWeather('storm')],
     ['Fog', () => hooks.onForceWeather('fog')],
+    ['Snow', () => hooks.onForceWeather('snow')],
     ['Drought', () => hooks.onForceWeather('drought')],
     ['Auto', () => hooks.onForceWeather(null)],
   ]);
