@@ -558,9 +558,15 @@ function drawSnowfall(
   // of flakes, then a lull, never a downpour.
   const gust = 0.62 + 0.3 * (0.5 + 0.5 * Math.sin(t * 0.012))
     + 0.2 * (0.5 + 0.5 * Math.sin(t * 0.031 + 2.2));
-  const perCell = Math.max(2, Math.round(6 * gust));
-  const near = gradeHex(PAL.stone4, variant);
-  const far = gradeHex(PAL.plaster2, variant);
+  const perCell = Math.max(3, Math.round(8 * gust));
+  // A flake is lit from every side by a white sky, and at night it catches the
+  // gas and the arc lamps. Grading a warm cream into the night palette gave
+  // flakes darker than the roofs they fell past: present, and invisible. The
+  // near flakes therefore use the emissive arc white, which is lifted after
+  // dark rather than dimmed, and the far ones stay a plain cold grey so the
+  // fall keeps its depth.
+  const near = gradeHex(PAL.arc1, variant, true);
+  const far = gradeHex(PAL.stone4, variant);
   const d = city.district;
   const cx0 = Math.floor((tl.wx - SNOW_CELL_W) / SNOW_CELL_W);
   const cx1 = Math.ceil(br.wx / SNOW_CELL_W);
@@ -731,8 +737,8 @@ function paintSnowCover(
   const pale = gradeHex(PAL.stone4, variant);
   const blue = gradeHex(shadeHex(PAL.slate2, 0.5), variant);
   // Trodden ground takes about two thirds of what open ground takes.
-  const open = level === 3 ? 13 : level === 2 ? 8 : 4;
-  const trodden = level === 3 ? 9 : level === 2 ? 5 : 2;
+  const open = level === 3 ? 13 : level === 2 ? 9 : 5;
+  const trodden = level === 3 ? 7 : level === 2 ? 4 : 2;
   for (let y = 0; y < d.height; y++) {
     for (let x = 0; x < d.width; x++) {
       if (!insideIsland(d, x, y)) continue;
@@ -742,23 +748,38 @@ function paintSnowCover(
       if (tile === Tile.Water) continue;
       const paved = tile === Tile.Street || tile === Tile.Alley || tile === Tile.Square
         || tile === Tile.Bridge || tile === Tile.Wharf || tile === Tile.Embankment;
-      const amount = paved ? trodden : open;
-      if (amount <= 0) continue;
+      // One ordered dither at one density across the whole district is a
+      // chequerboard, not a snowfall: the Bayer grid lines up cell to cell and
+      // the street reads as tiled lino. Every cell therefore takes its own
+      // density and its own drift, hashed off the cell, so the cover is uneven
+      // the way lying snow is uneven.
+      const h = mix(city.seed, Stream.Weather, k, 5) >>> 0;
+      const amount = Math.max(1, Math.min(16, (paved ? trodden : open) + (h % 5) - 2));
       const cx = isoX(x, y);
       const cy = isoY(x, y);
       const diamond = [
         { x: cx, y: cy - TILE_H / 2 }, { x: cx + TILE_W / 2, y: cy },
         { x: cx, y: cy + TILE_H / 2 }, { x: cx - TILE_W / 2, y: cy },
       ];
-      // A drift on the lee side of the cell rather than an even wash: the
-      // second, bluer pass is offset up the diamond so the cover has a shaded
-      // edge where it banks against whatever stands north of it.
       ditherPolyHard(ctx, diamond, pale, amount);
-      if (level >= 2) {
-        ditherPolyHard(ctx, [
-          diamond[0], diamond[1],
-          { x: cx + TILE_W / 4, y: cy - TILE_H / 4 }, { x: cx - TILE_W / 4, y: cy - TILE_H / 4 },
-        ], blue, level === 3 ? 5 : 3);
+      // Drifts: a solid lump of snow banked somewhere in the cell, away from
+      // where the traffic runs. Solid pixels are what stop the whole plane
+      // reading as a screen, and their scatter is what stops it reading as a
+      // sheet.
+      // Drifts bank on open ground and in the corners of a yard. A worked
+      // street is cleared by whatever uses it, so it keeps the thin cover and
+      // the setts stay legible under it: the street plan should still read in
+      // the snow, which is also how a real district looks after a night of it.
+      if (level >= 2 && !paved) {
+        const dx = (((h >>> 7) % 9) - 4) * (TILE_W / 32);
+        const dy = (((h >>> 11) % 5) - 2) * (TILE_H / 16);
+        const r = level === 3 ? 0.62 : 0.42;
+        const drift = diamond.map((p) => ({
+          x: cx + dx + (p.x - cx) * r, y: cy + dy + (p.y - cy) * r,
+        }));
+        fillPolyHard(ctx, drift, pale);
+        // The shaded side of the drift, on the away face, so it has a top.
+        ditherPolyHard(ctx, [drift[1], drift[2], drift[3]], blue, 5);
       }
     }
   }

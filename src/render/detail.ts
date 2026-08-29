@@ -1088,26 +1088,38 @@ export function drawRoofSnow(
   const shadow = shadeHex(PAL.slate2, 0.46);
 
   // The cover, with a ragged lower edge. Walked as a strip of quads so each
-  // step can carry its own snow line without leaving a gap at the joins.
-  const steps = 5;
+  // step can carry its own snow line without leaving a gap at the joins. The
+  // solid part of the cover is walked with the same jitter: a straight edge
+  // anywhere in this shape, on the dither line or on the fill, immediately
+  // reads as a sheet thrown over the roof.
+  const steps = 7;
+  const jitter = (n: number) => ((((salt + n * 37) % 11) - 5) / 100) * 1.3;
   for (let i = 0; i < steps; i++) {
     const u0 = i / steps;
     const u1 = (i + 1) / steps;
-    const jitter = (n: number) => (((salt + n * 37) % 7) - 3) / 100;
     const v0 = Math.max(0.05, foot + jitter(i));
     const v1 = Math.max(0.05, foot + jitter(i + 1));
-    const band = [at(u0, v0), at(u1, v1), at(u1, 1), at(u0, 1)];
-    // Thin at the snow line, solid at the ridge: the dither carries the whole
-    // band and the fill only claims the top of it.
-    ditherPolyHard(ctx, band, pale, cover >= 700 ? 13 : cover >= 380 ? 10 : 7);
+    ditherPolyHard(ctx, [at(u0, v0), at(u1, v1), at(u1, 1), at(u0, 1)], pale,
+      cover >= 700 ? 13 : cover >= 380 ? 10 : 7);
     if (cover >= 380) {
-      const solid = 1 - depth * (cover >= 700 ? 0.62 : 0.4);
-      fillPolyHard(ctx, [at(u0, solid), at(u1, solid), at(u1, 1), at(u0, 1)], pale);
+      const lip = depth * (cover >= 700 ? 0.62 : 0.4);
+      const s0 = Math.min(0.95, Math.max(0.1, 1 - lip + jitter(i + 3)));
+      const s1 = Math.min(0.95, Math.max(0.1, 1 - lip + jitter(i + 4)));
+      fillPolyHard(ctx, [at(u0, s0), at(u1, s1), at(u1, 1), at(u0, 1)], pale);
       // A shaded underside where the cover overhangs the tiles it sits on.
       ditherPolyHard(ctx, [
-        at(u0, solid), at(u1, solid),
-        at(u1, Math.max(0.05, solid - 0.08)), at(u0, Math.max(0.05, solid - 0.08)),
+        at(u0, s0), at(u1, s1),
+        at(u1, Math.max(0.05, s1 - 0.09)), at(u0, Math.max(0.05, s0 - 0.09)),
       ], shadow, 6);
+    }
+    // A tongue of snow left in a hollow further down the slope than the rest.
+    if (cover >= 380 && ((salt >>> (i % 5)) & 3) === 0) {
+      const t0 = (i + 0.2) / steps;
+      const t1 = (i + 0.8) / steps;
+      ditherPolyHard(ctx, [
+        at(t0, Math.max(0.04, foot - 0.13)), at(t1, Math.max(0.04, foot - 0.13)),
+        at(t1, foot + 0.04), at(t0, foot + 0.04),
+      ], pale, 6);
     }
   }
 
