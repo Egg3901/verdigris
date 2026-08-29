@@ -784,6 +784,8 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   drawKerbs(gctx, city, d, originX, originY, variant, weather.precipitation);
   drawBridgeDecks(gctx, city, d, originX, originY, drop, variant);
   drawIslandUnderside(gctx, d, city.seed, originX, originY, drop, variant);
+  // The falls go in front of the rock they pour down.
+  drawOutfalls(gctx, city, d, originX, originY, drop, variant);
 
   // River fog lies on the water plane, so roofs, bridges, people and cranes are
   // still painted in front of it by the normal compositor. Opaque ordered
@@ -1583,6 +1585,77 @@ function drawCastShadows(
         { x: cx, y: cy - TILE_H / 2 }, { x: cx + TILE_W / 2, y: cy },
         { x: cx, y: cy + TILE_H / 2 }, { x: cx - TILE_W / 2, y: cy },
       ], near, depth <= 1 ? 11 : depth <= 2 ? 9 : depth <= 4 ? 7 : 5);
+    }
+  }
+}
+
+
+/**
+ * Where the river leaves the island.
+ *
+ * The channel used to stop dead against the soil cliff, which read as a pool
+ * cut off rather than a river running somewhere. On a district that hangs in
+ * the air there is only one honest thing for the water to do at the edge, so
+ * it goes over: a lip of foam, falling water down the cliff face, and mist
+ * where it disappears into the void.
+ */
+function drawOutfalls(
+  ctx: CanvasRenderingContext2D, city: City, d: District,
+  originX: number, originY: number, drop: number, variant: Variant,
+): void {
+  const HW = TILE_W / 2;
+  const HH = TILE_H / 2;
+  const level = riverLevelAt(city.seed, city.tick);
+  if (level === 0) return;
+  const water = gradeHex(PAL.riv2, variant);
+  const pale = gradeHex(PAL.rivGlint, variant);
+  const deep = gradeHex(shadeHex(PAL.riv1, -0.2), variant);
+  for (let ty = 0; ty < d.height; ty++) {
+    for (let tx = 0; tx < d.width; tx++) {
+      const k = cellKey(d, tx, ty);
+      if (d.tile[k] !== Tile.Water) continue;
+      // Only the cells that actually sit on the brink: the two camera-facing
+      // sides are the ones a fall would be visible on.
+      for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const nx = tx + dx;
+        const ny = ty + dy;
+        const off = nx >= d.width || ny >= d.height || !insideIsland(d, nx, ny)
+          || d.tile[cellKey(d, nx, ny)] === Tile.Void;
+        if (!off) continue;
+        const cx = originX + isoX(tx, ty);
+        const cy = originY + isoY(tx, ty) + drop;
+        const a = dx === 1 ? { x: cx + HW, y: cy } : { x: cx, y: cy + HH };
+        const b = dx === 1 ? { x: cx, y: cy + HH } : { x: cx - HW, y: cy };
+        // The lip: a bright line of broken water right at the edge.
+        lineHard(ctx, a, b, pale);
+        // The fall itself, in columns down the cliff face. Each column is
+        // hashed so the sheet has structure instead of reading as a curtain.
+        const H = 34;
+        const n = Math.max(3, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / 3));
+        for (let i = 0; i <= n; i++) {
+          const t = i / n;
+          const px = Math.round(a.x + (b.x - a.x) * t);
+          const py = Math.round(a.y + (b.y - a.y) * t);
+          const h = mix(city.seed, 58, k, i);
+          const len = H - (h % 10);
+          ctx.fillStyle = (h >>> 4) % 3 === 0 ? pale : water;
+          ctx.fillRect(px, py, 1, len);
+          // A darker thread beside the bright one gives the sheet depth.
+          if ((h >>> 8) % 2 === 0) {
+            ctx.fillStyle = deep;
+            ctx.fillRect(px, py + 2 + (h % 5), 1, Math.max(3, len - 8));
+          }
+        }
+        // Mist where it goes over the edge and where it disappears.
+        ditherPolyHard(ctx, [
+          { x: a.x, y: a.y + H - 8 }, { x: b.x, y: b.y + H - 8 },
+          { x: b.x, y: b.y + H + 8 }, { x: a.x, y: a.y + H + 8 },
+        ], gradeHex(PAL.smoke2, variant), 5);
+        ditherPolyHard(ctx, [
+          { x: a.x, y: a.y - 2 }, { x: b.x, y: b.y - 2 },
+          { x: b.x, y: b.y + 5 }, { x: a.x, y: a.y + 5 },
+        ], pale, 4);
+      }
     }
   }
 }

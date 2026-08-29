@@ -90,7 +90,27 @@ export function carveRiver(d: District, seed: number, arch: Archetype): RiverPla
   const span = arch.bridgeMax - arch.bridgeMin + 1;
   const wantedBridges = arch.bridgeMin + (mix(seed, Stream.GenRiver, 91) % span);
   const cols: number[] = [];
-  for (let x = 4; x < d.width - 4; x++) if (insideIsland(d, x, centre[x])) cols.push(x);
+  for (let x = 4; x < d.width - 4; x++) {
+    // A crossing needs water to cross and solid ground to land on at BOTH
+    // ends. Testing only the centreline let a bridge be sited where the
+    // coastline had since been cut away, so it ran out of the island edge
+    // into the void with nothing under it and no water beneath, which is
+    // exactly what stops the river reading as a river.
+    if (!insideIsland(d, x, centre[x])) continue;
+    const hw = halfWidth[x];
+    if (d.tile[cellKey(d, x, centre[x])] !== Tile.Water) continue;
+    const northLanding = centre[x] - hw - 1;
+    const southLanding = centre[x] + hw + 1;
+    if (!inBounds(d, x, northLanding) || !insideIsland(d, x, northLanding)) continue;
+    if (!inBounds(d, x, southLanding) || !insideIsland(d, x, southLanding)) continue;
+    if (d.tile[cellKey(d, x, northLanding)] === Tile.Water) continue;
+    if (d.tile[cellKey(d, x, southLanding)] === Tile.Water) continue;
+    // And a cell of town beyond each landing, so the crossing leads somewhere
+    // rather than stopping on the last cell before the drop.
+    if (!inBounds(d, x, northLanding - 1) || !insideIsland(d, x, northLanding - 1)) continue;
+    if (!inBounds(d, x, southLanding + 1) || !insideIsland(d, x, southLanding + 1)) continue;
+    cols.push(x);
+  }
   cols.sort((a, b) => halfWidth[a] - halfWidth[b] || a - b);
   const bridges: RiverPlan['bridges'] = [];
   for (const x of cols) {
