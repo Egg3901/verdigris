@@ -880,6 +880,8 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     }
   }
 
+  drawCastShadows(gctx, city, d, originX, originY, variant);
+
   // Contact shadows, baked into the ground under every footprint.
   //
   // Without one, every building in the district hovers: there is no cue that a
@@ -1502,6 +1504,85 @@ function drawBridgeDecks(
             gradeHex(PAL.stone2, variant));
         }
       }
+    }
+  }
+}
+
+
+/**
+ * How far a storey throws its shadow, in cells, by the light of the hour.
+ *
+ * The sun is low at either end of the day and high in the middle, and an
+ * overcast sky throws no shadow at all: the light is coming off the whole
+ * dome rather than one point in it, which is a real and very visible thing
+ * about weather that the grade alone cannot say.
+ */
+const SHADOW_REACH: Record<Variant, number> = {
+  dawn: 1.7,
+  day: 0.55,
+  golden: 1.5,
+  dusk: 2.0,
+  night: 0,
+  smallhours: 0,
+  overcastday: 0,
+  gloom: 0,
+  fogpale: 0,
+};
+
+/**
+ * Cast shadows.
+ *
+ * The district had a contact shadow under each footprint and nothing else, so
+ * three hundred buildings stood on a flat map with no sunlight crossing it:
+ * the hour changed the colour of the light without changing the shape of
+ * anything. This walks back from every open cell toward the sun and asks
+ * whether something tall enough stands in the way, which costs one grid pass
+ * at bake time and gives the whole town a direction the light comes from.
+ *
+ * The key light in this art has always come from the screen-left, so shadows
+ * fall along +x, which is screen right and down. Rotating the sun through the
+ * day would fight every baked wall face in the game, so the hour changes the
+ * LENGTH of the shadow and never its direction.
+ */
+function drawCastShadows(
+  ctx: CanvasRenderingContext2D, city: City, d: District,
+  originX: number, originY: number, variant: Variant,
+): void {
+  const reach = SHADOW_REACH[variant] ?? 0;
+  if (reach <= 0) return;
+  let tallest = 1;
+  for (const b of city.buildings) if (b.storeys > tallest) tallest = b.storeys;
+  const maxStep = Math.max(1, Math.ceil(tallest * reach));
+  const near = gradeHex(PAL.soot0, variant);
+  for (let ty = 0; ty < d.height; ty++) {
+    for (let tx = 0; tx < d.width; tx++) {
+      const k = cellKey(d, tx, ty);
+      const tile = d.tile[k];
+      if (tile === Tile.Void || tile === Tile.Water) continue;
+      if (!insideIsland(d, tx, ty)) continue;
+      // A cell under a building already has its own contact shadow, and the
+      // building sprite covers it in any case.
+      if (d.buildingId[k] >= 0) continue;
+      let depth = 0;
+      for (let step = 1; step <= maxStep; step++) {
+        const sx = tx - step;
+        if (sx < 0) break;
+        const bid = d.buildingId[cellKey(d, sx, ty)];
+        if (bid < 0) continue;
+        const b = city.buildings[bid];
+        if (!b) continue;
+        if (b.storeys * reach >= step) { depth = step; break; }
+      }
+      if (depth === 0) continue;
+      // The far end of a shadow is softer than its root: one step of density
+      // is all the palette allows, and it is enough to keep a long evening
+      // shadow from reading as a painted stripe.
+      const cx = originX + isoX(tx, ty);
+      const cy = originY + isoY(tx, ty);
+      ditherPolyHard(ctx, [
+        { x: cx, y: cy - TILE_H / 2 }, { x: cx + TILE_W / 2, y: cy },
+        { x: cx, y: cy + TILE_H / 2 }, { x: cx - TILE_W / 2, y: cy },
+      ], near, depth <= 1 ? 11 : depth <= 2 ? 9 : depth <= 4 ? 7 : 5);
     }
   }
 }
