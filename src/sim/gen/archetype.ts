@@ -38,6 +38,20 @@ export interface Archetype {
   jetties: [number, number];
   /** 0 = none; else trim land rows where abs(y - cy) exceeds this, raggedly. */
   coastShaveY: number;
+  /**
+   * How far across a block may run before a passage is cut through it. This is
+   * the district's grain in one number: a mill town is cut tight and mean, a
+   * garden borough is left in long plots nobody walks through.
+   */
+  blockSpan: number;
+  /** Extra frontage cells the block grain allows on top of the base. */
+  grainBonus: number;
+  /** Extra cells plots may run back from the street before the interior begins. */
+  depthBonus: number;
+  /** Percent of plots that take a single-cell frontage. The rest widen. */
+  narrowFrontPct: number;
+  /** Percent of plots that stop two cells deep, leaving back land behind them. */
+  shallowPct: number;
   quota: Partial<Record<BuildingKind, { min: number; max: number }>>;
   residueWeight: Partial<Record<BuildingKind, number>>;
 }
@@ -60,6 +74,11 @@ export const ARCHETYPES: Record<ArchetypeKind, Archetype> = {
     parkBlobs: [0, 0],
     jetties: [0, 0],
     coastShaveY: 19,
+    blockSpan: 7,
+    grainBonus: 0,
+    depthBonus: 0,
+    narrowFrontPct: 70,
+    shallowPct: 26,
     quota: {
       mill: { min: 2, max: 3 },
       foundry: { min: 2, max: 2 },
@@ -87,6 +106,11 @@ export const ARCHETYPES: Record<ArchetypeKind, Archetype> = {
     parkBlobs: [0, 1],
     jetties: [3, 5],
     coastShaveY: 0,
+    blockSpan: 8,
+    grainBonus: 1,
+    depthBonus: 0,
+    narrowFrontPct: 44,
+    shallowPct: 46,
     quota: {
       wharfshed: { min: 5, max: 8 },
       warehouse: { min: 4, max: 6 },
@@ -113,6 +137,11 @@ export const ARCHETYPES: Record<ArchetypeKind, Archetype> = {
     parkBlobs: [2, 4],
     jetties: [0, 0],
     coastShaveY: 0,
+    blockSpan: 7,
+    grainBonus: 0,
+    depthBonus: 1,
+    narrowFrontPct: 58,
+    shallowPct: 34,
     quota: {
       wharfshed: { min: 2, max: 3 },
       warehouse: { min: 1, max: 2 },
@@ -141,6 +170,11 @@ export const ARCHETYPES: Record<ArchetypeKind, Archetype> = {
     parkBlobs: [0, 0],
     jetties: [0, 0],
     coastShaveY: 0,
+    blockSpan: 7,
+    grainBonus: 0,
+    depthBonus: 0,
+    narrowFrontPct: 55,
+    shallowPct: 40,
     quota: {},
     residueWeight: {},
   },

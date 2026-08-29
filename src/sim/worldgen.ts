@@ -76,9 +76,9 @@ export function generateWorld(seedStr: string): World {
   addJetties(district, seed, river, arch);
   reserveRim(district, seed, arch);
   reserveParks(district, seed, arch);
-  const blocks = subdivideBlocks(district, seed);
+  const blocks = subdivideBlocks(district, seed, arch);
   const wards = assignWards(district, seed, blocks, streetPlan, river);
-  const plots = subdividePlots(district, seed, blocks);
+  const plots = subdividePlots(district, seed, blocks, arch);
   pruneUnreachablePaving(
     district,
     streetPlan.squareX + (streetPlan.squareW >> 1),
@@ -118,11 +118,39 @@ export function generateWorld(seedStr: string): World {
   }
 
   // Plots nobody built on are back gardens and waste ground, not holes.
+  //
+  // Where they sit decides what they read as. A gap behind a built frontage is a
+  // back yard and stays one. A block that took no buildings at all is a different
+  // thing: streets running through flat grass is the single clearest tell that a
+  // generator ran out of budget, so those blocks are given over to the ground the
+  // ward would actually leave there. Green at the polite edge of town, bare
+  // hardstanding beside the works and the quay.
   const built = new Set(placements.map((p) => p.plot.id));
+  const blockBuilt = new Int16Array(blocks.length);
+  const blockPlots = new Int16Array(blocks.length);
+  for (const p of plots) blockPlots[p.blockId]++;
+  for (const p of placements) blockBuilt[p.plot.blockId]++;
   for (const p of plots) {
     if (built.has(p.id)) continue;
+    // A gasworks standing alone in a block of eleven plots does not make the
+    // other ten a back garden. The threshold is a ratio, not a zero.
+    const empty = blockBuilt[p.blockId] * 5 < blockPlots[p.blockId] * 2;
+    const wardKind = wards[p.wardId]?.kind;
+    const hard = wardKind === 'works' || wardKind === 'quayside' || wardKind === 'courts';
     for (const k of p.cells) {
-      if (district.tile[k] === Tile.Plot || district.tile[k] === Tile.Court) district.tile[k] = Tile.Yard;
+      if (district.tile[k] !== Tile.Plot && district.tile[k] !== Tile.Court) continue;
+      const x = k % district.width;
+      const y = (k - x) / district.width;
+      // An acre of flat brown is as blank as an acre of flat green. A works yard
+      // is broken hardstanding with weeds coming through it and material stacked
+      // on the weeds, so the ground is mixed rather than uniform: props scatter
+      // crates and timber over Yard in a works ward and nothing at all over Plot.
+      const roll = mix(seed, 71, x, y) % 100;
+      const fill = !empty
+        ? Tile.Yard
+        : hard ? (roll < 58 ? Tile.Plot : Tile.Yard)
+          : (roll < 78 ? Tile.Park : Tile.Yard);
+      district.tile[k] = fill;
     }
   }
 

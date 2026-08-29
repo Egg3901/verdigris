@@ -136,7 +136,11 @@ describe('physical disasters', () => {
         .filter((b) => Math.abs(b.doorX - target.doorX) + Math.abs(b.doorY - target.doorY) <= 5)
         .sort((a, b) => (Math.abs(a.doorX - target.doorX) + Math.abs(a.doorY - target.doorY))
           - (Math.abs(b.doorX - target.doorX) + Math.abs(b.doorY - target.doorY)) || a.id - b.id)
-        .slice(0, 8)
+        // Four, not eight: nearbyFloodBuildings takes the four nearest doors, so
+        // a wider ring here picks a target whose flood set is empty and the
+        // evacuation assertion fails for a reason that has nothing to do with
+        // evacuation. Mirror the sim's rule exactly.
+        .slice(0, 4)
         .some((b) => b.occupants.length > 0);
     });
     const flood = startDisaster(city, 'flood', id);
@@ -293,9 +297,22 @@ describe('physical disasters', () => {
     warp(city, fire.containedAt - city.tick);
 
     expect(fire.affectedBuildingIds.length).toBeGreaterThan(1);
+    // The scar means BURNT-OUT SHELL, not "was once on fire": city.ts sheds
+    // burntAt again as soon as fabric climbs back over 520, and a spread only
+    // takes 150 off, so a soundly built address can be through the fire and
+    // out the far side of the threshold within the same containment. Assert
+    // what the sim actually promises: every address the fire reached carries
+    // the incident, and the ones still below the rebuild line carry the scar.
+    let scarred = 0;
     for (const id of fire.affectedBuildingIds) {
-      expect(city.buildings[id].burntAt).toBeGreaterThanOrEqual(0);
+      const b = city.buildings[id];
+      expect(b.lastIncidentTick).toBeGreaterThanOrEqual(0);
+      if (b.fabric < 520) {
+        expect(b.burntAt).toBeGreaterThanOrEqual(0);
+        scarred++;
+      }
     }
+    expect(scarred).toBeGreaterThan(0);
   });
 
   it('rises through the hours while the rain holds, and does so deterministically', () => {
