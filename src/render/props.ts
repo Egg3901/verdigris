@@ -423,21 +423,106 @@ function bakeCart(salt: number, variant: Variant): HTMLCanvasElement {
   return c;
 }
 
-function bakeCrane(variant: Variant): HTMLCanvasElement {
+/**
+ * Mirror a baked sprite about its vertical centre.
+ *
+ * The iso grid is symmetric about the screen vertical, so a shape drawn along
+ * the up-right axis becomes the up-left one for free. drawImage at scale -1 with
+ * integer bounds and smoothing off is an exact pixel flip, so nothing new enters
+ * the palette and alpha stays 0 or 255.
+ */
+function mirrorSprite(src: HTMLCanvasElement): HTMLCanvasElement {
   const c = document.createElement('canvas');
-  c.width = 22; c.height = 28;
+  c.width = src.width;
+  c.height = src.height;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  ctx.imageSmoothingEnabled = false;
+  ctx.setTransform(-1, 0, 0, 1, src.width, 0);
+  ctx.drawImage(src, 0, 0);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return c;
+}
+
+const CRANE_W = 32;
+const CRANE_H = 44;
+/** Anchor: the foot of the mast, in the middle of its stone sill. */
+const CRANE_AX = 11;
+const CRANE_AY = 42;
+
+/**
+ * A quayside jib crane, mast and angled jib and a hanging block on a hook.
+ *
+ * This is the shape that says "port" from the other side of the district, so it
+ * is deliberately the tallest piece of street furniture in the game: forty-four
+ * pixels against a lamp's twenty-six. At zoom 1 the mast plus the diagonal of
+ * the jib survives as a distinct mark where a lamp is only a dot.
+ *
+ * Drawn jib-right. The jib-left crane is the mirror of this one, with the mast
+ * highlight repainted afterwards so the light still comes from the west.
+ */
+function bakeCrane(variant: Variant, timber: boolean): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = CRANE_W; c.height = CRANE_H;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  ctx.imageSmoothingEnabled = false;
+  const g = (x: string) => gradeHex(x, variant);
+  const body = g(timber ? PAL.wood1 : PAL.soot2);
+  const lit = g(timber ? PAL.wood2 : PAL.soot3);
+  const dark = g(timber ? PAL.wood0 : PAL.soot1);
+
+  // Stone sill. A crane of this size needs a visible foundation or it reads as
+  // standing on the mud.
+  fillPolyHard(ctx, [{ x: 11, y: 34 }, { x: 21, y: 38 }, { x: 11, y: 42 }, { x: 1, y: 38 }], g(PAL.stone1));
+  fillPolyHard(ctx, [{ x: 11, y: 35 }, { x: 19, y: 38 }, { x: 11, y: 41 }, { x: 3, y: 38 }], g(PAL.stone2));
+
+  // Counterweight, on the far side of the pivot from the load.
+  ctx.fillStyle = dark;
+  ctx.fillRect(2, 14, 8, 9);
+  ctx.fillStyle = body;
+  ctx.fillRect(2, 14, 8, 1);
+  ctx.fillRect(2, 18, 8, 1);
+
+  // Mast.
+  ctx.fillStyle = body;
+  ctx.fillRect(9, 2, 4, 35);
+  ctx.fillStyle = lit;
+  ctx.fillRect(9, 2, 1, 35);
+  ctx.fillStyle = dark;
+  ctx.fillRect(12, 2, 1, 35);
+  // Collar at the pivot, and a cap at the head.
+  ctx.fillStyle = dark;
+  ctx.fillRect(8, 13, 6, 2);
+  ctx.fillRect(8, 1, 6, 2);
+
+  // Jib, and the tie rod from the masthead that holds it up. The triangle the
+  // two make is most of the silhouette.
+  fillPolyHard(ctx, [{ x: 13, y: 12 }, { x: 30, y: 2 }, { x: 30, y: 5 }, { x: 13, y: 16 }], body);
+  lineHard(ctx, { x: 13, y: 16 }, { x: 30, y: 5 }, dark);
+  lineHard(ctx, { x: 12, y: 3 }, { x: 29, y: 3 }, dark);
+
+  // Fall, block and hook, hanging free off the jib head.
+  ctx.fillStyle = dark;
+  ctx.fillRect(29, 5, 1, 12);
+  ctx.fillStyle = g(PAL.brassInk);
+  ctx.fillRect(28, 17, 3, 3);
+  ctx.fillStyle = dark;
+  ctx.fillRect(29, 20, 1, 2);
+  ctx.fillRect(28, 21, 1, 1);
+
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** The jib-left crane: the mirror, with the mast highlight put back on the west
+ *  side so the lighting convention holds. */
+function bakeCraneLeft(variant: Variant, timber: boolean): HTMLCanvasElement {
+  const c = mirrorSprite(bakeCrane(variant, timber));
   const ctx = c.getContext('2d') as CanvasRenderingContext2D;
   const g = (x: string) => gradeHex(x, variant);
-  const iron = g(PAL.soot2);
-  ctx.fillStyle = iron;
-  ctx.fillRect(4, 10, 2, 16);
-  ctx.fillRect(3, 25, 5, 2);
-  lineHard(ctx, { x: 5, y: 10 }, { x: 18, y: 4 }, iron);
-  lineHard(ctx, { x: 5, y: 12 }, { x: 18, y: 4 }, g(PAL.soot3));
-  ctx.fillStyle = g(PAL.wood1);
-  ctx.fillRect(16, 4, 3, 2);
-  ctx.fillStyle = g(PAL.soot1);
-  ctx.fillRect(17, 6, 1, 8);
+  ctx.fillStyle = g(timber ? PAL.wood2 : PAL.soot3);
+  ctx.fillRect(19, 2, 1, 35);
+  ctx.fillStyle = g(timber ? PAL.wood0 : PAL.soot1);
+  ctx.fillRect(22, 2, 1, 35);
   hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
@@ -603,6 +688,290 @@ function bakeCrates(salt: number, variant: Variant): HTMLCanvasElement {
   return c;
 }
 
+/** A few sacks of grain or sand, tied at the neck. */
+function bakeSacks(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 12;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const cloth = [PAL.cream1, PAL.thatch1, PAL.parch1][salt % 3];
+  const lay: [number, number, number][] = [[4, 8, 3.4], [11, 9, 3.0], [7, 5, 3.2]];
+  for (const [x, y, r] of lay) {
+    fillEllipseHard(ctx, x, y, r, r * 0.85, g(shadeHex(cloth, -0.22)));
+    fillEllipseHard(ctx, x - 1, y - 1, r - 1, r * 0.65, g(cloth));
+    // The tie at the neck, which is what stops a sack reading as a stone.
+    ctx.fillStyle = g(shadeHex(cloth, -0.4));
+    ctx.fillRect(Math.round(x) - 1, Math.round(y - r), 2, 1);
+  }
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** Barrels laid on their sides and stacked three, two, one. Hoops run vertically
+ *  when a barrel is down, which is the detail that tells the eye it is lying. */
+function bakeBarrelPyramid(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 28; c.height = 21;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const stave = g(PAL.wood1);
+  const staveLit = g(PAL.wood2);
+  const hoop = g(PAL.soot2);
+  const end = g(PAL.wood0);
+  // Eight wide, six tall, with a gap between neighbours. Barrels drawn flush
+  // against each other merged into one brown block and the hoops then read as
+  // palings, so the gap is doing as much work as the shading.
+  const barrel = (x: number, y: number) => {
+    ctx.fillStyle = end;
+    ctx.fillRect(x + 1, y + 5, 6, 1);
+    ctx.fillStyle = stave;
+    ctx.fillRect(x + 1, y, 6, 5);
+    ctx.fillRect(x, y + 1, 8, 3);
+    ctx.fillStyle = staveLit;
+    ctx.fillRect(x + 1, y, 6, 1);
+    ctx.fillRect(x + 1, y + 1, 6, 1);
+    // Hoops stop short of the ends, so the barrel keeps a bulge.
+    ctx.fillStyle = hoop;
+    ctx.fillRect(x + 2, y + 1, 1, 4);
+    ctx.fillRect(x + 5, y + 1, 1, 4);
+    // The head, seen end on at the near end of the barrel.
+    ctx.fillStyle = end;
+    ctx.fillRect(x, y + 1, 1, 3);
+    ctx.fillStyle = staveLit;
+    ctx.fillRect(x + 7, y + 2, 1, 1);
+  };
+  for (const [x, y] of [[0, 14], [9, 14], [18, 14], [4, 7], [13, 7], [9, 0]]) barrel(x, y);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/**
+ * A working cargo group: crates, sacks and barrels landed together, which is how
+ * a quay actually looks. Hashed so a stack is never twice the same, and small
+ * enough that a run of them still leaves the quay walkable.
+ */
+function bakeCargoGroup(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 24; c.height = 18;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const wood = [PAL.wood2, PAL.thatch1][salt % 2];
+  const cloth = [PAL.cream1, PAL.parch1][(salt >>> 3) % 2];
+
+  const crate = (x: number, y: number, w: number, h: number) => {
+    ctx.fillStyle = g(wood);
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = g(shadeHex(wood, -0.25));
+    ctx.fillRect(x, y, w, 1);
+    ctx.fillRect(x + ((w >> 1) - 1), y, 1, h);
+    ctx.fillStyle = g(shadeHex(wood, -0.4));
+    ctx.fillRect(x, y + h - 1, w, 1);
+  };
+  const upright = (x: number, y: number) => {
+    ctx.fillStyle = g(PAL.wood1);
+    ctx.fillRect(x, y, 5, 8);
+    ctx.fillStyle = g(PAL.wood2);
+    ctx.fillRect(x, y, 2, 8);
+    ctx.fillStyle = g(PAL.soot2);
+    ctx.fillRect(x, y + 1, 5, 1);
+    ctx.fillRect(x, y + 6, 5, 1);
+  };
+  const sack = (x: number, y: number) => {
+    fillEllipseHard(ctx, x, y, 3.2, 2.8, g(shadeHex(cloth, -0.22)));
+    fillEllipseHard(ctx, x - 1, y - 1, 2.4, 2.0, g(cloth));
+    ctx.fillStyle = g(shadeHex(cloth, -0.4));
+    ctx.fillRect(x - 1, y - 3, 2, 1);
+  };
+
+  const shape = salt % 4;
+  if (shape === 0) {
+    crate(1, 8, 9, 9);
+    crate(2, 2, 7, 6);
+    upright(11, 9);
+    sack(19, 14);
+  } else if (shape === 1) {
+    crate(3, 10, 10, 7);
+    upright(14, 9);
+    upright(19, 10);
+    sack(6, 7);
+    sack(11, 5);
+  } else if (shape === 2) {
+    upright(2, 9);
+    upright(7, 8);
+    crate(13, 7, 9, 10);
+    sack(6, 4);
+  } else {
+    crate(1, 11, 8, 6);
+    crate(10, 9, 8, 8);
+    crate(11, 3, 6, 6);
+    sack(21, 14);
+  }
+  // The shipping mark. One dark glyph is all a stencil is at this size.
+  ctx.fillStyle = g(PAL.soot1);
+  ctx.fillRect(4 + (salt % 3), 12, 2, 2);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** A capstan: iron drum, timber bars through the head, for warping a barge in
+ *  along the quay by hand. */
+function bakeCapstan(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 18; c.height = 16;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  fillPolyHard(ctx, [{ x: 9, y: 10 }, { x: 16, y: 13 }, { x: 9, y: 16 }, { x: 2, y: 13 }], g(PAL.stone1));
+  ctx.fillStyle = g(PAL.soot2);
+  ctx.fillRect(6, 5, 7, 8);
+  ctx.fillStyle = g(PAL.soot3);
+  ctx.fillRect(6, 5, 2, 8);
+  ctx.fillStyle = g(PAL.soot1);
+  ctx.fillRect(6, 8, 7, 1);
+  fillEllipseHard(ctx, 9, 5, 4, 2, g(PAL.soot3));
+  fillEllipseHard(ctx, 9, 4, 3, 1.4, g(PAL.soot2));
+  // Two capstan bars, shipped and crossed, along the two iso axes.
+  lineHard(ctx, { x: 1, y: 6 }, { x: 17, y: 2 }, g(PAL.wood2));
+  lineHard(ctx, { x: 1, y: 2 }, { x: 17, y: 6 }, g(PAL.wood1));
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** An iron mooring ring on a plate, set flush in the quay stones. */
+function bakeMooringRing(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 10; c.height = 7;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  fillPolyHard(ctx, [{ x: 5, y: 1 }, { x: 9, y: 3 }, { x: 5, y: 5 }, { x: 1, y: 3 }], g(PAL.stone1));
+  fillPolyHard(ctx, [{ x: 5, y: 2 }, { x: 8, y: 3 }, { x: 5, y: 4 }, { x: 2, y: 3 }], g(PAL.soot2));
+  // The ring: eight pixels around a hole, because an ellipse this small fills in.
+  ctx.fillStyle = g(PAL.brassInk);
+  ctx.fillRect(4, 1, 2, 1);
+  ctx.fillRect(3, 2, 1, 1);
+  ctx.fillRect(6, 2, 1, 1);
+  ctx.fillRect(4, 3, 2, 1);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+const SPAN_W = 34;
+const SPAN_H = 16;
+
+/**
+ * Two bollards with a rope slung between them, running up-right along the quay
+ * edge. The sag is what reads: a straight line between two posts looks like a
+ * fence, and a fence is not what a mooring rope does.
+ */
+function bakeRopeSpan(variant: Variant, stone: boolean): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = SPAN_W; c.height = SPAN_H;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const post = (x: number, y: number) => {
+    ctx.fillStyle = g(stone ? PAL.stone2 : PAL.soot2);
+    ctx.fillRect(x, y, 3, 7);
+    ctx.fillStyle = g(stone ? PAL.stone3 : PAL.soot3);
+    ctx.fillRect(x, y, 1, 7);
+    ctx.fillStyle = g(stone ? PAL.stone1 : PAL.soot1);
+    ctx.fillRect(x - 1, y - 1, 5, 2);
+  };
+  post(3, 8);
+  post(27, 2);
+  const ax = 4;
+  const ay = 8;
+  const bx = 28;
+  const by = 2;
+  ctx.fillStyle = g(PAL.thatch1);
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    const x = Math.round(ax + (bx - ax) * t);
+    const y = Math.round(ay + (by - ay) * t + 4 * (4 * t * (1 - t)));
+    ctx.fillRect(x, y, 1, 1);
+  }
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+const LIGHTER_W = 46;
+const LIGHTER_H = 26;
+/** Anchor: the middle of the deck. */
+const LIGHTER_AX = 23;
+const LIGHTER_AY = 12;
+
+/**
+ * A lighter: the flat cargo boat that works a cargo between a ship in the
+ * channel and the quay. Long axis up-right, so it lies along the wharf edge.
+ *
+ * Props bake without a tick and the river surface moves with the trailing rain,
+ * so the exact water height is not knowable here. The hull is therefore kept
+ * shallow and set only a few pixels below the bank lip: at any river level it
+ * reads as sitting in the channel against the quay, and at none of them does it
+ * read as beached on the pavement.
+ */
+function bakeLighter(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = LIGHTER_W; c.height = LIGHTER_H;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  // Tarred topsides, pale gunwale, mid deck. A working lighter is nearly black
+  // at the waterline, and that dark band against teal water is what makes the
+  // shape read as a boat rather than as a lump of the quay.
+  const hull = [PAL.wood0, PAL.soot1][salt % 2];
+
+  // Deck: an iso rectangle, three cells long by one wide.
+  const bowIn = { x: 33, y: 3 };
+  const bowOut = { x: 44, y: 8 };
+  const sternOut = { x: 14, y: 21 };
+  const sternIn = { x: 3, y: 16 };
+  fillPolyHard(ctx, [bowIn, bowOut, sternOut, sternIn], g(PAL.wood1));
+  // Gunwale, one row proud of the deck all round.
+  lineHard(ctx, bowIn, bowOut, g(PAL.wood2));
+  lineHard(ctx, sternIn, sternOut, g(PAL.wood2));
+
+  // The near topside, the only hull face the camera sees.
+  fillPolyHard(ctx, [
+    bowOut, sternOut, { x: sternOut.x, y: sternOut.y + 4 }, { x: bowOut.x, y: bowOut.y + 4 },
+  ], g(hull));
+  fillPolyHard(ctx, [
+    sternOut, sternIn, { x: sternIn.x, y: sternIn.y + 3 }, { x: sternOut.x, y: sternOut.y + 3 },
+  ], g(shadeHex(hull, -0.15)));
+  lineHard(ctx, { x: bowOut.x, y: bowOut.y + 4 }, { x: sternOut.x, y: sternOut.y + 4 }, g(PAL.wood0));
+  // A pale rubbing strake along the sheer. Without it the hull loses its outline
+  // against the dark channel and the boat reads as a smudge.
+  lineHard(ctx, { x: bowOut.x, y: bowOut.y + 1 }, { x: sternOut.x, y: sternOut.y + 1 }, g(PAL.cream2));
+  lineHard(ctx, { x: bowIn.x, y: bowIn.y }, { x: bowOut.x, y: bowOut.y }, g(PAL.cream2));
+
+  // Cargo amidships: either a tarpaulin over a mound, or a working pile.
+  if (salt % 3 === 0) {
+    const tarp = [PAL.parch1, PAL.cream1, PAL.soot3][(salt >>> 3) % 3];
+    fillPolyHard(ctx, [
+      { x: 27, y: 7 }, { x: 33, y: 10 }, { x: 20, y: 17 }, { x: 14, y: 14 },
+    ], g(shadeHex(tarp, -0.2)));
+    fillPolyHard(ctx, [
+      { x: 27, y: 7 }, { x: 21, y: 4 }, { x: 8, y: 11 }, { x: 14, y: 14 },
+    ], g(tarp));
+    // Lashings over the tarp.
+    lineHard(ctx, { x: 24, y: 5 }, { x: 30, y: 8 }, g(PAL.soot1));
+    lineHard(ctx, { x: 15, y: 9 }, { x: 21, y: 12 }, g(PAL.soot1));
+  } else {
+    ctx.fillStyle = g(PAL.wood1);
+    ctx.fillRect(24, 6, 7, 6);
+    ctx.fillRect(16, 10, 6, 5);
+    ctx.fillStyle = g(PAL.wood2);
+    ctx.fillRect(24, 6, 7, 1);
+    ctx.fillRect(16, 10, 6, 1);
+    ctx.fillStyle = g(PAL.soot2);
+    ctx.fillRect(27, 6, 1, 6);
+    fillEllipseHard(ctx, 10, 13, 3.4, 2.6, g(PAL.thatch1));
+  }
+  // Sweep oar shipped along the stern quarter, and the bow line running ashore.
+  lineHard(ctx, { x: 6, y: 15 }, { x: 17, y: 20 }, g(PAL.wood0));
+  lineHard(ctx, { x: 34, y: 4 }, { x: 27, y: 1 }, g(PAL.thatch1));
+
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
 function bakeBench(variant: Variant): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = 16; c.height = 13;
@@ -633,7 +1002,23 @@ export function buildStreetProps(
   const trough = bakeTrough(variant);
   const columns = [0, 1, 2, 3].map((s) => bakeColumn(s, variant));
   const carts = [0, 1, 2].map((s) => bakeCart(s, variant));
-  const crane = bakeCrane(variant);
+  // Two jib directions and two materials: timber on the older berths, iron on
+  // the newer ones. Four sprites is enough that a run of cranes is not a stamp.
+  const cranes = [
+    bakeCrane(variant, true), bakeCrane(variant, false),
+    bakeCraneLeft(variant, true), bakeCraneLeft(variant, false),
+  ];
+  const lighters = [0, 1, 2, 3].map((s) => bakeLighter(s, variant));
+  const lightersNw = lighters.map(mirrorSprite);
+  const cargo = [0, 1, 2, 3, 4, 5].map((s) => bakeCargoGroup(s, variant));
+  const sacks = [0, 1, 2].map((s) => bakeSacks(s, variant));
+  const barrelStack = bakeBarrelPyramid(variant);
+  const capstan = bakeCapstan(variant);
+  const mooringRing = bakeMooringRing(variant);
+  const ropeSpanIron = bakeRopeSpan(variant, false);
+  const ropeSpanStone = bakeRopeSpan(variant, true);
+  const ropeSpanIronNw = mirrorSprite(ropeSpanIron);
+  const ropeSpanStoneNw = mirrorSprite(ropeSpanStone);
   const barrels = bakeBarrels(variant);
   const coal = bakeCoal(variant);
   const urn = bakeUrn(variant);
@@ -671,6 +1056,107 @@ export function buildStreetProps(
             : ward === 'garden' ? 17 : ward === 'courts' ? 10 : 14;
         if (roll < lampChance) {
           push(polite && t === Tile.Embankment ? lampArc : lampGas, 7, 25);
+          continue;
+        }
+      }
+      // The working waterfront. Its own hash stream, so adding it shifted none
+      // of the street furniture that was already placed.
+      //
+      // Everything large is required to sit on a cell that touches the water and
+      // is pushed toward that edge, which keeps cranes and cargo off the
+      // frontages where the doors are, and keeps the inland half of the quay
+      // clear enough to still read as a working surface.
+      if (t === Tile.Wharf || t === Tile.Embankment) {
+        const q = mix(seed, 91, tx, ty) % 1000;
+        const water = (nx: number, ny: number): boolean => (
+          nx >= 0 && ny >= 0 && nx < district.width && ny < district.height
+          && district.tile[cellKey(district, nx, ny)] === Tile.Water
+        );
+        const east = water(tx + 1, ty);
+        const south = water(tx, ty + 1);
+        const west = water(tx - 1, ty);
+        const north = water(tx, ty - 1);
+        const anyWater = east || south || west || north;
+        // A crossing needs its approach kept clear.
+        let nearBridge = false;
+        for (let dy = -1; dy <= 1 && !nearBridge; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = tx + dx;
+            const ny = ty + dy;
+            if (nx < 0 || ny < 0 || nx >= district.width || ny >= district.height) continue;
+            if (district.tile[cellKey(district, nx, ny)] === Tile.Bridge) { nearBridge = true; break; }
+          }
+        }
+        // The two edges the camera can see over. A craft moored against a north
+        // or west edge would be hidden behind its own quay.
+        const front = east ? 1 : south ? -1 : 0;
+        const pushQuay = (
+          sprite: HTMLCanvasElement, ax: number, ay: number,
+          ox: number, oy: number, dtx = tx, dty = ty,
+        ) => {
+          out.push({
+            sprite, ax, ay,
+            wx: isoX(tx, ty) + ox,
+            wy: isoY(tx, ty) + oy,
+            depth: depthKey(dtx, dty, LAYER_STRUCT),
+          });
+        };
+
+        // Moored craft take their own hash: a boat lies off the quay edge, not
+        // on it, so a berth may hold a lighter and still carry cargo behind it.
+        const berth = mix(seed, 96, tx, ty) % 100;
+        if (!nearBridge && front !== 0 && t === Tile.Wharf && berth < 55) {
+          // Moored against the wharf edge, hanging below the bank lip so it sits
+          // in the channel rather than on the pavement.
+          const salt = mix(seed, 92, tx, ty) % 4;
+          const sprite = front === 1 ? lighters[salt] : lightersNw[salt];
+          pushQuay(sprite, LIGHTER_AX, LIGHTER_AY, front * 15, 13,
+            east ? tx + 1 : tx, east ? ty : ty + 1);
+          continue;
+        }
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 300 && q < 470) {
+          // Jib toward the water: east and north are to the right on screen,
+          // south and west to the left.
+          const right = east || north;
+          const timber = ((mix(seed, 93, tx, ty) >>> 4) & 1) === 0;
+          const sprite = cranes[(right ? 0 : 2) + (timber ? 0 : 1)];
+          const ox = (east || north ? 6 : -6);
+          const oy = (east || south ? 3 : -3);
+          pushQuay(sprite, right ? CRANE_AX : CRANE_W - 1 - CRANE_AX, CRANE_AY, ox, oy);
+          continue;
+        }
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 470 && q < 530) {
+          pushQuay(capstan, 9, 15, east ? 5 : west ? -5 : 0, south || east ? 2 : -2);
+          continue;
+        }
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 530 && q < 690) {
+          pushQuay(cargo[mix(seed, 94, tx, ty) % 6], 12, 17,
+            east ? 5 : west ? -5 : 0, south || east ? 2 : -2);
+          continue;
+        }
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 690 && q < 750) {
+          pushQuay(barrelStack, 14, 20, east ? 4 : west ? -4 : 0, south || east ? 2 : -2);
+          continue;
+        }
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 750 && q < 810) {
+          pushQuay(sacks[mix(seed, 95, tx, ty) % 3], 8, 11, 0, 1);
+          continue;
+        }
+        const wharf = t === Tile.Wharf;
+        if (front !== 0 && (wharf ? q >= 810 && q < 900 : q >= 60 && q < 110)) {
+          pushQuay(mooringRing, 5, 5, front * 7, 4);
+          continue;
+        }
+        if (front !== 0 && (wharf ? q >= 900 && q < 960 : q < 60)) {
+          const stone = t === Tile.Embankment;
+          const sprite = front === 1
+            ? (stone ? ropeSpanStone : ropeSpanIron)
+            : (stone ? ropeSpanStoneNw : ropeSpanIronNw);
+          pushQuay(sprite, SPAN_W >> 1, SPAN_H - 1, front * 5, 4);
+          continue;
+        }
+        if (t === Tile.Embankment && q >= 110 && q < 140) {
+          pushQuay(bench, 8, 12, 0, 0);
           continue;
         }
       }
@@ -713,10 +1199,6 @@ export function buildStreetProps(
       }
       if (t === Tile.Wharf && roll < 6) {
         push(carts[mix(seed, 84, tx, ty) % 3], 9, 13);
-        continue;
-      }
-      if (t === Tile.Wharf && roll >= 6 && roll < 9) {
-        push(crane, 5, 27);
         continue;
       }
       if ((t === Tile.Street || t === Tile.Alley || t === Tile.Wharf)
