@@ -136,7 +136,11 @@ describe('physical disasters', () => {
         .filter((b) => Math.abs(b.doorX - target.doorX) + Math.abs(b.doorY - target.doorY) <= 5)
         .sort((a, b) => (Math.abs(a.doorX - target.doorX) + Math.abs(a.doorY - target.doorY))
           - (Math.abs(b.doorX - target.doorX) + Math.abs(b.doorY - target.doorY)) || a.id - b.id)
-        .slice(0, 8)
+        // Four, not eight: nearbyFloodBuildings takes the four nearest doors, so
+        // a wider ring here picks a target whose flood set is empty and the
+        // evacuation assertion fails for a reason that has nothing to do with
+        // evacuation. Mirror the sim's rule exactly.
+        .slice(0, 4)
         .some((b) => b.occupants.length > 0);
     });
     const flood = startDisaster(city, 'flood', id);

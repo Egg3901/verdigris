@@ -269,7 +269,12 @@ describe('ordinances', () => {
   it('does not throw for any ordinance on a fresh sitting', () => {
     const kinds: OrdinanceKind[] = [...ORDINANCE_KINDS];
     for (let i = 0; i < kinds.length; i++) {
-      const c = newCity('jubilee');
+      // Re-anchored when the district generator packed the blocks: the old
+      // fixture seed now seats a vestry of three, and three members with one
+      // alderman among them vote a cart bylaw down, which is the mechanism
+      // working. A garden borough seats the widest vestry, so this seed exercises
+      // the pass path for every ordinance instead of perching on a knife edge.
+      const c = newCity('oldgate');
       warp(c, 360 + i);
       expect(enact(c, kinds[i]), kinds[i]).toBe(true);
       expect(inForce(c, kinds[i])).toBe(true);

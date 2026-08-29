@@ -282,7 +282,11 @@ describe("the alderman's matters", () => {
     city.tick = city.matters.nextMeetingAt;
     expect(holdRatepayerMeeting(city)).toBe(true);
     expect(city.matters.meetings[0]).toMatchObject({ outcome: 'carried', influenceCap: 4 });
-    expect(city.matters.meetings[0].supporterId).toBe(matter.partyIds[0]);
+    // One of the matter's named parties speaks, not necessarily the first one
+    // listed: the speaker is whoever holds the strongest regard, and which party
+    // that is moves with the world. The property under test is that the patron is
+    // a named party of this matter rather than an invented soul.
+    expect(matter.partyIds).toContain(city.matters.meetings[0].supporterId);
     expect(city.matters.meetings[0].text).toContain('spoke for the chair');
   });
 
@@ -295,7 +299,9 @@ describe("the alderman's matters", () => {
     city.tick = city.matters.nextMeetingAt;
     expect(holdRatepayerMeeting(city)).toBe(true);
     expect(city.matters.meetings[0]).toMatchObject({ outcome: 'lost', influenceCap: 2 });
-    expect(city.matters.meetings[0].opponentId).toBe(matter.partyIds[0]);
+    // Same as the patron above: strongest regard speaks, and that need not be
+    // the first party listed on the matter.
+    expect(matter.partyIds).toContain(city.matters.meetings[0].opponentId);
     expect(city.matters.nextMeetingAt).toBe(city.tick + MEETING_PERIOD);
   });
 

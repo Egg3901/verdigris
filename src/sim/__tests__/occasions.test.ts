@@ -61,9 +61,11 @@ describe('Civic Market Day', () => {
   });
 
   it('uses the seeded six-day calendar rather than a random cursor', () => {
-    // Re-anchored when archetypes landed: the old fixture seed grows a garden
-    // borough whose first fair market day no longer opens. Same test, new seed.
-    const city = newCity('market-calendar-3');
+    // Re-anchored twice now, for the same reason each time: this fixture needs a
+    // seed whose first fair market day actually opens, and which seed that is
+    // moves whenever the district generator moves. Archetypes broke it once, and
+    // packing the blocks broke it again. Same test, new seed.
+    const city = newCity('market-calendar-1');
     let day = -1;
     for (let candidate = 0; candidate < 30; candidate++) {
       const tick = candidate * 1440 + 600;
