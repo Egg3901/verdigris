@@ -22,6 +22,7 @@ import {
   drawCourses, drawDormer, drawBunting, drawQuoins, drawStringCourse,
   drawPartyPipe, drawAreaRailing,
   drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
+  drawPilasters, drawCorbelTable,
   drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
   drawVerdigrisStreaks, drawWallPosters,
@@ -664,6 +665,15 @@ function drawMaterials(
     switch (material) {
       case 'brick':
         drawBrickFace(ctx, f, wallH, mortar, industrial);
+        if (industrial) {
+          // A mill flank is piers and bays with a corbelled eaves band. Every
+          // works in the district was a flat dark slab with windows in it.
+          const bays = Math.max(2, Math.min(7, Math.round(f.span / 10)));
+          drawPilasters(ctx, f, wallH, shadeHex(skin.wallLit, 0.16),
+            shadeHex(skin.wallShade, -0.26), bays, { top: 4 });
+          drawCorbelTable(ctx, f, shadeHex(skin.wallLit, 0.12),
+            shadeHex(skin.wallShade, -0.3));
+        }
         // A better brick building dresses its corner in stone. Same quoins the
         // ashlar face carries, on brick they read as the merchant spending money
         // where the street can see it.
@@ -671,9 +681,17 @@ function drawMaterials(
           drawQuoins(ctx, f, wallH, shadeHex(skin.wallLit, 0.25), mortar, 3);
         }
         break;
-      case 'ashlar':
+      case 'ashlar': {
         drawAshlarFace(ctx, f, wallH, mortar, shadeHex(skin.wallLit, 0.1));
+        // A civic front is bays between piers, not a plane with holes in it.
+        const bays = Math.max(2, Math.min(6, Math.round(f.span / 13)));
+        drawPilasters(ctx, f, wallH, shadeHex(skin.wallLit, 0.22),
+          shadeHex(skin.wallShade, -0.22), bays, {
+            capital: spec.skin.trim ?? shadeHex(skin.wallLit, 0.3),
+            base: shadeHex(skin.wallShade, -0.3),
+          });
         break;
+      }
       case 'timber':
         drawTimberFace(ctx, f, wallH, ds.timber);
         break;
@@ -757,9 +775,11 @@ function drawFacade(
   for (const f of [lit, shade]) {
     if (f.span < 8) continue;
     if (spec.material !== 'glazed') {
-      drawWindowGrid(ctx, f, spec.wallH, spec.windowRows, skin, spec.shopfront === true,
+      const worksFace = spec.frontage === 'works' && spec.material === 'brick';
+      drawWindowGrid(ctx, f, spec.wallH, worksFace ? Math.max(2, spec.windowRows) : spec.windowRows,
+        skin, spec.shopfront === true,
         salt + (f.lit ? 0 : 5), lights,
-        spec.balcony && f.lit && !spec.boarded ? PAL.soot2 : undefined);
+        spec.balcony && f.lit && !spec.boarded ? PAL.soot2 : undefined, worksFace);
     }
     if (spec.boarded) drawBoarded(ctx, f, spec.wallH, skin);
   }
@@ -1156,62 +1176,55 @@ function drawSawtooth(
   spec: HouseSpec, alongX: boolean, stacks?: Pt[],
 ): Pt[] | null {
   const { roofH, skin } = spec;
-  const long = alongX ? spec.w : spec.d;
-  const n = Math.max(2, Math.min(4, long - (long > 3 ? 1 : 0)));
-  let lastNear: Pt[] | null = null;
-  let lastRidge: [Pt, Pt] | null = null;
-  for (let i = 0; i < n; i++) {
-    const u0 = i / n;
-    const u1 = (i + 1) / n;
-    // Strips along the long axis. Peak sits near u0 so the steep glazed face
-    // is the one the camera catches.
-    const a0 = alongX ? lerp(W, S, u0) : lerp(W, N, u0);
-    const a1 = alongX ? lerp(W, S, u1) : lerp(W, N, u1);
-    const b0 = alongX ? lerp(N, E, u0) : lerp(S, E, u0);
-    const b1 = alongX ? lerp(N, E, u1) : lerp(S, E, u1);
-    const pk = 0.28;
-    const pA = up(lerp(a0, a1, pk), roofH);
-    const pB = up(lerp(b0, b1, pk), roofH);
-    // North-light glazing: the whole point of a sawtooth shed is that the
-    // steep face is a window wall. It was a flat slab in raw palette colours
-    // that never darkened at night, which is what made a mill roof read as a
-    // grey blank. Now it is glass in an iron frame, graded like everything else.
-    // Not every bay of a shed is worked after dark. A night shift lights some
-    // of the range, hashed per bay, and dimmer than a parlour window: a mill
-    // roof glowing brighter than the houses under it reads as a bonfire.
-    const shift = ((spec.salt ?? 0) >> (i * 2)) & 3;
-    const lit = spec.skin.windowLit === true && (shift & 1) === 1;
-    const glass = lit
-      ? shadeHex(skin.window ?? PAL.litWindow, -0.3)
-      : shadeHex(skin.roofShade, -0.28);
-    const frame = shadeHex(skin.roofShade, -0.45);
-    poly(ctx, [a0, b0, pB, pA], glass);
-    // Glazing bars across the light, and one transom band up its middle. The
-    // bars are what say "window" at this size, more than the colour does.
-    const bars = Math.max(3, Math.round(Math.hypot(b0.x - a0.x, b0.y - a0.y) / 5));
-    for (let g = 1; g < bars; g++) {
-      const t = g / bars;
-      lineHard(ctx, lerp(a0, b0, t), lerp(pA, pB, t), frame);
-    }
-    lineHard(ctx, lerp(a0, pA, 0.5), lerp(b0, pB, 0.5), frame);
-    // A cool sky catch along the head of the glass, warm spill at the foot
-    // when the works is running: glass reflects, it does not just sit there.
-    lineHard(ctx, lerp(pA, a0, 0.12), lerp(pB, b0, 0.12), shadeHex(glass, lit ? 0.2 : 0.16));
-    // The iron frame around the light.
-    lineHard(ctx, a0, pA, frame);
-    lineHard(ctx, b0, pB, frame);
-    // Shallow tiled slope.
-    poly(ctx, [pA, pB, b1, a1], skin.roofLit, 3);
-    poly(ctx, [pB, b1, b0], skin.roofShade);
-    lastNear = [pA, a1, b1, pB];
-    lastRidge = [pA, pB];
-    drawCourses(ctx, [a1, pA, pB, b1], shadeHex(skin.roofLit, -0.12), 3);
+  // This used to be a true sawtooth: a range of north lights across the shed.
+  // At three cells and this camera angle the bays came out as slivers, and
+  // alternating glass and lead down a narrow zigzag read as a crumpled
+  // tarpaulin rather than as a roof. A works of this size gets what a works of
+  // this size actually had: one long low pitch with a glazed monitor raised
+  // along the ridge, which is legible at every zoom and still says works.
+  const r0 = up(alongX ? mid(W, N) : mid(N, E), roofH);
+  const r1 = up(alongX ? mid(S, E) : mid(W, S), roofH);
+
+  if (alongX) {
+    poly(ctx, [W, N, r0], skin.gableLit);
+    poly(ctx, [N, E, r1, r0], skin.roofShade);
+    poly(ctx, [W, S, r1, r0], skin.roofLit);
+    poly(ctx, [S, E, r1], skin.gableShade);
+  } else {
+    poly(ctx, [N, E, r0], skin.gableShade);
+    poly(ctx, [W, N, r0], skin.gableLit);
+    poly(ctx, [E, S, r1, r0], skin.roofShade);
+    poly(ctx, [W, S, r1, r0], skin.roofLit);
   }
-  if (lastRidge) {
-    ridgeLine(ctx, lastRidge[0], lastRidge[1], skin.roofRidge, spec);
-    chimneys(ctx, lastRidge[0], lastRidge[1], spec, stacks);
+
+  // The monitor: a raised clerestory along the whole ridge, glazed down its
+  // side, with its own little cap. This is the shape that says daylight was
+  // wanted inside without needing a single sawtooth tooth.
+  const mh = Math.max(4, Math.round(roofH * 0.34));
+  const m0 = up(r0, mh);
+  const m1 = up(r1, mh);
+  const lit = spec.skin.windowLit === true;
+  const glass = lit
+    ? shadeHex(skin.window ?? PAL.litWindow, -0.3)
+    : shadeHex(PAL.riv2, -0.05);
+  const frame = shadeHex(skin.roofShade, -0.3);
+  // Side wall of the monitor, facing the camera, filled with its lights.
+  poly(ctx, [r0, r1, m1, m0], glass);
+  const bars = Math.max(3, Math.round(Math.hypot(r1.x - r0.x, r1.y - r0.y) / 6));
+  for (let i = 1; i < bars; i++) {
+    const t = i / bars;
+    lineHard(ctx, lerp(r0, r1, t), lerp(m0, m1, t), frame);
   }
-  return lastNear;
+  lineHard(ctx, r0, r1, frame);
+  // Cap over the monitor, oversailing a pixel each side so it reads as a lid.
+  const cap0 = { x: m0.x, y: m0.y - 2 };
+  const cap1 = { x: m1.x, y: m1.y - 2 };
+  poly(ctx, [m0, m1, cap1, cap0], skin.roofRidge);
+  lineHard(ctx, cap0, cap1, shadeHex(skin.roofRidge, 0.15));
+
+  if (stacks) stacks.push(lerp(r0, r1, 0.3), lerp(r0, r1, 0.72));
+  ridgeLine(ctx, cap0, cap1, skin.roofRidge, spec);
+  return alongX ? [W, S, r1, r0] : [W, S, r1, r0];
 }
 
 function ridgeLine(

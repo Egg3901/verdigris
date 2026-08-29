@@ -128,10 +128,13 @@ export function drawMooringMast(
 function drawOneStack(
   ctx: CanvasRenderingContext2D, base: Pt, H: number, bw: number, brick: string,
 ): void {
-  const lit = shadeHex(brick, 0.06);
-  const shade = shadeHex(brick, -0.24);
-  const mortar = shadeHex(brick, -0.32);
-  const band = shadeHex(brick, 0.14);
+  // A chimney four pixels wide in near-black is a scratch on the sky. It needs
+  // width, and it needs a genuinely lit face, or the batter and the banding do
+  // no work at all.
+  const lit = shadeHex(brick, 0.22);
+  const shade = shadeHex(brick, -0.14);
+  const mortar = shadeHex(brick, -0.26);
+  const band = shadeHex(brick, 0.3);
   const topY = base.y - H;
   // An industrial chimney batters as it rises: wider at the plinth, drawing
   // in toward the crown. The straight-sided slab was the whole problem.
@@ -187,8 +190,8 @@ export function drawStack(
   // One bold shaft, and a shorter companion only on the big works. Three
   // overlapping stacks at four storeys made a picket of stripes against the
   // roof plane behind them; a chimney's job is a clean black silhouette.
-  if (big) drawOneStack(ctx, lerp(ground.N, ground.E, 0.3), Math.round(H * 0.72), 4, shadeHex(brick, -0.06));
-  drawOneStack(ctx, lerp(ground.W, ground.S, 0.18), H, 7, brick);
+  if (big) drawOneStack(ctx, lerp(ground.N, ground.E, 0.3), Math.round(H * 0.72), 5, shadeHex(brick, -0.06));
+  drawOneStack(ctx, lerp(ground.W, ground.S, 0.18), H, 9, brick);
   void eave;
 }
 

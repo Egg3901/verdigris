@@ -224,8 +224,15 @@ export function drawSign(
 export function drawWindowGrid(
   ctx: CanvasRenderingContext2D, f: Face, wallH: number, rows: number, skin: DetailSkin,
   skipGround: boolean, hash: number, lights?: WindowLight[], balconyIron?: string,
+  industrial = false,
 ): void {
-  const cols = Math.max(1, Math.round(f.span / 13));
+  // A mill is mostly window. The machines needed daylight, so the elevation is
+  // a grid of tall lights between the piers with barely a wall left between
+  // them; ours had a handful of small holes in a dark slab, which is why it
+  // read as a warehouse with the lamps off.
+  const cols = industrial
+    ? Math.max(2, Math.round(f.span / 7))
+    : Math.max(1, Math.round(f.span / 13));
   const bottom = skipGround ? wallH - 15 : wallH - 3;
   const usable = bottom - 4;
   if (usable < 6 || rows < 1) return;
@@ -246,7 +253,9 @@ export function drawWindowGrid(
     lowestRow = h;
     for (let c = 0; c < cols; c++) {
       const t = (c + 0.5) / cols;
-      const halfW = Math.min(0.12, 3 / Math.max(1, f.span));
+      const halfW = industrial
+        ? Math.min(0.1, 2.2 / Math.max(1, f.span))
+        : Math.min(0.12, 3 / Math.max(1, f.span));
       const paneHash = (hash + r * 71 + c * 131) >>> 0;
       // After dark, one pane in nine is baked LIT with somebody standing at the
       // glass: a head and shoulders against the lamp behind them. These panes
@@ -257,6 +266,11 @@ export function drawWindowGrid(
       // The meeting rail: the one horizontal bar that divides upper and lower
       // sash. A single line, but it is the mark that says "sash window".
       lineHard(ctx, f.at(t - halfW, h + 2), f.at(t + halfW, h + 2), frame);
+      if (industrial) {
+        // Cast-iron glazing bars: a mill light is gridded, not sashed.
+        lineHard(ctx, f.at(t - halfW, h + 4), f.at(t + halfW, h + 4), frame);
+        lineHard(ctx, f.at(t, h), f.at(t, h + 6), frame);
+      }
       if (occupied) {
         const drift = (((paneHash >>> 4) % 3) - 1) * 0.02;
         const p = f.at(t + drift, h);
@@ -296,7 +310,9 @@ export function drawWindowGrid(
     const h = lowestRow;
     for (let c = 0; c < cols; c++) {
       const t = (c + 0.5) / cols;
-      const halfW = Math.min(0.12, 3 / Math.max(1, f.span));
+      const halfW = industrial
+        ? Math.min(0.1, 2.2 / Math.max(1, f.span))
+        : Math.min(0.12, 3 / Math.max(1, f.span));
       for (const u of [-1, 0, 1]) {
         const p = f.at(t + u * halfW, h + 2);
         ctx.fillStyle = balconyIron;
@@ -566,10 +582,19 @@ export function drawAshlarFace(
 ): void {
   const course = 4;
   const blocks = Math.max(2, Math.round(f.span / 7));
-  for (let h = 2; h < wallH - 1; h += course) {
+  // A dark joint AND a bright one on every course turned dressed stone into a
+  // checkerboard: at this size the eye reads the noise and never the wall. The
+  // bed joint is the only line that earns its place on every course; the
+  // highlight and the vertical joints come every other one, so the masonry
+  // reads as courses of stone rather than as chainmail.
+  let row = 0;
+  for (let h = 2; h < wallH - 1; h += course, row++) {
     lineHard(ctx, f.at(0.02, h), f.at(0.98, h), mortar);
-    if (h > 2) lineHard(ctx, f.at(0.02, h + 1), f.at(0.98, h + 1), hilite);
-    const stagger = ((h / course) & 1) === 0 ? 0 : 0.5;
+    if (h > 2 && (row & 1) === 0) {
+      lineHard(ctx, f.at(0.02, h + 1), f.at(0.98, h + 1), hilite);
+    }
+    if ((row & 1) === 1) continue;
+    const stagger = (row & 2) === 0 ? 0 : 0.5;
     for (let i = 1; i < blocks; i++) {
       const t = (i + stagger) / blocks;
       if (t <= 0.04 || t >= 0.96) continue;
@@ -1144,5 +1169,63 @@ export function drawRoofSnow(
     ditherPolyHard(ctx, melt, roofShade, 5);
     // Wet tile at the edge of the melt, where the snow is going.
     ditherPolyHard(ctx, [at(u0, foot + 0.06), at(u1, foot + 0.06), at(u1, foot + 0.2), at(u0, foot + 0.2)], shadow, 4);
+  }
+}
+
+
+/**
+ * Pilasters: the vertical order on a wall.
+ *
+ * A civic front or a mill flank is not a flat plane with holes in it. It is
+ * bays divided by piers, and that vertical rhythm is what the eye reads as
+ * architecture before it reads a single window. Without it the biggest
+ * buildings in the district were the flattest things in the frame.
+ *
+ * Two pixels wide: a lit edge and its own shadow. That is the whole trick at
+ * this scale, and it is why the pier reads as standing proud of the wall
+ * rather than being painted on it.
+ */
+export function drawPilasters(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number,
+  lit: string, shade: string, bays: number,
+  opts: { capital?: string; base?: string; top?: number } = {},
+): void {
+  if (f.span < 10 || bays < 2) return;
+  const step = 1 / f.span;
+  const top = opts.top ?? 1;
+  for (let i = 0; i <= bays; i++) {
+    // The end piers sit just inside the corner so they do not fight the quoins.
+    const t = i === 0 ? 0.03 : i === bays ? 0.97 : i / bays;
+    lineHard(ctx, f.at(t, top), f.at(t, wallH - 1), lit);
+    lineHard(ctx, f.at(t + step, top), f.at(t + step, wallH - 1), shade);
+    if (opts.capital) {
+      // Capital and plinth: a wider block top and bottom, which is what turns
+      // a stripe into a column.
+      for (let k = 0; k < 2; k++) {
+        lineHard(ctx, f.at(t - step, top + k), f.at(t + step * 2, top + k), opts.capital);
+      }
+    }
+    if (opts.base) {
+      for (let k = 0; k < 2; k++) {
+        lineHard(ctx, f.at(t - step, wallH - 2 - k), f.at(t + step * 2, wallH - 2 - k), opts.base);
+      }
+    }
+  }
+}
+
+/**
+ * A corbel table: the stepped brick band a mill carries under its eaves. Cheap,
+ * and it stops a works elevation ending in a straight line of nothing.
+ */
+export function drawCorbelTable(
+  ctx: CanvasRenderingContext2D, f: Face, brick: string, shadow: string,
+): void {
+  if (f.span < 10) return;
+  const teeth = Math.max(4, Math.round(f.span / 4));
+  lineHard(ctx, f.at(0.02, 2), f.at(0.98, 2), brick);
+  const step = 1 / f.span;
+  for (let i = 0; i < teeth; i++) {
+    const t = 0.04 + (i / teeth) * 0.92;
+    lineHard(ctx, f.at(t, 3), f.at(t + step, 3), shadow);
   }
 }

@@ -367,7 +367,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // sweeps: its colour comes from its own flue, not the local grime, or a
     // mill on a clean street grows pale grey pipes instead of chimneys.
     chimney: fam.finial === 'stack'
-      ? gradeHex(shadeHex(PAL.soot2, -0.45), variant)
+      ? gradeHex(shadeHex(PAL.brick1, -0.15), variant)
       : gradeHex(shadeHex(soot > 0.18 ? PAL.soot2 : PAL.brick1, -soot * 0.5), variant),
     // Lit windows at dusk and after. A gaslight-era city with no lit window in it
     // was the single most conspicuous absence in the build: variantFor and the
