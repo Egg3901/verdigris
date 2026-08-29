@@ -22,7 +22,7 @@ import {
   drawCourses, drawDormer, drawBunting, drawQuoins, drawStringCourse,
   drawPartyPipe, drawAreaRailing,
   drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
-  drawPilasters, drawCorbelTable,
+  drawPilasters, drawCorbelTable, quadAt,
   drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
   drawVerdigrisStreaks, drawWallPosters,
@@ -983,11 +983,37 @@ function drawRoof(
   const S = { x: eave.S.x, y: eave.S.y + over / 2 };
 
   if (spec.shape === 'flat') {
+    // A flat roof is a lead deck behind a parapet, not a slab of colour. It
+    // gets the rolls the lead is laid in, a coping along the parapet, and a
+    // rooflight or two, because these are the works and depot roofs the player
+    // looks straight down onto.
     poly(ctx, [N, E, S, W], skin.roofShade);
-    poly(ctx, [
-      { x: N.x, y: N.y - 3 }, { x: E.x, y: E.y - 3 },
-      { x: S.x, y: S.y - 3 }, { x: W.x, y: W.y - 3 },
-    ], skin.roofLit);
+    const dN = { x: N.x, y: N.y - 3 };
+    const dE = { x: E.x, y: E.y - 3 };
+    const dS = { x: S.x, y: S.y - 3 };
+    const dW = { x: W.x, y: W.y - 3 };
+    poly(ctx, [dN, dE, dS, dW], skin.roofLit);
+    const deck: Pt[] = [dW, dN, dE, dS];
+    const runs = Math.max(2, Math.round(Math.hypot(dE.x - dN.x, dE.y - dN.y) / 8));
+    for (let i = 1; i < runs; i++) {
+      const u = i / runs;
+      lineHard(ctx, quadAt(deck, u, 0.06), quadAt(deck, u, 0.94),
+        shadeHex(skin.roofLit, 0.16));
+      lineHard(ctx, quadAt(deck, u + 0.012, 0.06), quadAt(deck, u + 0.012, 0.94),
+        shadeHex(skin.roofShade, -0.18));
+    }
+    // Coping along the parapet: the bright line that says there is an edge to
+    // fall off, which a flat plane of one colour never says.
+    lineHard(ctx, dW, dN, shadeHex(skin.roofLit, 0.24));
+    lineHard(ctx, dN, dE, shadeHex(skin.roofLit, 0.12));
+    // A rooflight, hashed so not every deck has one in the same place.
+    if (((spec.salt ?? 0) & 3) !== 0) {
+      const g = quadAt(deck, 0.34 + (((spec.salt ?? 0) >> 3) % 30) / 100, 0.42);
+      ctx.fillStyle = spec.skin.windowLit ? (skin.window ?? PAL.litWindow) : shadeHex(PAL.riv2, -0.05);
+      ctx.fillRect(Math.round(g.x) - 3, Math.round(g.y) - 1, 6, 3);
+      ctx.fillStyle = shadeHex(skin.roofShade, -0.3);
+      ctx.fillRect(Math.round(g.x) - 4, Math.round(g.y) - 2, 8, 1);
+    }
     return null;
   }
 

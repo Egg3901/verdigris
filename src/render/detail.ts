@@ -449,7 +449,7 @@ export type WallMaterial = 'stucco' | 'brick' | 'ashlar' | 'timber' | 'wood' | '
 export type RoofKind = 'slate' | 'clay' | 'copper' | 'thatch';
 
 /** Point inside a slope quad: u runs along the eave, v from eave to ridge. */
-function quadAt(quad: readonly Pt[], u: number, v: number): Pt {
+export function quadAt(quad: readonly Pt[], u: number, v: number): Pt {
   const a = { x: quad[0].x + (quad[1].x - quad[0].x) * u, y: quad[0].y + (quad[1].y - quad[0].y) * u };
   const b = { x: quad[3].x + (quad[2].x - quad[3].x) * u, y: quad[3].y + (quad[2].y - quad[3].y) * u };
   return { x: a.x + (b.x - a.x) * v, y: a.y + (b.y - a.y) * v };
