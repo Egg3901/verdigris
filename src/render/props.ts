@@ -688,6 +688,131 @@ function bakeCrates(salt: number, variant: Variant): HTMLCanvasElement {
   return c;
 }
 
+/** A few sacks of grain or sand, tied at the neck. */
+function bakeSacks(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 12;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const cloth = [PAL.cream1, PAL.thatch1, PAL.parch1][salt % 3];
+  const lay: [number, number, number][] = [[4, 8, 3.4], [11, 9, 3.0], [7, 5, 3.2]];
+  for (const [x, y, r] of lay) {
+    fillEllipseHard(ctx, x, y, r, r * 0.85, g(shadeHex(cloth, -0.22)));
+    fillEllipseHard(ctx, x - 1, y - 1, r - 1, r * 0.65, g(cloth));
+    // The tie at the neck, which is what stops a sack reading as a stone.
+    ctx.fillStyle = g(shadeHex(cloth, -0.4));
+    ctx.fillRect(Math.round(x) - 1, Math.round(y - r), 2, 1);
+  }
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** Barrels laid on their sides and stacked three, two, one. Hoops run vertically
+ *  when a barrel is down, which is the detail that tells the eye it is lying. */
+function bakeBarrelPyramid(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 28; c.height = 21;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const stave = g(PAL.wood1);
+  const staveLit = g(PAL.wood2);
+  const hoop = g(PAL.soot2);
+  const end = g(PAL.wood0);
+  // Eight wide, six tall, with a gap between neighbours. Barrels drawn flush
+  // against each other merged into one brown block and the hoops then read as
+  // palings, so the gap is doing as much work as the shading.
+  const barrel = (x: number, y: number) => {
+    ctx.fillStyle = end;
+    ctx.fillRect(x + 1, y + 5, 6, 1);
+    ctx.fillStyle = stave;
+    ctx.fillRect(x + 1, y, 6, 5);
+    ctx.fillRect(x, y + 1, 8, 3);
+    ctx.fillStyle = staveLit;
+    ctx.fillRect(x + 1, y, 6, 1);
+    ctx.fillRect(x + 1, y + 1, 6, 1);
+    // Hoops stop short of the ends, so the barrel keeps a bulge.
+    ctx.fillStyle = hoop;
+    ctx.fillRect(x + 2, y + 1, 1, 4);
+    ctx.fillRect(x + 5, y + 1, 1, 4);
+    // The head, seen end on at the near end of the barrel.
+    ctx.fillStyle = end;
+    ctx.fillRect(x, y + 1, 1, 3);
+    ctx.fillStyle = staveLit;
+    ctx.fillRect(x + 7, y + 2, 1, 1);
+  };
+  for (const [x, y] of [[0, 14], [9, 14], [18, 14], [4, 7], [13, 7], [9, 0]]) barrel(x, y);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/**
+ * A working cargo group: crates, sacks and barrels landed together, which is how
+ * a quay actually looks. Hashed so a stack is never twice the same, and small
+ * enough that a run of them still leaves the quay walkable.
+ */
+function bakeCargoGroup(salt: number, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 24; c.height = 18;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const wood = [PAL.wood2, PAL.thatch1][salt % 2];
+  const cloth = [PAL.cream1, PAL.parch1][(salt >>> 3) % 2];
+
+  const crate = (x: number, y: number, w: number, h: number) => {
+    ctx.fillStyle = g(wood);
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = g(shadeHex(wood, -0.25));
+    ctx.fillRect(x, y, w, 1);
+    ctx.fillRect(x + ((w >> 1) - 1), y, 1, h);
+    ctx.fillStyle = g(shadeHex(wood, -0.4));
+    ctx.fillRect(x, y + h - 1, w, 1);
+  };
+  const upright = (x: number, y: number) => {
+    ctx.fillStyle = g(PAL.wood1);
+    ctx.fillRect(x, y, 5, 8);
+    ctx.fillStyle = g(PAL.wood2);
+    ctx.fillRect(x, y, 2, 8);
+    ctx.fillStyle = g(PAL.soot2);
+    ctx.fillRect(x, y + 1, 5, 1);
+    ctx.fillRect(x, y + 6, 5, 1);
+  };
+  const sack = (x: number, y: number) => {
+    fillEllipseHard(ctx, x, y, 3.2, 2.8, g(shadeHex(cloth, -0.22)));
+    fillEllipseHard(ctx, x - 1, y - 1, 2.4, 2.0, g(cloth));
+    ctx.fillStyle = g(shadeHex(cloth, -0.4));
+    ctx.fillRect(x - 1, y - 3, 2, 1);
+  };
+
+  const shape = salt % 4;
+  if (shape === 0) {
+    crate(1, 8, 9, 9);
+    crate(2, 2, 7, 6);
+    upright(11, 9);
+    sack(19, 14);
+  } else if (shape === 1) {
+    crate(3, 10, 10, 7);
+    upright(14, 9);
+    upright(19, 10);
+    sack(6, 7);
+    sack(11, 5);
+  } else if (shape === 2) {
+    upright(2, 9);
+    upright(7, 8);
+    crate(13, 7, 9, 10);
+    sack(6, 4);
+  } else {
+    crate(1, 11, 8, 6);
+    crate(10, 9, 8, 8);
+    crate(11, 3, 6, 6);
+    sack(21, 14);
+  }
+  // The shipping mark. One dark glyph is all a stencil is at this size.
+  ctx.fillStyle = g(PAL.soot1);
+  ctx.fillRect(4 + (salt % 3), 12, 2, 2);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
 /** A capstan: iron drum, timber bars through the head, for warping a barge in
  *  along the quay by hand. */
 function bakeCapstan(variant: Variant): HTMLCanvasElement {
@@ -803,6 +928,9 @@ export function buildStreetProps(
     bakeCrane(variant, true), bakeCrane(variant, false),
     bakeCraneLeft(variant, true), bakeCraneLeft(variant, false),
   ];
+  const cargo = [0, 1, 2, 3, 4, 5].map((s) => bakeCargoGroup(s, variant));
+  const sacks = [0, 1, 2].map((s) => bakeSacks(s, variant));
+  const barrelStack = bakeBarrelPyramid(variant);
   const capstan = bakeCapstan(variant);
   const mooringRing = bakeMooringRing(variant);
   const ropeSpanIron = bakeRopeSpan(variant, false);
@@ -905,6 +1033,19 @@ export function buildStreetProps(
         }
         if (!nearBridge && anyWater && t === Tile.Wharf && q >= 470 && q < 530) {
           pushQuay(capstan, 9, 15, east ? 5 : west ? -5 : 0, south || east ? 2 : -2);
+          continue;
+        }
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 530 && q < 690) {
+          pushQuay(cargo[mix(seed, 94, tx, ty) % 6], 12, 17,
+            east ? 5 : west ? -5 : 0, south || east ? 2 : -2);
+          continue;
+        }
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 690 && q < 750) {
+          pushQuay(barrelStack, 14, 20, east ? 4 : west ? -4 : 0, south || east ? 2 : -2);
+          continue;
+        }
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 750 && q < 810) {
+          pushQuay(sacks[mix(seed, 95, tx, ty) % 3], 8, 11, 0, 1);
           continue;
         }
         const wharf = t === Tile.Wharf;
