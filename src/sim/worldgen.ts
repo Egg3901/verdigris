@@ -118,11 +118,24 @@ export function generateWorld(seedStr: string): World {
   }
 
   // Plots nobody built on are back gardens and waste ground, not holes.
+  //
+  // Where they sit decides what they read as. A gap behind a built frontage is a
+  // back yard and stays one. A block that took no buildings at all is a different
+  // thing: streets running through flat grass is the single clearest tell that a
+  // generator ran out of budget, so those blocks are given over to the ground the
+  // ward would actually leave there. Green at the polite edge of town, bare
+  // hardstanding beside the works and the quay.
   const built = new Set(placements.map((p) => p.plot.id));
+  const blockBuilt = new Int16Array(blocks.length);
+  for (const p of placements) blockBuilt[p.plot.blockId]++;
   for (const p of plots) {
     if (built.has(p.id)) continue;
+    const empty = blockBuilt[p.blockId] === 0;
+    const wardKind = wards[p.wardId]?.kind;
+    const hard = wardKind === 'works' || wardKind === 'quayside' || wardKind === 'courts';
+    const fill = empty ? (hard ? Tile.Plot : Tile.Park) : Tile.Yard;
     for (const k of p.cells) {
-      if (district.tile[k] === Tile.Plot || district.tile[k] === Tile.Court) district.tile[k] = Tile.Yard;
+      if (district.tile[k] === Tile.Plot || district.tile[k] === Tile.Court) district.tile[k] = fill;
     }
   }
 
