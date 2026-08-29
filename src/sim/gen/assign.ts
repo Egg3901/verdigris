@@ -239,12 +239,27 @@ export function assignBuildings(
   // built. The block jitter keeps the frontier ragged rather than a circle.
   const areaScale = (d.width * d.height) / (48 * 48);
   const target = range(rng, Math.round(190 * areaScale), Math.round(199 * areaScale));
-  const rank = new Float64Array(plots.length);
+  //
+  // The rank is per BLOCK, not per plot, so a block is filled out before the next
+  // one is started. Ranking plot by plot spends the last of the budget as a thin
+  // scatter over a dozen half-empty blocks, and a block with two houses in it
+  // still reads as a field. All or nothing gives a solid core and a clean edge.
+  const blockRank = new Map<number, number>();
+  const blockSum = new Map<number, number>();
+  const blockCount = new Map<number, number>();
   for (const p of plots) {
     const k = cellKey(d, p.ox, p.oy);
-    const blockJitter = (mix(seed, Stream.GenAssign, 41, p.blockId) % 100) / 12;
-    const plotJitter = (mix(seed, Stream.GenAssign, 43, p.id) % 100) / 60;
-    rank[p.id] = ctx.distSquare[k] + blockJitter + plotJitter;
+    blockSum.set(p.blockId, (blockSum.get(p.blockId) ?? 0) + ctx.distSquare[k]);
+    blockCount.set(p.blockId, (blockCount.get(p.blockId) ?? 0) + 1);
+  }
+  for (const [id, sum] of blockSum) {
+    const jitter = (mix(seed, Stream.GenAssign, 41, id) % 100) / 14;
+    blockRank.set(id, sum / (blockCount.get(id) as number) + jitter);
+  }
+  const rank = new Float64Array(plots.length);
+  for (const p of plots) {
+    const plotJitter = (mix(seed, Stream.GenAssign, 43, p.id) % 100) / 400;
+    rank[p.id] = (blockRank.get(p.blockId) as number) + plotJitter;
   }
   const byRank = plots.slice().sort((a, b) => rank[a.id] - rank[b.id] || a.id - b.id);
   for (const p of byRank) {

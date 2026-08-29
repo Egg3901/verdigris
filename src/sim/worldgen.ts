@@ -127,10 +127,14 @@ export function generateWorld(seedStr: string): World {
   // hardstanding beside the works and the quay.
   const built = new Set(placements.map((p) => p.plot.id));
   const blockBuilt = new Int16Array(blocks.length);
+  const blockPlots = new Int16Array(blocks.length);
+  for (const p of plots) blockPlots[p.blockId]++;
   for (const p of placements) blockBuilt[p.plot.blockId]++;
   for (const p of plots) {
     if (built.has(p.id)) continue;
-    const empty = blockBuilt[p.blockId] === 0;
+    // A gasworks standing alone in a block of eleven plots does not make the
+    // other ten a back garden. The threshold is a ratio, not a zero.
+    const empty = blockBuilt[p.blockId] * 5 < blockPlots[p.blockId] * 2;
     const wardKind = wards[p.wardId]?.kind;
     const hard = wardKind === 'works' || wardKind === 'quayside' || wardKind === 'courts';
     const fill = empty ? (hard ? Tile.Plot : Tile.Park) : Tile.Yard;
