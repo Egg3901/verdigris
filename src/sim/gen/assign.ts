@@ -228,9 +228,26 @@ export function assignBuildings(
   // supply swings by 15% across seeds and the title plate promises a roof count.
   // Plots left over are not failures: they become the back gardens, drying yards
   // and waste ground that stop a district reading as wall-to-wall frontage.
+  //
+  // ORDER MATTERS MORE THAN THE TARGET. This loop used to walk plots in id order,
+  // and plot ids come from the block flood, which is a top-to-bottom scan. So the
+  // budget was always spent on the northern half and the last eight or nine blocks
+  // got nothing at all: whole city blocks of bare grass ringed by paving, in every
+  // seed, always along the same edge. That is the sparse reading the district had.
+  // Building outward from the square instead means the town is packed at the core
+  // and thins at the rim, which is both denser and a shape somebody could have
+  // built. The block jitter keeps the frontier ragged rather than a circle.
   const areaScale = (d.width * d.height) / (48 * 48);
-  const target = range(rng, Math.round(168 * areaScale), Math.round(196 * areaScale));
+  const target = range(rng, Math.round(190 * areaScale), Math.round(199 * areaScale));
+  const rank = new Float64Array(plots.length);
   for (const p of plots) {
+    const k = cellKey(d, p.ox, p.oy);
+    const blockJitter = (mix(seed, Stream.GenAssign, 41, p.blockId) % 100) / 12;
+    const plotJitter = (mix(seed, Stream.GenAssign, 43, p.id) % 100) / 60;
+    rank[p.id] = ctx.distSquare[k] + blockJitter + plotJitter;
+  }
+  const byRank = plots.slice().sort((a, b) => rank[a.id] - rank[b.id] || a.id - b.id);
+  for (const p of byRank) {
     if (out.length >= target) break;
     if (used[p.id] || !buildable[p.id]) continue;
     const kinds: BuildingKind[] = [];
