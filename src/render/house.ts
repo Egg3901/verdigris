@@ -1034,6 +1034,16 @@ function drawRoof(
   const r0 = up(alongX ? mid(W, N) : mid(N, E), roofH);
   const r1 = up(alongX ? mid(S, E) : mid(W, S), roofH);
 
+  // The roof texture used to be laid on the ONE quad drawRoof hands back, so
+  // every hip and gable carried its seams or slates on the near slope and left
+  // the far one a bare field of colour. Any face big enough gets it now.
+  const texture = (quad: Pt[], lit: boolean): void => {
+    if (!spec.roofKind || spec.scorched || spec.damage === 'burning') return;
+    drawRoofTexture(ctx, quad, spec.roofKind,
+      lit ? skin.roofLit : skin.roofShade,
+      lit ? skin.roofShade : shadeHex(skin.roofShade, -0.1), spec.salt ?? 0);
+  };
+
   if (spec.shape === 'hip') {
     // Hip: the ridge is pulled in from both ends, so all four faces slope.
     const pull = 0.28;
@@ -1041,11 +1051,13 @@ function drawRoof(
     const h1 = { x: r1.x + (r0.x - r1.x) * pull, y: r1.y + (r0.y - r1.y) * pull };
     if (alongX) {
       poly(ctx, [N, E, h1, h0], skin.roofShade, 3);
+      texture([N, E, h1, h0], false);
       poly(ctx, [W, N, h0], skin.roofLit);
       poly(ctx, [W, S, h1, h0], skin.roofLit, 4);
       poly(ctx, [S, E, h1], shadeHex(skin.roofShade, -0.1));
     } else {
       poly(ctx, [E, S, h1, h0], skin.roofShade, 3);
+      texture([E, S, h1, h0], false);
       poly(ctx, [N, E, h0], shadeHex(skin.roofShade, 0.06));
       poly(ctx, [W, S, h1, h0], skin.roofLit, 4);
       poly(ctx, [W, N, h0], skin.roofLit);
@@ -1063,6 +1075,7 @@ function drawRoof(
     // drawing it later lets its wall colour cut through the roof silhouette.
     poly(ctx, [W, N, r0], skin.gableLit);
     poly(ctx, [N, E, r1, r0], skin.roofShade, 3);
+    texture([N, E, r1, r0], false);
     poly(ctx, [W, S, r1, r0], skin.roofLit, 4);
     poly(ctx, [S, E, r1], skin.gableShade);
     // Bargeboards. A gable end is WALL, and where it meets the roof there has to

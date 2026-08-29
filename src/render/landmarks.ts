@@ -195,7 +195,14 @@ export function drawStack(
   void eave;
 }
 
-/** Chapel spire: a square drum on the west ridge, then a thin pyramid. */
+/**
+ * A chapel tower and spire.
+ *
+ * This was an eight-pixel drum with a thin pyramid on it, which at distance
+ * read as a shard of glass leaning against a roof. A church is a TOWER first:
+ * something square and solid that rises well clear of the ridge, with the
+ * belfry openings you can see the bells through, and only then a spire.
+ */
 export function drawSpire(
   ctx: CanvasRenderingContext2D, eave: Corners, spec: FinialSpec, alongX: boolean,
 ): void {
@@ -207,39 +214,70 @@ export function drawSpire(
   const S = { x: eave.S.x, y: eave.S.y + over / 2 };
   const r0 = up(alongX ? mid(W, N) : mid(N, E), roofH);
   const r1 = up(alongX ? mid(S, E) : mid(W, S), roofH);
-  const base = lerp(r0, r1, 0.2);
-  const drum = 8;
-  const hs = 5;
-  // Drum in stone, so the slate spire reads against it.
-  poly(ctx, [
-    { x: base.x - hs, y: base.y - drum }, { x: base.x, y: base.y - drum + 2 },
-    { x: base.x, y: base.y + 2 }, { x: base.x - hs, y: base.y },
-  ], skin.gableLit ?? skin.wallLit);
-  poly(ctx, [
-    { x: base.x, y: base.y - drum + 2 }, { x: base.x + hs, y: base.y - drum },
-    { x: base.x + hs, y: base.y }, { x: base.x, y: base.y + 2 },
-  ], skin.gableShade ?? skin.wallShade);
-  ctx.fillStyle = skin.window ?? PAL.darkWindow;
-  ctx.fillRect(Math.round(base.x) - 2, Math.round(base.y) - drum + 3, 2, 5);
+  const base = lerp(r0, r1, 0.22);
+  const stone = skin.gableLit ?? skin.wallLit;
+  const stoneDark = skin.gableShade ?? skin.wallShade;
+  const hs = 6;
+  const tower = Math.max(14, Math.round(finialH * 0.5));
+  const top = { x: base.x, y: base.y - tower };
 
-  const apex = up(base, finialH);
-  const s = 6;
-  const dW = { x: base.x - s, y: base.y - drum + 1 };
-  const dE = { x: base.x + s, y: base.y - drum + 1 };
-  const dN = { x: base.x, y: base.y - drum - 2 };
-  const dS = { x: base.x, y: base.y - drum + 3 };
+  // Tower: two faces and a capping band, tall enough to clear the roof it
+  // stands on rather than perching on the ridge.
+  poly(ctx, [
+    { x: base.x - hs, y: base.y - tower }, { x: base.x, y: base.y - tower + 3 },
+    { x: base.x, y: base.y + 3 }, { x: base.x - hs, y: base.y },
+  ], stone);
+  poly(ctx, [
+    { x: base.x, y: base.y - tower + 3 }, { x: base.x + hs, y: base.y - tower },
+    { x: base.x + hs, y: base.y }, { x: base.x, y: base.y + 3 },
+  ], stoneDark);
+  // Quoined corner down the leading edge.
+  for (let y = 2; y < tower - 2; y += 4) {
+    ctx.fillStyle = shadeHex(stone, 0.16);
+    ctx.fillRect(Math.round(base.x) - 1, Math.round(base.y) - y + 1, 2, 2);
+  }
+  // Belfry: a tall louvred opening on each visible face, dark with slats.
+  const dark = shadeHex(skin.window ?? PAL.darkWindow, -0.2);
+  for (const side of [-1, 1]) {
+    const bx = Math.round(base.x + side * 3) - (side < 0 ? 1 : 0);
+    const by = Math.round(base.y) - tower + 5;
+    ctx.fillStyle = dark;
+    ctx.fillRect(bx, by, 2, 7);
+    ctx.fillStyle = shadeHex(side < 0 ? stone : stoneDark, 0.1);
+    for (let k = 1; k < 7; k += 2) ctx.fillRect(bx, by + k, 2, 1);
+  }
+  // A clock on the lit face: every chapel in a proud district has one.
+  ctx.fillStyle = shadeHex(stone, 0.24);
+  ctx.fillRect(Math.round(base.x) - 5, Math.round(base.y) - tower + 15, 4, 4);
+  ctx.fillStyle = shadeHex(skin.trim ?? PAL.gold, -0.1);
+  ctx.fillRect(Math.round(base.x) - 4, Math.round(base.y) - tower + 16, 2, 2);
+  // String course capping the tower, which the spire then springs from.
+  ctx.fillStyle = shadeHex(stone, 0.2);
+  ctx.fillRect(Math.round(base.x) - hs - 1, Math.round(base.y) - tower, hs * 2 + 2, 2);
+
+  // Broach spire: four slate faces to a point, with the arrises picked out so
+  // it reads as a solid cone rather than a flat triangle.
+  const apex = { x: top.x, y: top.y - Math.max(16, finialH) };
+  const s = hs - 1;
+  const dW = { x: top.x - s, y: top.y };
+  const dE = { x: top.x + s, y: top.y };
+  const dN = { x: top.x, y: top.y - 3 };
+  const dS = { x: top.x, y: top.y + 3 };
   poly(ctx, [dN, dE, apex], skin.roofShade);
-  poly(ctx, [dE, dS, apex], shadeHex(skin.roofShade, -0.12));
+  poly(ctx, [dE, dS, apex], shadeHex(skin.roofShade, -0.14));
   poly(ctx, [dS, dW, apex], skin.roofLit);
-  poly(ctx, [dW, dN, apex], skin.roofLit);
+  poly(ctx, [dW, dN, apex], shadeHex(skin.roofLit, 0.08));
   lineHard(ctx, dS, apex, skin.roofRidge);
   lineHard(ctx, apex, dE, skin.roofRidge);
-  ctx.fillStyle = skin.trim ?? PAL.gold;
-  ctx.fillRect(Math.round(apex.x) - 1, Math.round(apex.y) - 4, 3, 2);
-  ctx.fillRect(Math.round(apex.x), Math.round(apex.y) - 7, 1, 4);
+  lineHard(ctx, dW, apex, shadeHex(skin.roofRidge, 0.12));
+  // Weathercock: a gold cross and a vane, the last thing lit at dusk.
+  const gold = skin.trim ?? PAL.gold;
+  ctx.fillStyle = gold;
+  ctx.fillRect(Math.round(apex.x), Math.round(apex.y) - 6, 1, 6);
+  ctx.fillRect(Math.round(apex.x) - 1, Math.round(apex.y) - 5, 3, 1);
+  ctx.fillRect(Math.round(apex.x) + 1, Math.round(apex.y) - 7, 2, 1);
 }
 
-/** Civic dome on a short drum, sitting on the roof centre. */
 export function drawDome(
   ctx: CanvasRenderingContext2D, eave: Corners, spec: FinialSpec,
 ): void {

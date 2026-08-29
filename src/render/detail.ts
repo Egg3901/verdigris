@@ -471,12 +471,18 @@ export function drawRoofTexture(
   const h = Math.hypot(quad[3].x - quad[0].x, quad[3].y - quad[0].y);
   if (w < 8 || h < 5) return;
   if (kind === 'copper') {
-    // Standing seams, eave to ridge. Long runs, few of them, a hair lighter.
-    const seams = Math.max(2, Math.round(w / 9));
-    const hi = shadeHex(lit, 0.1);
+    // Standing seams, eave to ridge. A seam is a folded RIDGE of metal, so it
+    // has a lit edge and a shadow beside it; a single line a tenth lighter
+    // than the sheet quantises straight back into the sheet and left the
+    // biggest copper roofs in the district as flat green fields.
+    const seams = Math.max(3, Math.round(w / 7));
+    const hi = shadeHex(lit, 0.28);
+    const lo = shadeHex(shade, -0.22);
+    const step = 1 / Math.max(1, w);
     for (let i = 1; i < seams; i++) {
-      const u = i / seams + (((salt >>> i) & 1) === 0 ? 0.02 : -0.02);
-      lineHard(ctx, quadAt(quad, u, 0.06), quadAt(quad, u, 0.94), hi);
+      const u = i / seams + (((salt >>> i) & 1) === 0 ? 0.015 : -0.015);
+      lineHard(ctx, quadAt(quad, u, 0.05), quadAt(quad, u, 0.95), hi);
+      lineHard(ctx, quadAt(quad, u + step, 0.05), quadAt(quad, u + step, 0.95), lo);
     }
     return;
   }
