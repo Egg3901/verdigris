@@ -688,6 +688,85 @@ function bakeCrates(salt: number, variant: Variant): HTMLCanvasElement {
   return c;
 }
 
+/** A capstan: iron drum, timber bars through the head, for warping a barge in
+ *  along the quay by hand. */
+function bakeCapstan(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 18; c.height = 16;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  fillPolyHard(ctx, [{ x: 9, y: 10 }, { x: 16, y: 13 }, { x: 9, y: 16 }, { x: 2, y: 13 }], g(PAL.stone1));
+  ctx.fillStyle = g(PAL.soot2);
+  ctx.fillRect(6, 5, 7, 8);
+  ctx.fillStyle = g(PAL.soot3);
+  ctx.fillRect(6, 5, 2, 8);
+  ctx.fillStyle = g(PAL.soot1);
+  ctx.fillRect(6, 8, 7, 1);
+  fillEllipseHard(ctx, 9, 5, 4, 2, g(PAL.soot3));
+  fillEllipseHard(ctx, 9, 4, 3, 1.4, g(PAL.soot2));
+  // Two capstan bars, shipped and crossed, along the two iso axes.
+  lineHard(ctx, { x: 1, y: 6 }, { x: 17, y: 2 }, g(PAL.wood2));
+  lineHard(ctx, { x: 1, y: 2 }, { x: 17, y: 6 }, g(PAL.wood1));
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** An iron mooring ring on a plate, set flush in the quay stones. */
+function bakeMooringRing(variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 10; c.height = 7;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  fillPolyHard(ctx, [{ x: 5, y: 1 }, { x: 9, y: 3 }, { x: 5, y: 5 }, { x: 1, y: 3 }], g(PAL.stone1));
+  fillPolyHard(ctx, [{ x: 5, y: 2 }, { x: 8, y: 3 }, { x: 5, y: 4 }, { x: 2, y: 3 }], g(PAL.soot2));
+  // The ring: eight pixels around a hole, because an ellipse this small fills in.
+  ctx.fillStyle = g(PAL.brassInk);
+  ctx.fillRect(4, 1, 2, 1);
+  ctx.fillRect(3, 2, 1, 1);
+  ctx.fillRect(6, 2, 1, 1);
+  ctx.fillRect(4, 3, 2, 1);
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+const SPAN_W = 34;
+const SPAN_H = 16;
+
+/**
+ * Two bollards with a rope slung between them, running up-right along the quay
+ * edge. The sag is what reads: a straight line between two posts looks like a
+ * fence, and a fence is not what a mooring rope does.
+ */
+function bakeRopeSpan(variant: Variant, stone: boolean): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = SPAN_W; c.height = SPAN_H;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = (x: string) => gradeHex(x, variant);
+  const post = (x: number, y: number) => {
+    ctx.fillStyle = g(stone ? PAL.stone2 : PAL.soot2);
+    ctx.fillRect(x, y, 3, 7);
+    ctx.fillStyle = g(stone ? PAL.stone3 : PAL.soot3);
+    ctx.fillRect(x, y, 1, 7);
+    ctx.fillStyle = g(stone ? PAL.stone1 : PAL.soot1);
+    ctx.fillRect(x - 1, y - 1, 5, 2);
+  };
+  post(3, 8);
+  post(27, 2);
+  const ax = 4;
+  const ay = 8;
+  const bx = 28;
+  const by = 2;
+  ctx.fillStyle = g(PAL.thatch1);
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    const x = Math.round(ax + (bx - ax) * t);
+    const y = Math.round(ay + (by - ay) * t + 4 * (4 * t * (1 - t)));
+    ctx.fillRect(x, y, 1, 1);
+  }
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
 function bakeBench(variant: Variant): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = 16; c.height = 13;
@@ -724,6 +803,12 @@ export function buildStreetProps(
     bakeCrane(variant, true), bakeCrane(variant, false),
     bakeCraneLeft(variant, true), bakeCraneLeft(variant, false),
   ];
+  const capstan = bakeCapstan(variant);
+  const mooringRing = bakeMooringRing(variant);
+  const ropeSpanIron = bakeRopeSpan(variant, false);
+  const ropeSpanStone = bakeRopeSpan(variant, true);
+  const ropeSpanIronNw = mirrorSprite(ropeSpanIron);
+  const ropeSpanStoneNw = mirrorSprite(ropeSpanStone);
   const barrels = bakeBarrels(variant);
   const coal = bakeCoal(variant);
   const urn = bakeUrn(variant);
@@ -792,6 +877,9 @@ export function buildStreetProps(
             if (district.tile[cellKey(district, nx, ny)] === Tile.Bridge) { nearBridge = true; break; }
           }
         }
+        // The two edges the camera can see over. A craft moored against a north
+        // or west edge would be hidden behind its own quay.
+        const front = east ? 1 : south ? -1 : 0;
         const pushQuay = (
           sprite: HTMLCanvasElement, ax: number, ay: number,
           ox: number, oy: number, dtx = tx, dty = ty,
@@ -813,6 +901,27 @@ export function buildStreetProps(
           const ox = (east || north ? 6 : -6);
           const oy = (east || south ? 3 : -3);
           pushQuay(sprite, right ? CRANE_AX : CRANE_W - 1 - CRANE_AX, CRANE_AY, ox, oy);
+          continue;
+        }
+        if (!nearBridge && anyWater && t === Tile.Wharf && q >= 470 && q < 530) {
+          pushQuay(capstan, 9, 15, east ? 5 : west ? -5 : 0, south || east ? 2 : -2);
+          continue;
+        }
+        const wharf = t === Tile.Wharf;
+        if (front !== 0 && (wharf ? q >= 810 && q < 900 : q >= 60 && q < 110)) {
+          pushQuay(mooringRing, 5, 5, front * 7, 4);
+          continue;
+        }
+        if (front !== 0 && (wharf ? q >= 900 && q < 960 : q < 60)) {
+          const stone = t === Tile.Embankment;
+          const sprite = front === 1
+            ? (stone ? ropeSpanStone : ropeSpanIron)
+            : (stone ? ropeSpanStoneNw : ropeSpanIronNw);
+          pushQuay(sprite, SPAN_W >> 1, SPAN_H - 1, front * 5, 4);
+          continue;
+        }
+        if (t === Tile.Embankment && q >= 110 && q < 140) {
+          pushQuay(bench, 8, 12, 0, 0);
           continue;
         }
       }
