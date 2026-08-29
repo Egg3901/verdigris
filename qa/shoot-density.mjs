@@ -5,6 +5,9 @@ const scenes = [
   { name: 'port-coppergate', seed: 'coppergate' },
   { name: 'garden-district-01', seed: 'district-01' },
   { name: 'crossing-district-00', seed: 'district-00' },
+  { name: 'milltown-district-04', seed: 'district-04' },
+  { name: 'port-district-16', seed: 'district-16' },
+  { name: 'garden-district-10', seed: 'district-10' },
 ];
 const browser = await chromium.launch();
 for (const s of scenes) {
