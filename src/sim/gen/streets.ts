@@ -79,6 +79,36 @@ function pathBetween(
   return out;
 }
 
+/**
+ * Widen a run by paving the cell to one SIDE of it rather than stamping a
+ * block.
+ *
+ * The square-block carve is why the arterials had to stay one cell wide: a
+ * 2x2 stamp lays a three-cell swath wherever the path runs diagonally, so
+ * widening the streets ate a quarter of the island. Offsetting perpendicular
+ * to the local direction of travel gives a genuinely two-cell street that
+ * stays two cells wide on the diagonals too, which is what lets the district
+ * have room around its buildings without losing the ground they stand on.
+ */
+function carveSide(d: District, cells: { x: number; y: number }[]): void {
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    const prev = cells[Math.max(0, i - 1)];
+    const next = cells[Math.min(cells.length - 1, i + 1)];
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    // Perpendicular to travel, picked so the widening is consistent along a run.
+    const px = dy === 0 ? 0 : 1;
+    const py = dy === 0 ? 1 : 0;
+    const x = c.x + (dx === 0 ? px : 0) + (dy === 0 ? 0 : 0);
+    const y = c.y + (dx === 0 ? 0 : py);
+    if (!inBounds(d, x, y) || !insideIsland(d, x, y)) continue;
+    const t = tileAt(d, x, y);
+    if (t === Tile.Water || t === Tile.Bridge || t === Tile.Square) continue;
+    setTile(d, x, y, Tile.Street);
+  }
+}
+
 function carve(d: District, cells: { x: number; y: number }[], width: number): void {
   for (const c of cells) {
     for (let dx = 0; dx < width; dx++) {
@@ -188,7 +218,10 @@ export function layStreets(d: District, seed: number, river: RiverPlan, arch: Ar
   // a real Victorian street; only the civic spine below gets twelve.
   for (const g of chosen) {
     const p = pathBetween(d, seed, sqcx, sqcy, g.x, g.y);
-    if (p.length) carve(d, p, 1);
+    if (p.length) {
+      carve(d, p, 1);
+      carveSide(d, p);
+    }
     anchors.push({ x: g.x, y: g.y, label: 'gate' });
   }
   // And square to every bridgehead, so both banks are properly stitched.

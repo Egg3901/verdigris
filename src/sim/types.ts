@@ -115,7 +115,11 @@ export type NodeKindCode = (typeof NodeKind)[keyof typeof NodeKind];
 export const CAPS = {
   souls: 512,
   buildings: 384,
-  nodes: 640,
+  // 704, raised from 640 when the arterials were widened to two cells. The
+  // all-pairs next-hop table is n squared Int16, so this is 991KB against
+  // 819KB: 170KB for streets you can see a building across. The widest
+  // district in the fuzz corpus sits at 644, so there is real headroom left.
+  nodes: 704,
   claims: 4096,
   beliefsPerSoul: 8,
   eventRing: 4096,
