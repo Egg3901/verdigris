@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { hashString } from '../rng';
 import {
   WEATHER_WATCH_MINUTES, YEAR_DAYS, weatherAt, weatherErrandQuota, weatherExposurePenalty,
-  weatherFabricWear, weatherOutputPermille, seasonColdness, snowCoverAt, forceWeather,
+  weatherFabricWear, weatherOutputPermille, seasonAt, seasonColdness, seasonRevisionAt, snowCoverAt, forceWeather,
 } from '../weather';
 import { MIN_PER_DAY } from '../clock';
 import { riverFillAt, riverLevelAt } from '../hydrology';
@@ -10,6 +10,20 @@ import { newCity, tickCity, warp } from '../city';
 import { breakSegment, serviceAt } from '../networks';
 
 describe('derived weather', () => {
+  it('turns the visible district through four deterministic seasons', () => {
+    const atDay = (day: number) => day * MIN_PER_DAY;
+    expect(seasonAt(atDay(0))).toBe('spring');
+    expect(seasonAt(atDay(5))).toBe('spring');
+    expect(seasonAt(atDay(6))).toBe('summer');
+    expect(seasonAt(atDay(17))).toBe('summer');
+    expect(seasonAt(atDay(18))).toBe('autumn');
+    expect(seasonAt(atDay(29))).toBe('autumn');
+    expect(seasonAt(atDay(30))).toBe('winter');
+    expect(seasonAt(atDay(41))).toBe('winter');
+    expect(seasonAt(atDay(42))).toBe('spring');
+    expect(seasonRevisionAt(atDay(48))).toBe(seasonRevisionAt(0));
+  });
+
   it('is stable throughout a watch and changes revision only at its boundary', () => {
     const seed = hashString('verdigris');
     const a = weatherAt(seed, WEATHER_WATCH_MINUTES + 1);

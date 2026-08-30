@@ -146,6 +146,12 @@ two day pressure system keeps adjacent watches from feeling like dice. Weather
 produces rain, storms, fog, wind, wet streets, umbrellas, exposure, failed drain
 wear and altered wharf output, and it gates fires and floods.
 
+The same clock derives a 48-day visual year. Spring wraps around day zero,
+summer begins on day 6, autumn on day 18 and winter on day 30, placing the
+coldest day at the center of winter. The season is render input only: it changes
+foliage, open ground and ambient leaf or blossom movement without introducing a
+second mutable calendar into the simulation.
+
 ## What the player does
 
 ### `interventions.ts`

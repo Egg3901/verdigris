@@ -32,6 +32,27 @@ const WIND: readonly (-1 | 0 | 1)[] = [-1, -1, 0, 1, 1];
  */
 export const YEAR_DAYS = 48;
 
+export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
+
+/**
+ * The visible quarter of the year.
+ *
+ * The six-day offset lets spring wrap cleanly around day zero: a new district
+ * opens in fresh mild weather, summer begins on day 6, autumn on day 18 and
+ * winter on day 30. Midwinter therefore remains day 36, at the heart of the
+ * winter band rather than on one of its edges.
+ */
+export function seasonAt(tick: number): Season {
+  const quarter = Math.floor(((dayOfYear(tick) + 6) % YEAR_DAYS) / (YEAR_DAYS / 4));
+  return (['spring', 'summer', 'autumn', 'winter'] as const)[quarter];
+}
+
+/** A compact render key for foliage and ground that changes four times a year. */
+export function seasonRevisionAt(tick: number): number {
+  const season = seasonAt(tick);
+  return season === 'spring' ? 0 : season === 'summer' ? 1 : season === 'autumn' ? 2 : 3;
+}
+
 /** The coldest day of the year. Winter reaches back and forward from here. */
 const MIDWINTER_DAY = 36;
 

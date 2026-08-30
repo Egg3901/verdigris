@@ -19,6 +19,8 @@ const CASES = [
   { name: 'merchant-authorship', seed: 'verdigris', tick: 641, ward: 'merchant' },
   { name: 'works-authorship', seed: 'verdigris', tick: 641, ward: 'works' },
   { name: 'courts-authorship', seed: 'verdigris', tick: 641, ward: 'courts' },
+  { name: 'autumn-foliage', seed: 'verdigris', tick: 24 * 1440 + 641, ward: 'garden' },
+  { name: 'winter-foliage', seed: 'verdigris', tick: 36 * 1440 + 641, ward: 'garden' },
 ];
 
 const browser = await chromium.launch();

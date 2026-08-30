@@ -89,6 +89,11 @@ state, such as clock hands, machinery, washing and crane falls. The building and
 prop bodies remain flattened, while their moving parts cannot float over a
 nearer roof or corrupt the ID buffer.
 
+Seasonal foliage and grass use a four-step revision derived from the simulation
+clock. Trees and ground rebake only when that revision changes. The much smaller
+blossom and leaf drift pass stays world-space, deterministic and strictly capped,
+and is drawn under the depth merge so buildings occlude it correctly.
+
 ### The atlas seam
 
 `art/bake.py` and the baked pixel atlas are not built. The city currently renders
