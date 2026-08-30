@@ -78,7 +78,7 @@ function canRun(city: City): string | null {
   const weather = weatherAt(city.seed, city.tick);
   if (weather.kind !== 'fair' && weather.kind !== 'overcast') return 'The weather has kept the market in.';
   if (city.squareNode < 0 || city.squareNode >= city.graph.n) return 'The civic square has no route.';
-  if (hallOf(city) < 0) return 'There is no Civic Hall.';
+  if (hallOf(city) < 0) return 'There is no Town Hall.';
   return null;
 }
 

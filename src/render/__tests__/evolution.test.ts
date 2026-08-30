@@ -34,7 +34,7 @@ describe('visible city evolution', () => {
       city.works.orders.push({
         id: city.works.orders.length, buildingId, kind, status,
         filedAt: 0, startsAt: 0, dueAt: 0, resolvedAt: 0,
-        workshopFirmId: 0, pneumatic: false, pressed: false,
+        workshopFirmId: 0, pneumatic: false, pressed: false, inspected: false,
       });
     };
     add('fabric', 'completed');

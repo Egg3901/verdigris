@@ -93,7 +93,7 @@ export function canCallDeputation(city: City, buildingId: BuildingId): string | 
   if (city.deputations.squareNode < 0 || city.deputations.squareNode >= city.graph.n) {
     return 'The civic square has no route.';
   }
-  if (hallOf(city) < 0) return 'There is no Civic Hall.';
+  if (hallOf(city) < 0) return 'There is no Town Hall.';
   const candidates = eligibleFromStreet(city, buildingId);
   if (!candidates.length) return 'Nobody from this street can leave just now.';
   if (!candidates.slice(0, 8).some((id) => wouldAllowGathering(city, city.souls[id], hallOf(city)))) {
@@ -169,8 +169,8 @@ function resolveHearing(city: City, current: Deputation): void {
     recordCivicHearing(city, current.orderId, true);
     const moved = expediteFiledOrder(city, current.orderId, city.tick + 60);
     pushLog(city, moved
-      ? `${present.length} neighbours were heard at Civic Hall. Their works case has been brought forward.`
-      : `${present.length} neighbours were heard at Civic Hall. Their works case was already moving.`,
+      ? `${present.length} neighbours were heard at the Town Hall. Their works case has been brought forward.`
+      : `${present.length} neighbours were heard at the Town Hall. Their works case was already moving.`,
     moved ? 'gain' : 'info');
     emit(city.events, 'deputationHeard', current.hallId, present, 360, city.tick);
     return;
@@ -179,8 +179,8 @@ function resolveHearing(city: City, current: Deputation): void {
   recordCivicHearing(city, current.orderId, false);
   if (current.status === 'dispersed') current.endsAt = city.tick;
   pushLog(city, current.status === 'dispersed'
-    ? 'The public-order men kept enough neighbours from Civic Hall that no case was heard.'
-    : 'Too few neighbours reached Civic Hall. The works case was not heard.', 'loss');
+    ? 'The public-order men kept enough neighbours from the Town Hall that no case was heard.'
+    : 'Too few neighbours reached the Town Hall. The works case was not heard.', 'loss');
   emit(city.events, 'deputationFailed', current.hallId, present, 220, city.tick);
 }
 

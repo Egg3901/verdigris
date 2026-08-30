@@ -89,7 +89,7 @@ export interface HouseSpec {
   scorched?: boolean;
   /** Flags up. The player paid for these. */
   bunting?: boolean;
-  /** A temporary cloth notice across the Civic Hall frontage. */
+  /** A temporary cloth notice across the Town Hall frontage. */
   deputationBanner?: boolean;
   /** A striped public awning marks the building currently taking storm refugees. */
   shelterOpen?: boolean;

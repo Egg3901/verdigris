@@ -76,14 +76,14 @@ function building(city: City, t: Target) {
 export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
   rumour: {
     kind: 'rumour',
-    label: 'Start a rumour',
-    blurb: 'Put a story about somebody into somebody else\'s ear, and let the ties carry it.',
+    label: 'Put about an allegation',
+    blurb: 'Give a private allegation to the subject\'s neighbours and let acquaintance carry it.',
     heat: 40,
     targets: ['soul'],
     can: (city, t) => {
       const s = city.souls[t.id];
-      if (!s) return 'Nobody there.';
-      if (s.depth !== 'principal') return 'Nobody would repeat a thing said about them.';
+      if (!s) return 'No such person is known.';
+      if (s.depth !== 'principal') return 'The name carries too little weight for the allegation to travel.';
       return null;
     },
     apply: (city, t) => {
@@ -103,7 +103,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
         applyPressure(city.press, 'suspicion', 40, 'intervention', claim, 'a story that did not hold', city.tick);
         const counter = seedClaim(city.claims, 'informer', sceptic, s.id, s.homeId, 0, city.tick, 1);
         implant(city.claims, city.souls[sceptic], counter, 620, -1, city.tick);
-        return `The story about ${fullName(s)} was not believed. Something else is going round instead.`;
+        return `The allegation against ${fullName(s)} was challenged. A countercharge now names its source.`;
       }
 
       let planted = 0;
@@ -112,7 +112,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
         planted++;
       }
       emit(city.events, 'rumour', s.homeId, [s.id], 300, city.tick);
-      return `A story about ${fullName(s)} is in ${planted} ears by nightfall.`;
+      return `By nightfall, ${planted} neighbours have heard the allegation against ${fullName(s)}.`;
     },
   },
 
@@ -144,9 +144,9 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
         }
         for (const seg of broken) city.networks.gas.segBroken[seg] = 0;
         applyPressure(city.press, 'mood', 60, 'intervention', b.id, 'an inspection nobody asked for', city.tick);
-        return `The works sent an inspector. He found three other mains, and fixed them.`;
+        return 'The Gas Committee sent an inspector, who found and repaired three other defective mains.';
       }
-      return `${lost.length} buildings lose their gas. They will find out at dusk.`;
+      return `${lost.length} buildings are now without gas. The failure will be plain when the lamps are lit.`;
     },
   },
 
@@ -169,23 +169,23 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
         if (mill) {
           mill.strikeUntil = city.tick + 1440;
           applyPressure(city.press, 'mood', 90, 'intervention', mill.id, 'an unscheduled holiday', city.tick);
-          return 'The lateness was the last straw. The mill has walked out, and is enjoying it.';
+          return 'The delay brought the mill hands out. The gate is shut for the remainder of the day.';
         }
       }
-      return 'The tram will not run properly until tomorrow. The pavements will be busy.';
+      return 'The tram service is disordered until tomorrow. Its passengers must cross the square on foot.';
     },
   },
 
   tipOff: {
     kind: 'tipOff',
-    label: 'Set the police on them',
-    blurb: 'Give them a name. They will act on it within the hour.',
+    label: 'Lay an information',
+    blurb: 'Give the constabulary a name or an address. They will act within the hour.',
     heat: 60,
     targets: ['soul', 'building'],
     can: (city, t) => {
-      if (t.kind === 'soul' && !city.souls[t.id]) return 'Nobody there.';
+      if (t.kind === 'soul' && !city.souls[t.id]) return 'No such person is known.';
       if (t.kind === 'building' && !building(city, t)) return 'Nothing there.';
-      if (!city.buildingsByKind.get('constabulary')?.length) return 'There is nobody to tell.';
+      if (!city.buildingsByKind.get('constabulary')?.length) return 'There is no constabulary to receive the information.';
       return null;
     },
     apply: (city, t) => {
@@ -204,7 +204,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
           const martyr = seedClaim(city.claims, 'informer', wrong, s?.id ?? -1, place, 1, city.tick, 1);
           for (const id of seen) implant(city.claims, city.souls[id], martyr, 700, -1, city.tick);
           for (const id of seen) city.souls[id].grievance = Math.min(1000, city.souls[id].grievance + 90);
-          return `They took ${fullName(city.souls[wrong])}, who had done nothing. The street watched.`;
+          return `${fullName(city.souls[wrong])} was taken in error before the whole street.`;
         }
       }
 
@@ -219,7 +219,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
         return `${fullName(s)} was taken this morning, in front of ${seen.length} people.`;
       }
       applyPressure(city.press, 'suspicion', 30, 'intervention', place, 'a search', city.tick);
-      return 'The constabulary searched the place and found nothing worth writing down.';
+      return 'The constabulary searched the premises and entered a nil return.';
     },
   },
 
@@ -231,7 +231,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
     targets: ['building', 'firm'],
     can: (city, t) => {
       const b = building(city, t);
-      if (!b || b.firmId < 0) return 'Nobody works there.';
+      if (!b || b.firmId < 0) return 'No firm keeps its works at this address.';
       const f = city.firms[b.firmId];
       if (f.strikeUntil > city.tick) return 'They are already out.';
       if (f.workerIds.length < 4) return 'Too few hands to make a picket.';
@@ -251,7 +251,7 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
           adjustTie(city.relations, f.workerIds[i], f.workerIds[i + 1], -40);
         }
         f.strikeUntil = city.tick + 240;
-        return `The hall sided with the owner. The picket lasted four hours and cost them each other.`;
+        return 'The council sided with the owner. The constables cleared the picket after four hours.';
       }
 
       // Solidarity is a permanent change to the graph, not a temporary buff.
@@ -266,17 +266,17 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
 
   plantStory: {
     kind: 'plantStory',
-    label: 'Plant a newspaper story',
-    blurb: 'Put an existing rumour in the paper. Everyone who reads will believe it.',
+    label: 'Put it in the Herald',
+    blurb: 'Give an existing report the authority and reach of print.',
     heat: 45,
     targets: ['claim', 'soul'],
     can: (city, t) => {
-      if (!city.buildingsByKind.get('newspaper')?.length) return 'There is no paper to plant it in.';
-      if (city.paperCredibility < 250) return 'Nobody believes the paper any more.';
+      if (!city.buildingsByKind.get('newspaper')?.length) return 'There is no newspaper office in the district.';
+      if (city.paperCredibility < 250) return 'The Herald has too little public credit to carry it.';
       if (t.kind === 'claim' && !city.claims.claims[t.id]) return 'No such story.';
       if (t.kind === 'soul') {
         const s = city.souls[t.id];
-        if (!s || !s.beliefs.length) return 'They have nothing to tell.';
+        if (!s || !s.beliefs.length) return 'No report can be traced to this person.';
       }
       return null;
     },
@@ -296,22 +296,22 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
       if (claim.truth === 0 && claim.generation === 0) {
         city.paperCredibility = Math.max(0, city.paperCredibility - 220);
         applyPressure(city.press, 'suspicion', 50, 'intervention', claimId, 'a retraction', city.tick);
-        return `It ran, and then it was retracted. The paper is worth less than it was.`;
+        return 'The account appeared and was retracted. The Herald has lost public credit.';
       }
 
       applyPressure(city.press, 'coin', -40, 'intervention', claimId, 'an inquiry nobody wanted', city.tick);
       if (pressureOf(city.press, 'rot') > 500) {
         applyPressure(city.press, 'suspicion', 70, 'intervention', claimId, 'the inquiry found nothing', city.tick);
-        return `It ran. The hall opened an inquiry, and the inquiry found nothing. Nobody is surprised.`;
+        return 'The account appeared. The council opened an inquiry and returned no finding.';
       }
-      return `It ran. ${readers} people who can read now believe it, and ${lineageOf(city.claims, claimId).length} versions are in the air.`;
+      return `The account appeared. ${readers} readers now credit it, and ${lineageOf(city.claims, claimId).length} versions are in circulation.`;
     },
   },
 
   quarantine: {
     kind: 'quarantine',
-    label: 'Quarantine a street',
-    blurb: 'Close it at both ends. Whoever is inside stays inside.',
+    label: 'Cordon the street',
+    blurb: 'Close both ends under the sanitary authority. Residents remain within the cordon.',
     heat: 80,
     targets: ['street', 'building'],
     can: (city, t) => {
@@ -339,21 +339,21 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
       // present and you have concentrated the infected instead of separating them.
       if (sick === 0) {
         applyPressure(city.press, 'mood', -200, 'intervention', b.streetId, 'a cordon with no reason', city.tick);
-        return `${street?.name ?? 'The street'} is shut, and there was nothing wrong with it. The district noticed.`;
+        return `${street?.name ?? 'The street'} is cordoned without a recorded case of sickness. The residents object.`;
       }
       if (sick > confined.length * 0.25) {
         applyPressure(city.press, 'sanitation', -80, 'intervention', b.streetId, 'the sick shut in together', city.tick);
         return `${street?.name ?? 'The street'} is shut with ${sick} sick already inside it.`;
       }
       applyPressure(city.press, 'sanitation', 150, 'intervention', b.streetId, 'a cordon', city.tick);
-      return `${street?.name ?? 'The street'} is shut. ${confined.length} people are on the wrong side of it.`;
+      return `${street?.name ?? 'The street'} is under cordon, with ${confined.length} residents confined.`;
     },
   },
 
   fundBunting: {
     kind: 'fundBunting',
-    label: 'Put on a celebration',
-    blurb: 'Three days of flags over the square. The money comes from somewhere.',
+    label: 'Pay for the flags',
+    blurb: 'Hang three days of flags over the square and charge them to the public purse.',
     heat: 5,
     targets: ['square', 'building'],
     can: (city) => (city.buntingUntil > city.tick ? 'The flags are already up.' : null),
@@ -365,14 +365,14 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
       // so the city looks better this week and is structurally worse.
       applyPressure(city.press, 'rot', 60, 'intervention', 0, 'the repairs line, spent on flags', city.tick);
       for (const b of city.buildings) b.facade = Math.min(1000, b.facade + 12);
-      return 'The flags are up. The square has not looked better in years.';
+      return 'The flags are up, and the charge has been taken from the repairs account.';
     },
   },
 
   fileWorks: {
     kind: 'fileWorks',
-    label: 'Order repairs',
-    blurb: 'Put one real defect into the register. The hall may send a crew, or only a plaque.',
+    label: 'Enter a works case',
+    blurb: 'Enter one real defect in the Works Register. The committee may send a crew, shelve it, or merely dress the frontage.',
     heat: 10,
     targets: ['building'],
     can: (city, t) => canFileWorks(city, t.id),
@@ -380,27 +380,27 @@ export const INTERVENTIONS: Record<InterventionKind, InterventionDef> = {
       const order = fileWorks(city, t.id);
       const b = city.buildings[t.id];
       const route = order.pneumatic ? 'went by pneumatic post' : 'was carried to the hall by hand';
-      return `Works case ${order.id + 1} for ${b.name} ${route}. A number is not a repair.`;
+      return `Works case ${order.id + 1}, concerning ${b.name}, ${route}. The entry is not yet an executed repair.`;
     },
   },
 
   callDeputation: {
     kind: 'callDeputation',
-    label: 'Send a delegation',
-    blurb: 'Ask the street to carry its filed works case to Civic Hall in person.',
+    label: 'Call a deputation',
+    blurb: 'Have the neighbours carry their works case to the Town Hall in person.',
     heat: 25,
     targets: ['building'],
     can: (city, t) => canCallDeputation(city, t.id),
     apply: (city, t) => {
       const attending = callDeputation(city, t.id);
       const b = city.buildings[t.id];
-      return `${attending} neighbours have left ${b.name} for Civic Hall. Whether the hall hears them depends on who arrives.`;
+      return `${attending} neighbours have left ${b.name} for the Town Hall. The committee will hear only those who arrive.`;
     },
   },
 
   openShelter: {
     kind: 'openShelter',
-    label: 'Open a shelter',
+    label: 'Open a refuge',
     blurb: 'Open a public door in the rain. The vulnerable still have to reach it.',
     heat: 5,
     targets: ['building'],

@@ -61,7 +61,7 @@ describe('ordinances', () => {
     const c = newCity('verdigris');
     warp(c, 400);
     expect(enact(c, 'curfew', 1200)).toBe(true);
-    expect(canEnact(c, 'licensingHours')).toBe('The vestry has already sat today.');
+    expect(canEnact(c, 'licensingHours')).toBe('The council has already sat today.');
     expect(repeal(c, 'curfew')).toBe(false);
     nextSitting(c);
     expect(inForce(c, 'curfew')).toBe(true);

@@ -32,23 +32,23 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 const RESPONSE: Record<string, string> = {
-  fileWorks: 'ordered repairs',
-  callDeputation: 'sent a delegation',
+  fileWorks: 'entered a works case',
+  callDeputation: 'called a deputation',
   fundStrike: 'backed a strike',
-  openShelter: 'opened a shelter',
-  quarantine: 'sealed off the street',
-  plantStory: 'planted a story',
-  tipOff: 'set the police on it',
-  fundBunting: 'put on a celebration',
+  openShelter: 'opened a refuge',
+  quarantine: 'established a cordon',
+  plantStory: 'put an account in the Herald',
+  tipOff: 'laid an information',
+  fundBunting: 'paid for the flags',
 };
 
 const WAY_IN: Record<Matter['kind'], string> = {
-  repair: 'HOW TO ANSWER · Order repairs. If the work stalls, send a delegation to press it.',
-  labour: 'HOW TO ANSWER · Back the strike, or decline and save your effort for another promise.',
-  refuge: 'HOW TO ANSWER · Wait for the rain, look over this public building, then open a shelter.',
-  sanitation: 'HOW TO ANSWER · Seal off the street, or repair the failed drain if there is one.',
-  inquiry: 'HOW TO ANSWER · Have someone arrested, or get a believable story into the paper.',
-  turnout: 'HOW TO ANSWER · Rally support with a celebration, or take out an opponent before the vote.',
+  repair: 'COURSES OPEN · Enter the defect in the Works Register. A deputation may bring forward a stalled case.',
+  labour: 'COURSES OPEN · Maintain the picket, use the constables against it, or decline to interfere.',
+  refuge: 'COURSES OPEN · View the public room, then open it as a refuge when the rain begins.',
+  sanitation: 'COURSES OPEN · Establish a cordon, or enter the defective drain in the Works Register.',
+  inquiry: 'COURSES OPEN · Lay an information before the constabulary, or put a defensible account in the Herald.',
+  turnout: 'COURSES OPEN · Bring out supporters in the square, or prevent an opponent from attending.',
 };
 
 function dueLabel(matter: Matter): string {
@@ -78,7 +78,7 @@ export function mountDesk(hooks: DeskHooks): Desk {
   const peek = el('button', 'dpeek') as HTMLButtonElement;
   peek.addEventListener('click', () => root.removeAttribute('data-peek'));
   const status = el('div', 'dstatus');
-  const intro = el('p', 'prose', 'The city brings facts, not errands. Read the cause, inspect the place, then decide what your influence is worth.');
+  const intro = el('p', 'prose', 'Petitions are entered with a name, an address, and a day for answer. View the place or hear the petitioner before giving an undertaking.');
   const meeting = el('div', 'dmeeting');
   const matters = el('div', 'dmatters');
   const movementHead = el('div', 'heading', 'WHY THE WARD MOVED');
@@ -121,10 +121,10 @@ export function mountDesk(hooks: DeskHooks): Desk {
       });
       people.append(person);
     }
-    const cause = el('p', 'dcause', `WHY NOW · ${matter.cause}`);
+    const cause = el('p', 'dcause', `CLERK'S NOTE · ${matter.cause}`);
     const insightText = matterInsight(current, matter);
-    const insight = el('p', 'dintel', insightText ? `A WORD INSIDE · ${insightText}` : 'No petitioner trusts the office enough to say more.');
-    const test = el('p', 'dtest', `PROMISE · ${matter.test}`);
+    const insight = el('p', 'dintel', insightText ? `PRIVATE WORD · ${insightText}` : 'No private word is entered. Hear a petitioner while making the ward round.');
+    const test = el('p', 'dtest', `UNDERTAKING · ${matter.test}`);
     const wayIn = el('p', 'dway', WAY_IN[matter.kind]);
     const due = el('div', 'ddue', dueLabel(matter));
     const actions = el('div', 'dactions');
@@ -141,11 +141,11 @@ export function mountDesk(hooks: DeskHooks): Desk {
       actions.append(decline);
     }
     if (matter.status === 'pending') {
-      actions.append(el('span', 'danswer', `Answered with ${RESPONSE[matter.response ?? ''] ?? 'influence'}. ${remainingLabel(current, matter)}.`));
-      const press = el('button', 'brass', 'PRESS · 1') as HTMLButtonElement;
+      actions.append(el('span', 'danswer', `Minuted: ${RESPONSE[matter.response ?? ''] ?? 'action taken'}. ${remainingLabel(current, matter)}.`));
+      const press = el('button', 'brass', 'FOLLOW UP · 1') as HTMLButtonElement;
       const why = canPressMatter(current, matter.id);
       press.setAttribute('aria-disabled', String(why !== null));
-      press.title = why ?? 'Spend one more influence to send a clerk after this promise.';
+      press.title = why ?? 'Use one measure of influence to send a clerk after this undertaking.';
       press.addEventListener('click', () => { if (!why) hooks.onPress(matter.id); });
       actions.append(press);
     }
@@ -159,7 +159,7 @@ export function mountDesk(hooks: DeskHooks): Desk {
     if (key === prevKey) return;
     prevKey = key;
     const active = activeMatters(next.matters);
-    status.textContent = `DAY ${dayOf(next.tick)} · STANDING ${next.matters.standing}/1000 · ${active.length} MATTER${active.length === 1 ? '' : 'S'} BEFORE YOU`
+    status.textContent = `DAY ${dayOf(next.tick)} · STANDING ${next.matters.standing}/1000 · FOLLOW-UP ${next.budgetLeft}/${next.matters.influenceCap} · ${active.length} MATTER${active.length === 1 ? '' : 'S'} BEFORE YOU`
       + `${next.traced ? ` · ${next.traced} HIGH-HANDED ACT${next.traced === 1 ? '' : 'S'} TRACED` : ''}`;
     const gathering = pendingMeetingVisit(next);
     const lastMeeting = next.matters.meetings.at(-1);
@@ -169,10 +169,10 @@ export function mountDesk(hooks: DeskHooks): Desk {
         : `RATEPAYERS GATHERING · ${gathering.arrivedIds.length}/${gathering.actorIds.length} IN THE SQUARE · VOTE ${formatClock(next.matters.nextMeetingAt)}.`
       : lastMeeting
         ? `LAST MEETING · ${lastMeeting.outcome.toUpperCase()} · ${lastMeeting.text} NEXT SITTING DAY ${dayOf(next.matters.nextMeetingAt)}.`
-        : `RATEPAYERS SIT ON DAY ${dayOf(next.matters.nextMeetingAt)}. Named patrons and opponents will test whether the chair keeps its daily influence.`;
+        : `RATEPAYERS SIT ON DAY ${dayOf(next.matters.nextMeetingAt)}. Their division will settle how many follow-up measures the chair may move each day.`;
 
     matters.textContent = '';
-    if (!active.length) matters.append(el('p', 'dempty', 'Nothing new is before the desk. The district continues without asking permission.'));
+    if (!active.length) matters.append(el('p', 'dempty', 'No new petition is entered. Reports from the streets continue to arrive.'));
     else for (const matter of active) matters.append(renderMatter(matter));
 
     movements.textContent = '';

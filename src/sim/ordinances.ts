@@ -126,61 +126,61 @@ export const ORDINANCES: readonly OrdinanceDef[] = [
   {
     kind: 'curfew',
     label: 'the curfew',
-    blurb: 'Nobody in the street after the hour. The constables have to be on the beat for it to mean anything.',
+    blurb: 'Persons found abroad after the hour may be turned back, if constables are actually on the beat.',
     defaultParam: 1200,
   },
   {
     kind: 'licensingHours',
     label: 'the licensing hours',
-    blurb: 'Public houses stop serving at the hour. A publican who will not can keep a lock-in, or send custom to a shebeen.',
+    blurb: 'Public houses cease serving at the hour. A publican may obey, keep a lock-in, or send custom to a shebeen.',
     defaultParam: 1260,
   },
   {
     kind: 'cartBylaw',
     label: 'the cart bylaw',
-    blurb: 'Carts may not use a named street. Dockers go the long way, and the shops on that street wait.',
+    blurb: 'Heavy carts are excluded from one named street. Carriers take the longer road and shop deliveries wait.',
     defaultParam: -1,
   },
   {
     kind: 'drainageAct',
     label: 'the drainage act',
-    blurb: 'Court dwellings must be put on the mains. The rate is collected from the house. The pipe is a separate question.',
+    blurb: 'Court dwellings are to be put on the mains. The rate may be collected before the pipe is laid.',
     defaultParam: 1,
   },
   {
     kind: 'dogTax',
     label: 'the dog tax',
-    blurb: 'A daily rate on every household that keeps a dog. Paid at the station, or the dog is sold.',
+    blurb: 'A daily rate is charged upon every household keeping a dog. Default brings seizure and sale.',
     defaultParam: 4,
   },
   {
     kind: 'pewRents',
     label: 'pew rents',
-    blurb: 'A seat in chapel costs. The poor who will not sneak in stay home, and the roof is supposed to see the money.',
+    blurb: 'Seats in chapel are let by the week. Empty pews may enrich the roof fund and still leave the poor outside.',
     defaultParam: 8,
   },
   {
     kind: 'breadAssize',
     label: 'the bread assize',
-    blurb: 'The loaf has a price. Honest shops sell it. The rest sell out the back of a warehouse.',
+    blurb: 'The four-pound loaf has a fixed price. Licensed shops comply; illicit stock moves through warehouses.',
     defaultParam: 1,
   },
   {
     kind: 'childLabour',
     label: 'the half-time act',
-    blurb: 'Nobody under sixteen at the mill after the hour, and the children stay off the deliveries.',
+    blurb: 'Young persons must leave the mill at the appointed hour and may not be kept upon deliveries.',
     defaultParam: 780,
   },
   {
     kind: 'inspectorPowers',
-    label: 'the inspector\'s powers',
-    blurb: 'The sanitary inspector may enter and condemn. Who he visits is the whole of the question.',
+    label: 'the inspector of nuisances',
+    blurb: 'The inspector of nuisances may enter premises, make a return, and seek a notice to abate. Which doors he enters remains the question.',
     defaultParam: 1,
   },
   {
     kind: 'publicOrder',
     label: 'the public order act',
-    blurb: 'A crowd of five is unlawful. Pickets, lock-out knots, and the square after closing all count.',
+    blurb: 'An assembly of five may be dispersed. Pickets, lock-out gatherings, and the square after closing all count.',
     defaultParam: 5,
   },
 ];
@@ -269,7 +269,7 @@ export function canEnact(city: City, kind: OrdinanceKind): string | null {
   const i = IDX[kind];
   if (i === undefined) return 'No such ordinance.';
   if (city.laws.slots[i].inForce) return 'That is already in force.';
-  if (satToday(city)) return 'The vestry has already sat today.';
+  if (satToday(city)) return 'The council has already sat today.';
   return null;
 }
 
@@ -277,7 +277,7 @@ export function canRepeal(city: City, kind: OrdinanceKind): string | null {
   const i = IDX[kind];
   if (i === undefined) return 'No such ordinance.';
   if (!city.laws.slots[i].inForce) return 'That is not in force.';
-  if (satToday(city)) return 'The vestry has already sat today.';
+  if (satToday(city)) return 'The council has already sat today.';
   return null;
 }
 
@@ -418,7 +418,7 @@ export function enact(city: City, kind: OrdinanceKind, param?: number): boolean 
   const aye = sitVestry(city, idx);
   city.laws.lastSat = city.tick;
   if (!aye) {
-    pushLog(city, `The vestry would not have ${def.label}. A petition is being talked of.`, 'info');
+    pushLog(city, `The council rejected ${def.label}. A petition is being got up against the decision.`, 'info');
     queuePetition(city, kind, 1, city.laws.vestry[0] ?? 0);
     return false;
   }
@@ -437,7 +437,7 @@ export function enact(city: City, kind: OrdinanceKind, param?: number): boolean 
   seedResentment(city, idx);
   emit(city.events, 'ordinance', townhallId(city), city.laws.vestry, 400, city.tick);
   if (captured) {
-    pushLog(city, `${def.label} passed, and the vestry wrote it the way that suited them.`, 'loss');
+    pushLog(city, `${def.label} passed, but the packed council altered the minute to suit itself.`, 'loss');
   } else {
     pushLog(city, `${def.label} is in force.`, 'info');
   }

@@ -2,10 +2,10 @@
 
 You are Verdigris's alderman. You never place a building.
 
-Named residents bring real conditions to your desk: a failing house, aggrieved
+Named residents bring real conditions to your desk: an unsound house, aggrieved
 hands, a public door needed before the rain, sickness behind doors, a disputed
 public account. You inspect the people and the place, follow them through the
-day, and spend a small number of measures of influence.
+day, and make personal calls around the ward.
 
 The ledger judges what the city actually did, not which button you pressed.
 
@@ -13,15 +13,30 @@ The ledger judges what the city actually did, not which button you pressed.
 
 - Read the matter. Find out who is bringing it and why.
 - Look at the place and the people before you answer.
-- Spend a measure only when you know what it will actually change.
+- Spend a follow-up measure only when a pending undertaking is worth pursuing.
 - Every seventh dawn, the ratepayers vote on your record. That vote sets how many
   measures you get for the following week.
 
 ## Your day
 
-**Measures of influence** are the scarce thing. You get 2, 3 or 4 a day depending
-on how the last ratepayers' sitting went. Everything else is free: looking,
-walking, reading, following somebody.
+**Follow-up measures** are scarce. You get 2, 3, or 4 a day depending on how the
+last ratepayers' sitting went. They let you send a clerk after an undertaking
+that is already pending. Looking, walking, reading, ordinary civic powers, and
+following somebody do not spend them. Those powers have costs in public temper,
+order, the purse, and the record of high-handed conduct instead.
+
+**Ward calls** are limited to three a day. A call belongs to one address, so the
+choice matters:
+
+- **Take a statement** enters a named occupant's account and establishes a civic
+  relationship. A person heard at the address may give you a private warning
+  about its petition.
+- **View premises** sends the inspector of nuisances. A recent return supports a
+  real works case against civic skimming, but cannot supply an empty treasury or
+  a stopped crew.
+- **Canvass** asks a ratepayer for a pledge. The answer depends on your standing,
+  their grievance, and traced high-handed acts. Either answer is carried into the
+  next ward sitting.
 
 **Time runs forward only.** The control says "advance to" and means it. There is
 no rewind, so an unwatched afternoon is genuinely gone.
@@ -57,7 +72,7 @@ same as fixing the thing:
 | An inquiry | A detention still holds, or an account stays credible |
 | Turnout | The actual weekly vote bears it out |
 
-Pending promises can be **pressed** at further political cost. Work you filed
+Pending undertakings can be **followed up** at further political cost. Work you filed
 *before* a petition arrived still receives its proper credit, so acting early on
 something you noticed yourself is rewarded.
 
@@ -87,7 +102,7 @@ evidence of simulation state rather than decoration.
 
 Nothing here teleports. Every political effect requires a body to make a journey.
 
-- Petitioners walk to Civic Hall. This does not delay an actionable case.
+- Petitioners walk to the Town Hall. This does not delay an actionable case.
 - A **kept promise** sends a named patron to speak at the newspaper.
 - A **broken or declined promise** sends a named opponent to a public house.
 - The ward's support or opposition changes only once that person arrives.
@@ -103,7 +118,7 @@ Every seventh day, at a fixed 8AM vote in the square:
 - Up to eight named adults travel to the square. **Only those who actually reach
   it count.**
 
-| Result | Measures per day next week |
+| Result | Follow-up measures per day next week |
 | --- | --- |
 | Confidence | 4 |
 | Divided room | 3 |
@@ -151,5 +166,5 @@ nothing in the interface will stop you doing it.
 panels up.
 
 Every verb has a keyboard equivalent. On a phone, the single surface shell keeps
-persistent LOOK, ACT, DESK, VESTRY and HELP routes, with stepped pinch zoom and
+persistent LOOK, ACT, DESK, COUNCIL and HELP routes, with stepped pinch zoom and
 coarse pointer person picking.

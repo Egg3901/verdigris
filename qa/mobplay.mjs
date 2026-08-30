@@ -93,7 +93,8 @@ await p.evaluate(()=>{
   mk('pointerdown'); mk('pointerup');
 });
 await p.waitForTimeout(250);
-const pickedSoul = await p.evaluate(()=>document.querySelector('#inspector .heading')?.textContent==='CARRYING:');
+await p.screenshot({path:'/tmp/vqa/m-soul-tap.png'});
+const pickedSoul = await p.evaluate(()=>document.querySelector('#inspector > .heading')?.textContent==='CARRYING:');
 console.log(`direct soul tap: ${soul} ${pickedSoul?'WORKS':'FAILED'}`);
 assert(pickedSoul, 'a centred outdoor soul could not be tapped');
 
@@ -101,10 +102,10 @@ assert(pickedSoul, 'a centred outdoor soul could not be tapped');
 // the new panel underneath it.
 await p.tap('#sheetbar button:nth-child(1)'); // LOOK
 assert(await p.evaluate(()=>getComputedStyle(document.getElementById('verbs')).display!=='none'), 'LOOK sheet did not open');
-await p.getByRole('button',{name:'The vestry: pass and rescind ordinances'}).tap();
-assert(await p.evaluate(()=>!document.getElementById('vestry').hidden&&!document.documentElement.hasAttribute('data-sheet')), 'VESTRY did not replace LOOK');
+await p.getByRole('button',{name:'The council chamber: make and repeal bylaws'}).tap();
+assert(await p.evaluate(()=>!document.getElementById('vestry').hidden&&!document.documentElement.hasAttribute('data-sheet')), 'COUNCIL did not replace LOOK');
 await p.getByRole('button',{name:'Keys and what this is'}).tap();
-assert(await p.evaluate(()=>!document.getElementById('help').hidden&&document.getElementById('vestry').hidden), 'HELP did not replace VESTRY');
+assert(await p.evaluate(()=>!document.getElementById('help').hidden&&document.getElementById('vestry').hidden), 'HELP did not replace COUNCIL');
 await p.locator('#desk-sheet').tap();
 assert(await p.evaluate(()=>!document.getElementById('desk').hidden&&document.getElementById('help').hidden), 'DESK did not replace HELP');
 
@@ -122,11 +123,34 @@ await p.locator('#desk .dpeek').tap();
 await p.locator('#desk .close').tap();
 assert(await p.evaluate(()=>document.getElementById('desk').hidden), 'desk close did not work');
 
+// 8. A selected address exposes the daily ward round, and a call changes the
+// actual civic ledger rather than merely showing flavour text.
+const address = await p.evaluate(()=>{
+  const hook=window.__verdigris;
+  const building=hook.city.buildings.find(b=>b.occupants.some(id=>hook.city.souls[id].age>=21));
+  if(!building) throw new Error('fixture has no occupied address for a ward call');
+  hook.select('building',building.id);
+  return building.name;
+});
+await p.waitForTimeout(300);
+const hear=p.getByRole('button',{name:'TAKE A STATEMENT'});
+assert(await hear.getAttribute('aria-disabled')!=='true', `${address} could not be heard on the ward round`);
+const hearBox=await hear.boundingBox();
+assert(hearBox&&hearBox.height>=44, `ward call target is ${hearBox?.height??0}px high`);
+await p.screenshot({path:'/tmp/vqa/m-ward-round.png'});
+await hear.tap();
+await p.waitForTimeout(200);
+const call=await p.evaluate(()=>({left:window.__verdigris.city.wardRounds.callsLeft,
+  kind:window.__verdigris.city.wardRounds.calls.at(-1)?.kind,
+  toast:document.getElementById('toast')?.textContent}));
+console.log(`ward call at ${address}: ${call.kind}, ${call.left} left`);
+assert(call.kind==='hear'&&call.left===2&&call.toast?.includes('ward book'),'ward call did not enter a named account');
+
 console.log('errors:', errs.length? errs.join('|'):'none');
 assert(!errs.length, `page errors: ${errs.join('|')}`);
 await ctx.close();
 
-// 8. The dynamically wrapping bottom bar is a different shape at the smallest
+// 9. The dynamically wrapping bottom bar is a different shape at the smallest
 // portrait and phone landscape sizes. Every surface must stop above its actual
 // measured top edge, not an assumed height.
 for(const viewport of [
@@ -165,7 +189,7 @@ for(const viewport of [
   assert(await page.evaluate(()=>!document.getElementById('desk').hidden&&!document.documentElement.hasAttribute('data-sheet')),
     `${viewport.name} rapid surface switch left two panels open`);
   await page.locator('#sheetbar button').filter({hasText:'ACT'}).tap(); await check('act','#nudges');
-  await page.getByRole('button',{name:'The vestry: pass and rescind ordinances'}).tap(); await check('vestry','#vestry');
+  await page.getByRole('button',{name:'The council chamber: make and repeal bylaws'}).tap(); await check('council','#vestry');
   await page.getByRole('button',{name:'Keys and what this is'}).tap(); await check('help','#help');
   await page.locator('#desk-sheet').tap(); await check('desk again','#desk');
   console.log(`${viewport.name}: all working surfaces clear of the bottom bar`);

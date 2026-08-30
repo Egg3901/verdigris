@@ -102,7 +102,7 @@ export function drawBuildingPulse(
   if (b.fabric <= 0 || b.burntAt >= 0) return calls;
 
   if (b.kind === 'townhall' && face.span >= 16) {
-    // Civic Hall is the district's public clock. Its hands read the actual game
+    // The Town Hall is the district's public clock. Its hands read the actual game
     // minute, so a long view of the square shows time passing without the HUD.
     const c = face.at(0.5, Math.min(10, Math.max(5, wallH * 0.3)));
     const cx = Math.round(c.x);

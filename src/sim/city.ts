@@ -1,7 +1,7 @@
 // The city: the only module the app touches.
 //
 // One tick is one game-minute. The float simMin lives in main.ts and never enters
-// here, so the world is fully determined by (seedStr, tickCount, nudges) and a
+// here, so the world is fully determined by (seedStr, tickCount, player actions) and a
 // replay is exact. hashWorld exists from day one because it is the anchor for
 // every determinism test in the suite.
 import { DAILY_MINUTE, MIN_PER_DAY, minuteOfDay } from './clock';
@@ -60,6 +60,8 @@ import { holdRatepayerMeeting, newMatters, openDailyMatters, scheduleRatepayerSi
 import type { MatterState } from './matters';
 import { newCivicVisits, tickCivicVisits } from './civic-visits';
 import type { CivicVisitState } from './civic-visits';
+import { newWardRounds, resetWardRounds } from './ward-rounds';
+import type { WardRoundState } from './ward-rounds';
 
 export interface LogEvent {
   tick: number;
@@ -115,7 +117,7 @@ export interface City extends World {
   events: EventState;
   incidents: IncidentState;
 
-  /** The save format. Everything else is replayable from (seedStr, tick, nudges, acts). */
+  /** Interventions in the replayable player action log. */
   nudges: Nudge[];
   budgetLeft: number;
   laws: LawState;
@@ -129,6 +131,8 @@ export interface City extends World {
   matters: MatterState;
   /** Named civic journeys: petitions, public meetings, support and opposition. */
   civicVisits: CivicVisitState;
+  /** Personal calls, premises viewed and ratepayers canvassed in the ward. */
+  wardRounds: WardRoundState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -167,6 +171,7 @@ export function newCity(seedStr: string): City {
     occasions: newOccasions(),
     matters: newMatters(),
     civicVisits: newCivicVisits(),
+    wardRounds: newWardRounds(world.buildings.length),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -862,6 +867,7 @@ function recomputeBaselines(city: City): void {
 function tickDay(city: City): void {
   const tick = city.tick;
   city.budgetLeft = city.matters.influenceCap;
+  resetWardRounds(city);
   scheduleRatepayerSitting(city);
   tickOrdinancesDaily(city);
   tickCivicRecoveryDaily(city);
@@ -1117,7 +1123,20 @@ export function hashWorld(city: City): number {
     put(relation.since);
     put(relation.lastMatterId);
     put(relation.lastActAt);
+    put(relation.lastCanvassedAt);
   }
+  put(city.wardRounds.callsLeft);
+  put(city.wardRounds.day);
+  put(city.wardRounds.revision);
+  put(city.wardRounds.calls.length);
+  for (const call of city.wardRounds.calls) {
+    put(call.tick);
+    put(call.buildingId);
+    put(call.kind === 'hear' ? 1 : call.kind === 'inspect' ? 2 : 3);
+    put(call.soulId);
+    put(call.favourable ? 1 : 0);
+  }
+  for (const until of city.wardRounds.inspectedUntil) put(until);
   put(city.matters.meetings.length);
   for (const meeting of city.matters.meetings) {
     put(meeting.tick);
@@ -1197,6 +1216,7 @@ export function hashWorld(city: City): number {
     put(order.dueAt);
     put(order.resolvedAt);
     put(order.pressed ? 1 : 0);
+    put(order.inspected ? 1 : 0);
   }
   put(city.laws.enforcement);
   put(city.laws.active);

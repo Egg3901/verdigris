@@ -1,7 +1,7 @@
 // Civic politics in the street graph.
 //
 // A petition may be readable as soon as the morning papers reach the desk, but
-// its authors still come to Civic Hall. Later, patrons and opponents carry the
+// its authors still come to the Town Hall. Later, patrons and opponents carry the
 // verdict into a newspaper office or public house. Nothing in this module
 // teleports a crowd or fires an effect before a named body arrives.
 import type { City } from './city';

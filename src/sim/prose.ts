@@ -61,13 +61,6 @@ export function describeBuilding(city: City, id: number): string {
   // the sills and an argument about an unpaid account", which has two "and"s
   // doing different jobs and reads as a run-on.
   const senseTokens = ranked.slice();
-  // A single short token ("Dust.") is not a sentence anybody wants to read, so a
-  // thin line gets the building's own label to lean on. Every kind carries at
-  // least one identity fragment in the lexicon, so this is a floor, not a crutch.
-  if (senseTokens.length === 1 && senseTokens[0].length < 14) {
-    senseTokens.push(`not much else the ${DEFS[b.kind].label.toLowerCase()} will admit to`);
-  }
-
   const sentences: string[] = [];
   if (senseTokens.length) {
     const list = joinList(senseTokens);
@@ -80,7 +73,7 @@ export function describeBuilding(city: City, id: number): string {
     sentences.push(`An argument about ${grudge.topic} has run here for ${years} year${years === 1 ? '' : 's'}.`);
   }
 
-  let line = sentences.length ? sentences.join(' ') : `${DEFS[b.kind].label}, and not much else.`;
+  let line = sentences.length ? sentences.join(' ') : `No more can be learned from the street than that it is a ${DEFS[b.kind].label.toLowerCase()}.`;
 
   const live = liveClause(city, b);
   if (live) line += ` ${live}`;
@@ -141,10 +134,10 @@ function liveClause(city: City, b: Building): string {
   }
   const deputation = city.deputations.current;
   if (deputation && deputation.buildingId === b.id && isDeputationActive(city)) {
-    if (deputation.status === 'heard') return 'Its deputation has been heard beneath the windows of Civic Hall.';
-    if (deputation.status === 'dispersed') return 'Its deputation is being broken up beneath the windows of Civic Hall.';
-    if (deputation.status === 'thin') return 'Too few from this address reached Civic Hall to be heard.';
-    return 'Its neighbours are making their way to Civic Hall as a public deputation.';
+    if (deputation.status === 'heard') return 'Its deputation has been heard beneath the Town Hall windows.';
+    if (deputation.status === 'dispersed') return 'Its deputation is being broken up beneath the Town Hall windows.';
+    if (deputation.status === 'thin') return 'Too few from this address reached the Town Hall to be heard.';
+    return 'Its neighbours are making for the Town Hall as a public deputation.';
   }
   const order = latestOrderFor(city, b.id);
   if (order?.status === 'working') return 'A works gang has the frontage behind poles and canvas.';
@@ -199,7 +192,7 @@ export function describeSoul(city: City, id: number): string {
     ? weather.kind === 'storm' ? ' The hard rain has got through every layer.' : ' Out in the rain.'
     : '';
   const civic = civicHouseholdClause(city, s.householdId);
-  return `${s.age}, ${trade}, of ${where}. Currently ${doing}.${exposure}${civic ? ` ${civic}` : ''}`;
+  return `${s.age}, ${trade}, of ${where}. ${doing.charAt(0).toUpperCase()}${doing.slice(1)}.${exposure}${civic ? ` ${civic}` : ''}`;
 }
 
 /** Where a soul is going, for the BOUND FOR line on the inspector. */
@@ -209,19 +202,19 @@ export function boundFor(city: City, s: Soul): string {
     const b = city.buildings[s.destBuilding];
     if (b) return b.name;
   }
-  return 'nowhere in particular';
+  return 'walking without a stated errand';
 }
 
 export function carrying(city: City, s: Soul): string {
   const bits: string[] = [];
   if (s.purse > 200) bits.push('a full purse');
-  else if (s.purse < 20) bits.push('nothing worth taking');
+  else if (s.purse < 20) bits.push('an almost empty purse');
   if (s.hunger > 800) bits.push('an empty stomach');
   if (s.grievance > 700) bits.push('a grievance');
   if (s.beliefs.some((b) => city.claims.claims[b.claimId]?.kind === 'bylaw')) {
     bits.push('a grievance against the hall');
   } else if (s.beliefs.length) {
-    bits.push(`${s.beliefs.length} thing${s.beliefs.length === 1 ? '' : 's'} heard secondhand`);
+    bits.push(`${s.beliefs.length} report${s.beliefs.length === 1 ? '' : 's'} heard at second hand`);
   }
-  return bits.length ? joinList(bits) : 'nothing in particular';
+  return bits.length ? joinList(bits) : 'no parcel or paper of note';
 }

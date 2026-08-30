@@ -38,29 +38,29 @@ export const INCIDENTS: readonly IncidentDef[] = [
   {
     id: 'lampFailure', label: 'the lamps did not light', key: 'gas',
     fireBelow: 700, clearAt: 840, cooldownHours: 12,
-    say: () => 'The lamps did not light on half the district tonight.',
+    say: () => 'Half the district lamps failed at lighting-up time.',
   },
   {
     id: 'outbreak', label: 'sickness', key: 'sanitation',
     fireBelow: 470, clearAt: 560, cooldownHours: 24,
-    say: () => 'The dispensary has more people in it than chairs.',
+    say: () => 'The dispensary reports more patients than it has chairs.',
   },
   {
     id: 'walkout', label: 'a walkout', key: 'wages',
     fireBelow: 380, clearAt: 470, cooldownHours: 36,
-    say: () => 'The wages did not come. The mill floor is standing still.',
+    say: () => 'The mill wages were not paid, and the frames are standing.',
   },
   {
     id: 'riot', label: 'a disturbance', key: 'mood',
     fireBelow: 430, clearAt: 520, cooldownHours: 48,
-    say: () => 'There was a crowd in the square tonight, and it was not a happy one.',
+    say: () => 'A disorderly crowd formed in the square after closing time.',
   },
   {
     id: 'inquiry', label: 'an inquiry', key: 'suspicion',
     fireAbove: 430, clearAt: 330, cooldownHours: 36,
     say: (c) => (pressureOf(c.press, 'rot') > 520
-      ? 'The hall has opened an inquiry. It will find nothing, and everyone knows it.'
-      : 'The hall has opened an inquiry, and this one may actually look.'),
+      ? 'The council has appointed an inquiry, though the office is expected to return no finding.'
+      : 'The council has appointed an inquiry with authority to examine the account.'),
   },
 ];
 

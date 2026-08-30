@@ -122,7 +122,7 @@ describe('interventions', () => {
   });
 
   it('replays identically from the same seed and nudge log', () => {
-    // This is the save format: (seedStr, tick, nudges). If a replay diverged, a
+    // Interventions are one part of the replayable player action log. If a replay diverged, a
     // saved district would not be the district you left.
     const play = (): number => {
       const c = newCity('verdigris');

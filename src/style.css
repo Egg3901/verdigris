@@ -308,6 +308,29 @@ html, body {
   outline: 1px solid var(--verd1);
 }
 #inspector .more { font-size: var(--fs-small); color: var(--brass-ink); font-style: italic; }
+#inspector .ward-round {
+  margin: calc(4px * var(--px)) 0;
+  padding-top: calc(3px * var(--px));
+  border-top: 1px solid rgba(107, 74, 18, 0.35);
+}
+#inspector .ward-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: calc(2px * var(--px));
+  margin-top: calc(2px * var(--px));
+}
+#inspector .ward-actions button {
+  min-width: 0;
+  padding: calc(2px * var(--px));
+  font-size: var(--fs-tiny);
+  line-height: 1.25;
+  text-align: center;
+  justify-content: center;
+}
+#inspector .ward-actions button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 /* A scrolled panel that simply stops mid-name reads as clipped, not scrollable.
    The fade says there is more. */
 #inspector::after {
