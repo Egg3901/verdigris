@@ -411,11 +411,13 @@ export function collectVehicles(
   out: VehicleDraw[],
 ): number {
   let n = 0;
-  const add = (kind: VehicleDraw['kind'], cartKind: VehicleDraw['cartKind'], cx: number, cy: number, along: boolean, dy = 0) => {
+  const add = (
+    kind: VehicleDraw['kind'], cartKind: VehicleDraw['cartKind'], cx: number, cy: number, along: boolean, dy = 0,
+  ): VehicleDraw | null => {
     const wx = isoX(cx, cy);
     const wy = isoY(cx, cy) + dy;
     // Include the tram pole and cart body above their ground point in the cull.
-    if (wx < tl.wx - 12 || wx > br.wx + 12 || wy < tl.wy - 24 || wy > br.wy + 4) return;
+    if (wx < tl.wx - 12 || wx > br.wx + 12 || wy < tl.wy - 24 || wy > br.wy + 4) return null;
     const slot = out[n] ?? (out[n] = { kind: 0, cartKind: 0, wx: 0, wy: 0, depth: 0, along: false, veil: 16 });
     slot.veil = 16;
     slot.kind = kind;
@@ -425,6 +427,7 @@ export function collectVehicles(
     slot.depth = depthKey(cx, cy, LAYER_AGENT);
     slot.along = along;
     n++;
+    return slot;
   };
 
   for (const car of city.trams) {
@@ -494,8 +497,8 @@ export function collectVehicles(
           if (dist < clearing + 1.2) veil = Math.min(veil, Math.round((16 * (dist - clearing)) / 1.2));
         }
         if (veil <= 0) continue;
-        add(2, (i % 3) as VehicleDraw['cartKind'], bx, by, ph <= span, surfaceY);
-        out[n - 1].veil = veil;
+        const vehicle = add(2, (i % 3) as VehicleDraw['cartKind'], bx, by, ph <= span, surfaceY);
+        if (vehicle) vehicle.veil = veil;
       }
     }
   }

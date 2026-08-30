@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { freightStrideAt, riverBoatCountAt } from '../fx';
+import { newCity } from '../../sim/city';
+import { collectVehicles, freightStrideAt, riverBoatCountAt } from '../fx';
 
 describe('rendered city pulse', () => {
   it('thins road freight outside the working day', () => {
@@ -14,5 +15,18 @@ describe('rendered city pulse', () => {
     expect(riverBoatCountAt(3, 60)).toBe(1);
     expect(riverBoatCountAt(1, 60)).toBe(0);
     expect(riverBoatCountAt(0, 720)).toBe(0);
+  });
+
+  it('culls an off-screen barge without writing a missing vehicle slot', () => {
+    const city = newCity('verdigris');
+    city.tick = 720;
+    const out: Parameters<typeof collectVehicles>[5] = [];
+    expect(collectVehicles(
+      city, [], 0,
+      { wx: 1_000_000, wy: 1_000_000 },
+      { wx: 1_000_010, wy: 1_000_010 },
+      out,
+    )).toBe(0);
+    expect(out).toHaveLength(0);
   });
 });
