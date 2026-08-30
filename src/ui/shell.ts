@@ -30,6 +30,8 @@ import { INTERVENTIONS } from '../sim/interventions';
 import type { InterventionForecast } from '../sim/interventions';
 import { wardMetrics, metricWord } from '../sim/metrics';
 import { civicVisitSummary } from '../sim/civic-visits';
+import { canMakeWardCall, wardCallSummary } from '../sim/ward-rounds';
+import type { WardCallKind } from '../sim/ward-rounds';
 
 interface NudgeDecision {
   reason: string | null;
@@ -51,6 +53,8 @@ export interface ShellHooks {
   onFocusTarget: (target: Target) => void;
   onDeclineMatter: (id: number) => void;
   onPressMatter: (id: number) => void;
+  /** Make one personal call at the selected address. */
+  onWardCall: (kind: WardCallKind, buildingId: number) => void;
   /** Sandbox: pin the weather to a kind, or null to hand it back to the clock. */
   onForceWeather: (kind: 'fair' | 'overcast' | 'rain' | 'storm' | 'fog' | 'snow' | 'drought' | null) => void;
   /** Sandbox: loose a disaster on the selected building, or a random fit one. */
@@ -143,9 +147,9 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     meters.append(row);
     return { row, fill, val };
   };
-  const mHappy = mkMeter('Happiness');
+  const mHappy = mkMeter('Temper');
   const mOrder = mkMeter('Order');
-  const mMoney = mkMeter('Money');
+  const mMoney = mkMeter('Purse');
 
   // Powers are free now, so the old daily-allowance tokens are gone. The row
   // survives only to carry the desk button.
@@ -175,7 +179,24 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   const insList = el('ul');
   insList.setAttribute('role', 'list');
   const insMore = el('div', 'more');
-  inspector.append(insClose, insName, insDistrict, insProse, insHeading, insList, insMore);
+  const insRound = el('div', 'ward-round');
+  const insRoundHead = el('div', 'heading');
+  const insRoundActions = el('div', 'ward-actions');
+  const wardButtons: { kind: WardCallKind; node: HTMLButtonElement }[] = [];
+  for (const [kind, label] of [
+    ['hear', 'TAKE A STATEMENT'], ['inspect', 'VIEW PREMISES'], ['canvass', 'CANVASS'],
+  ] as [WardCallKind, string][]) {
+    const node = el('button', 'brass', label) as HTMLButtonElement;
+    node.addEventListener('click', () => {
+      if (node.getAttribute('aria-disabled') === 'true' || selBuilding < 0) return;
+      hooks.onWardCall(kind, selBuilding);
+    });
+    wardButtons.push({ kind, node });
+    insRoundActions.append(node);
+  }
+  insRound.append(insRoundHead, insRoundActions);
+  inspector.append(insClose, insName, insDistrict, insProse, insRound, insHeading, insList, insMore);
+  let selBuilding = -1;
 
   // Zoom stepper. The end of the range dims a pip rather than greying a button,
   // so the instrument fiction survives being at the limit.
@@ -236,8 +257,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   deskSheetBtn.setAttribute('aria-label', "Open the alderman's desk");
   deskSheetBtn.addEventListener('click', () => toggleDesk());
   sheetbar.append(deskSheetBtn);
-  const vestryBtn = el('button', 'brass', 'VESTRY') as HTMLButtonElement;
-  vestryBtn.setAttribute('aria-label', 'The vestry: pass and rescind ordinances');
+  const vestryBtn = el('button', 'brass', 'COUNCIL') as HTMLButtonElement;
+  vestryBtn.setAttribute('aria-label', 'The council chamber: make and repeal bylaws');
   vestryBtn.addEventListener('click', () => toggleVestry());
   sheetbar.append(vestryBtn);
 
@@ -302,7 +323,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   // useful than not knowing it exists. The refusal text is the teaching.
   const nudges = el('div', 'plate');
   nudges.id = 'nudges';
-  const nudgeHead = el('div', 'heading', 'USE YOUR POWERS');
+  const nudgeHead = el('div', 'heading', 'EXERCISE YOUR OFFICE');
   const nudgeHint = el('div', 'hint');
   nudges.append(nudgeHead, nudgeHint);
   const nudgeList: { verb: Verb; node: HTMLButtonElement; why: HTMLElement }[] = [];
@@ -353,13 +374,12 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   helpClose.setAttribute('aria-label', 'Close');
   helpClose.addEventListener('click', () => toggleHelp());
   const helpIntro = el('p', 'prose');
-  helpIntro.textContent = 'You run this ward of Verdigris. Keep three things in balance: how happy '
-    + 'the district is, how orderly, and the money in the public purse. Every move you make shifts '
-    + 'them, for better or worse. Reward the people or lean on them, build the place up or let it rot. '
-    + 'Nothing is judged by the button you press, only by what actually happens on the ground.';
+  helpIntro.textContent = 'You hold this ward of Verdigris. Watch its temper, its order, and the public purse. '
+    + 'Call at an address before you act: take a statement, view a nuisance, or canvass a ratepayer. '
+    + 'The minute book records outcomes, not intentions.';
   help.append(helpClose, el('div', 'name', 'VERDIGRIS'), helpIntro);
   const groups: [string, string][] = [
-    ['camera', 'LOOK'], ['time', 'TIME'], ['verbs', 'INSPECT'], ['nudges', 'POWERS'],
+    ['camera', 'LOOK'], ['time', 'TIME'], ['verbs', 'INSPECT'], ['nudges', 'OFFICE'],
   ];
   for (const [g, label] of groups) {
     help.append(el('div', 'heading', label));
@@ -444,8 +464,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
    *
    * Three sentences and a dismiss, shown once. Deliberately not a tutorial: the
    * game begins at the desk, and the only things a player has to be told are how
-   * to inspect a matter, that influence is scarce, and that outcomes rather than
-   * button presses decide the verdict.
+   * to inspect a matter, make calls in the ward, and judge outcomes in the city.
    */
   const firstRun = el('div', 'plate');
   firstRun.id = 'firstrun';
@@ -457,14 +476,14 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   firstRun.hidden = seen;
   firstRun.append(el('div', 'name', 'VERDIGRIS'));
   const fr = el('p', 'prose');
-  fr.textContent = 'You run this ward of Verdigris. Hundreds of people live here, and you hold '
-    + 'real power over how they live.';
+  fr.textContent = 'You have taken the chair for one ward of Verdigris. Its inhabitants know their '
+    + 'streets better than the Town Hall does, and they will hold you to what follows.';
   firstRun.append(fr);
   const list = el('ul');
   for (const line of [
-    'Your job is to balance three things: Happiness, Order, and Money, shown top left.',
-    'Click a building or a person, then use your powers: help them, or lean on them. Every act moves the three.',
-    'Build your perfect district, or squeeze it for all it is worth. What happens on the ground is what counts.',
+    'Watch the ward\'s Temper, Order, and Purse at the top left.',
+    'Choose an address. You may make three calls each day in all: take a statement, view premises, or ask for a pledge.',
+    'Petitions are judged by what is repaired, opened, printed, or carried, never by the paper you file.',
   ]) {
     const li = el('li');
     li.append(el('span', undefined, line));
@@ -559,9 +578,9 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       meter.val.textContent = metricWord(v);
       meter.row.setAttribute('aria-label', `${name}: ${metricWord(v)}, ${Math.round(v / 10)} out of 100`);
     };
-    setMeter(mHappy, 'Happiness', m.happiness);
+    setMeter(mHappy, 'Temper', m.happiness);
     setMeter(mOrder, 'Order', m.order);
-    setMeter(mMoney, 'Money', m.money);
+    setMeter(mMoney, 'Purse', m.money);
 
     if (zoom !== prevZoom) {
       prevZoom = zoom;
@@ -584,7 +603,8 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     vestry.update(city);
     desk.update(city);
     const matterCount = activeMatters(city.matters).length;
-    deskBtn.textContent = `DESK ${matterCount} · ${city.matters.standing}`;
+    deskBtn.textContent = `DESK · ${matterCount}`;
+    deskBtn.setAttribute('aria-label', `Open the alderman's desk: ${matterCount} matter${matterCount === 1 ? '' : 's'}; standing ${city.matters.standing}`);
 
     paintIfChanged(city, sel);
 
@@ -638,12 +658,16 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       li.append(span);
       insList.append(li);
       insMore.textContent = s.inId < 0 ? `BOUND FOR: ${boundFor(city, s)}` : '';
+      insRound.hidden = true;
+      selBuilding = -1;
       return;
     }
     if (sel.buildingId >= 0) {
       const b = city.buildings[sel.buildingId];
       if (!b) { inspector.hidden = true; return; }
       inspector.hidden = false;
+      insRound.hidden = false;
+      selBuilding = b.id;
       insName.textContent = b.name.toUpperCase();
       const street = city.streets[b.streetId];
       insDistrict.textContent = `${(street ? street.name : city.squareName).toUpperCase()} / ${wardOf(b.id)}`;
@@ -664,7 +688,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       }
       if (!lines.length) {
         const li = el('li');
-        li.append(el('span', undefined, ' ·  nobody, just now'));
+        li.append(el('span', undefined, ' ·  the rooms are empty at present'));
         insList.append(li);
       }
       const works = worksSummary(city, b.id);
@@ -674,10 +698,20 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       const civic = civicSummary(city, b.id);
       const occasion = occasionSummary(city, b.id);
       const civicVisit = civicVisitSummary(city, b.id);
-      insMore.textContent = [more > 0 ? `…and ${more} more` : '', civicVisit, civic, shelter, occasion, disaster, works, deputation].filter(Boolean).join('\n');
+      const ward = wardCallSummary(city, b.id);
+      insRoundHead.textContent = `WARD ROUND · ${city.wardRounds.callsLeft} CALL${city.wardRounds.callsLeft === 1 ? '' : 'S'} LEFT TODAY`;
+      for (const item of wardButtons) {
+        const why = canMakeWardCall(city, item.kind, b.id);
+        item.node.setAttribute('aria-disabled', String(why !== null));
+        item.node.title = why ?? (item.kind === 'hear' ? 'Take a named occupant\'s statement for the ward book.'
+          : item.kind === 'inspect' ? 'Send the inspector of nuisances to support a real works case.'
+            : 'Ask a ratepayer for a pledge before the next ward meeting.');
+      }
+      insMore.textContent = [more > 0 ? `…and ${more} more` : '', ward, civicVisit, civic, shelter, occasion, disaster, works, deputation].filter(Boolean).join('\n');
       return;
     }
     inspector.hidden = true;
+    selBuilding = -1;
   }
 
   let prevNudgeKey = '';

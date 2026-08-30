@@ -2,7 +2,7 @@
 //
 // The float simMin lives HERE and nowhere else. city.tick is an integer and the
 // sim never sees a fraction, which is what makes the world a pure function of
-// (seedStr, tickCount, nudges) and lets the QA goldens exist at all.
+// (seedStr, tickCount, player action log) and lets the QA goldens exist at all.
 import './style.css';
 import { newCity, tickCity, warp, hashWorld, soulsOutdoors } from './sim/city';
 import type { City } from './sim/city';
@@ -38,6 +38,7 @@ import { weatherAt, forceWeather, seasonRevisionAt } from './sim/weather';
 import { riverLevelAt, riverDropAt } from './sim/hydrology';
 import type { ForcedWeather } from './sim/weather';
 import { activeMatters, declineMatter, pressMatter, recommendedFor } from './sim/matters';
+import { makeWardCall } from './sim/ward-rounds';
 
 const params = new URLSearchParams(location.search);
 const SEED = params.get('seed') ?? 'verdigris';
@@ -51,7 +52,7 @@ if (!ctx) throw new Error('canvas 2d unavailable');
  * The district opens mid-morning, not at one minute past midnight.
  *
  * newCity starts at tick 0 because the sim has to be a pure function of
- * (seed, tick, nudges) and tick 0 is the only honest place to start it. But that
+ * (seed, tick, player actions) and tick 0 is the only honest place to start it. But that
  * is MIDNIGHT: every soul is asleep, the streets are empty, and at the default
  * speed of one game-minute per second it took a player SIX REAL MINUTES of
  * watching a dark empty town before the first person stepped outside.
@@ -216,7 +217,7 @@ function doVerb(verb: Verb): void {
   if (nudgeKind) {
     const target = targetFor(nudgeKind);
     if (!target) {
-      shell.toast('Nothing chosen to aim that at. Tap a roof, then a name inside it.', 'loss');
+      shell.toast('Choose an address, or choose a name from the people found there.', 'loss');
       return;
     }
     const why = canApply(city, nudgeKind, target);
@@ -225,7 +226,7 @@ function doVerb(verb: Verb): void {
       return;
     }
     applyVisibleNudge(nudgeKind, target);
-    shell.toast(city.log[city.log.length - 1]?.text ?? 'Done.', 'gain');
+    shell.toast(city.log[city.log.length - 1]?.text ?? 'The act is entered in the minute book.', 'gain');
     return;
   }
   switch (verb) {
@@ -285,7 +286,7 @@ function doVerb(verb: Verb): void {
 /**
  * Time is FORWARD ONLY in this version.
  *
- * The sim is deterministic from (seed, tick, nudges), so a true rewind is a
+ * The sim is deterministic from (seed, tick, player actions), so a true rewind is a
  * replay, and a replay of a whole day costs about 300ms. That is affordable but
  * it is not free, and it needs a snapshot ring to stay affordable over a month.
  * Rather than ship a scrubber that silently cannot go left, the control says
@@ -337,10 +338,14 @@ shell = mountShell(shellRoot, {
     }
   },
   onDeclineMatter: (id) => {
-    if (declineMatter(city, id)) shell.toast('The petition was declined. Your influence remains; your standing does not.', 'loss');
+    if (declineMatter(city, id)) shell.toast('The petition is declined. No follow-up is spent, but the refusal is entered against the chair.', 'loss');
   },
   onPressMatter: (id) => {
-    if (pressMatter(city, id)) shell.toast('A clerk has been sent after it. One influence spent.', 'gain');
+    if (pressMatter(city, id)) shell.toast('A clerk is sent after the undertaking. One follow-up measure is spent.', 'gain');
+  },
+  onWardCall: (kind, buildingId) => {
+    const text = makeWardCall(city, kind, buildingId);
+    if (text) shell.toast(text, kind === 'canvass' && text.includes('refuses') ? 'loss' : 'gain');
   },
   onForceWeather: (kind) => {
     forceWeather(kind as ForcedWeather | null, city.tick);
@@ -370,7 +375,7 @@ shell = mountShell(shellRoot, {
       if (cam.zoom < 2) setZoom(2);
       centreOn(cam, viewW, viewH, isoX(b.ox, b.oy), isoY(b.ox, b.oy));
       clampCamera(cam, viewW, viewH, shell.insets());
-      shell.toast(city.log[city.log.length - 1]?.text ?? 'Done.', 'loss');
+      shell.toast(city.log[city.log.length - 1]?.text ?? 'The order has been carried out.', 'loss');
     }
   },
 });

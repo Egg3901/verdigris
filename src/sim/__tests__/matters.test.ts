@@ -32,7 +32,7 @@ describe("the alderman's matters", () => {
     }
   });
 
-  it('sends named petitioners to Civic Hall without gating the live matter', () => {
+  it('sends named petitioners to the Town Hall without gating the live matter', () => {
     const city = newCity('verdigris');
     warp(city, 180);
     const matter = activeMatters(city.matters)[0];

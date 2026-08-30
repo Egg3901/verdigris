@@ -83,7 +83,7 @@ const ACTIVITY_PHRASE: Partial<Record<Activity, string>> = {
   errand: 'out on an errand',
   shopping: 'buying something small',
   drinking: 'drinking',
-  worshipping: 'at prayer, or near enough',
+  worshipping: 'at prayer',
   loitering: 'standing about',
   visiting: 'sitting with the family',
   ailing: 'ailing',
@@ -104,9 +104,9 @@ const ACTIVITY_PHRASE: Partial<Record<Activity, string>> = {
 // rather than the worker never have to agree with anything.
 const WORK_PHRASE: Partial<Record<Trade, string[]>> = {
   clerk: [
-    'copying a ledger nobody has believed in for years',
-    'adding a column that will not come out',
-    'filing something that will never be asked for',
+    'copying correspondence into the letter book',
+    'balancing a column in the rate ledger',
+    'entering a resolution in the minutes',
   ],
   millhand: [
     'minding a machine that does not stop for anyone',
@@ -115,19 +115,19 @@ const WORK_PHRASE: Partial<Record<Trade, string[]>> = {
     'listening for the sound the machine makes before it jams',
   ],
   lighterman: ['working a barge off the quay', 'making fast in a wind that is getting up'],
-  engineer: ['inside a machine up to the elbows', 'explaining to nobody why it will not run'],
-  lamplighter: ['checking a mantle that has been failing for a week', 'trimming wicks nobody thanks anyone for'],
+  engineer: ['inside a machine up to the elbows', 'tracing the fault in a stopped engine'],
+  lamplighter: ['checking a mantle that has been failing for a week', 'trimming the lamps for the evening round'],
   conductor: ['counting the fares twice, to be sure', 'arguing with somebody about a ticket'],
-  constable: ['writing up something that will not be read', 'standing where standing is the job'],
+  constable: ['entering a charge in the occurrence book', 'standing the appointed beat'],
   printer: ['setting type back to front, correctly', 'washing ink out of the press and out of both hands'],
   publican: ['pulling for a room that is not paying yet', 'watering something that was already watered'],
-  shopkeeper: ['rearranging a window nobody stops at', 'weighing out less than was asked for'],
+  shopkeeper: ['setting out the window before the noon trade', 'weighing an order against the shop scales'],
   seamstress: ['finishing a seam by the last of the light', 'turning a collar for the second time'],
   laundress: ['up to the elbows in somebody else\'s linen', 'boiling a copper that has boiled since five'],
   docker: ['shifting weight that was badly loaded', 'waiting to be picked, and not being picked'],
-  nurse: ['doing what can be done', 'writing down what the doctor will not'],
+  nurse: ['dressing what can be dressed', 'entering a case in the dispensary book'],
   curate: ['preparing a sermon about patience', 'visiting a house that would rather not be visited'],
-  alderman: ['signing whatever is put in front of them', 'agreeing with the last person who spoke'],
+  alderman: ['signing the day\'s minutes', 'hearing a motion from the works committee'],
   child: ['reciting something learned by heart', 'copying the answer off the next desk'],
 };
 

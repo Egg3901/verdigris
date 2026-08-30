@@ -75,7 +75,7 @@ export const GRUDGE_TOPIC: readonly string[] = [
 
 /** Landmark names. Fixed, because these nine are the postcard. */
 export const LANDMARK_NAMES: Record<string, string> = {
-  townhall: 'The Civic Hall',
+  townhall: 'The Town Hall',
   exchange: 'The Corn Exchange',
   newspaper: 'The Verdigris Herald',
   constabulary: 'The Constabulary',

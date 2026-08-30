@@ -2,7 +2,7 @@
 //
 // DETERMINISM CONTRACT: no PRNG cursor is ever stored in sim state. Every random
 // decision derives its generator from (seed, stream, tick, entity), so a replay
-// from (seedStr, tickCount, nudges) is exact with no hidden state to restore.
+// from (seedStr, tickCount, player actions) is exact with no hidden state to restore.
 export type Rng = () => number;
 
 export function mulberry32(seed: number): Rng {

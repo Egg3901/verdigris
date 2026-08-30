@@ -49,7 +49,7 @@ export interface Matter {
   response: InterventionKind | null;
   /** One further use of influence while the city is still deciding. */
   pressedAt: number;
-  /** When at least one named petitioner physically reached Civic Hall. */
+  /** When at least one named petitioner physically reached the Town Hall. */
   presentedAt: number;
   standingDelta: number;
   outcome: string;
@@ -63,6 +63,8 @@ export interface CivicRelation {
   lastMatterId: number;
   /** Last time this citizen physically spoke for or against the chair. */
   lastActAt: number;
+  /** Last personal canvass, used to bring the ratepayer into the next sitting. */
+  lastCanvassedAt: number;
 }
 
 export interface RatepayerMeeting {
@@ -179,8 +181,8 @@ function openRepair(city: City): boolean {
     partyIds: parties,
     title: `${street}: a home needs repairs`,
     petition: `${names(city, parties)} want the ${defect} at ${candidate.name} put right.`,
-    cause: `Fabric ${candidate.fabric}/1000; treasury ${pressureOf(city.press, 'coin')}/1000; civic rot ${pressureOf(city.press, 'rot')}/1000.`,
-    test: 'Actually repair it. A survey mark, scaffold or fresh paint alone does not count.',
+    cause: `Fabric ${candidate.fabric}/1000; treasury ${pressureOf(city.press, 'coin')}/1000; works integrity ${1000 - pressureOf(city.press, 'rot')}/1000.`,
+    test: 'Make good the defect. A survey mark, scaffold, or coat of paint is not completion.',
   });
   // Competence is not punished. If the address was already in the register,
   // the new petition attaches to that exact live order instead of demanding a
@@ -225,8 +227,8 @@ function openLabour(city: City): boolean {
     partyIds: parties,
     title: `${candidate.firm.name}: the workers want backing`,
     petition: `${names(city, parties)} want you to back them before the rent falls due.`,
-    cause: `${candidate.firm.workerIds.length} hands average ${candidate.grievance}/1000 grievance; treasury ${pressureOf(city.press, 'coin')}/1000.`,
-    test: 'Their strike must survive the first attempt to break it up.',
+    cause: `${candidate.firm.workerIds.length} hands; average grievance ${candidate.grievance}/1000; treasury ${pressureOf(city.press, 'coin')}/1000.`,
+    test: 'The picket must remain after the first four hours.',
   });
   return true;
 }
@@ -344,8 +346,8 @@ function openInquiry(city: City): boolean {
     partyIds: parties,
     title: `${city.buildings[incident.placeId]?.name ?? 'The hall'}: the story is disputed`,
     petition: `${names(city, parties)} want to know whose account of it will stand.`,
-    cause: `${incident.defId} was witnessed here by ${incident.soulIds.length}; paper credibility ${city.paperCredibility}/1000; suspicion ${pressureOf(city.press, 'suspicion')}/1000.`,
-    test: 'A named arrest must still hold after an hour, or a believable account must stay in the paper.',
+    cause: `${incident.defId} witnessed here by ${incident.soulIds.length}; the Herald's credit ${city.paperCredibility}/1000; public suspicion ${pressureOf(city.press, 'suspicion')}/1000.`,
+    test: 'A named detention must still hold after an hour, or a defensible account must remain in the Herald.',
   });
   matter.baseline = city.paperCredibility;
   return true;
@@ -365,7 +367,7 @@ function openTurnout(city: City): boolean {
     kind: 'turnout', openedAt: city.tick, dueAt: city.matters.nextMeetingAt,
     target: { kind: 'building', id: hall }, subjectId: city.matters.nextMeetingAt,
     partyIds: parties,
-    title: `${city.squareName}: a confidence vote is near`,
+    title: `${city.squareName}: the ward sitting is near`,
     petition: `${names(city, parties)} want you to rally enough support to win the vote.`,
     cause: `${visit.actorIds.length} ratepayers are called; standing ${city.matters.standing}/1000; ${city.matters.relations.filter((item) => item.regard < 0).length} named opponents remain.`,
     test: 'The vote must actually pass when those who turn up are counted.',
@@ -412,7 +414,7 @@ function adjustRegard(city: City, soulId: SoulId, delta: number, matterId: numbe
   if (!city.souls[soulId]) return;
   let relation = city.matters.relations.find((item) => item.soulId === soulId);
   if (!relation) {
-    relation = { soulId, regard: 0, since: city.tick, lastMatterId: matterId, lastActAt: -1 };
+    relation = { soulId, regard: 0, since: city.tick, lastMatterId: matterId, lastActAt: -1, lastCanvassedAt: -1 };
     city.matters.relations.push(relation);
   }
   const before = relation.regard;
@@ -424,6 +426,16 @@ function adjustRegard(city: City, soulId: SoulId, delta: number, matterId: numbe
     city.matters.relations.sort((a, b) => Math.abs(b.regard) - Math.abs(a.regard) || b.since - a.since || a.soulId - b.soulId);
     city.matters.relations.length = 40;
   }
+}
+
+/** Record a named conversation in the same civic ledger petitions use. */
+export function recordWardContact(
+  city: City, soulId: SoulId, delta: number, matterId: number, canvassed: boolean,
+): void {
+  adjustRegard(city, soulId, delta, matterId);
+  const relation = city.matters.relations.find((item) => item.soulId === soulId);
+  if (relation && canvassed) relation.lastCanvassedAt = city.tick;
+  city.matters.revision++;
 }
 
 function schedulePoliticalReaction(city: City, matter: Matter, kind: 'support' | 'opposition'): void {
@@ -567,7 +579,7 @@ function mobilisedRelations(city: City): CivicRelation[] {
   return city.matters.relations.filter((item) => {
     const matter = city.matters.items.find((candidate) => candidate.id === item.lastMatterId);
     const heardAt = matter ? Math.max(matter.openedAt, matter.resolvedAt) : -1;
-    return heardAt >= previous && city.souls[item.soulId]?.age >= 18;
+    return (heardAt >= previous || item.lastCanvassedAt >= previous) && city.souls[item.soulId]?.age >= 18;
   });
 }
 
@@ -744,24 +756,26 @@ export function matterDay(matter: Matter): number {
 }
 
 export function matterInsight(city: City, matter: Matter): string {
-  const patron = matter.partyIds.find((id) => regardFor(city, id) > 0);
+  const heardAtAddress = [...city.wardRounds.calls].reverse().find((call) =>
+    call.kind === 'hear' && call.buildingId === matter.target.id && regardFor(city, call.soulId) > 0);
+  const patron = matter.partyIds.find((id) => regardFor(city, id) > 0) ?? heardAtAddress?.soulId;
   if (patron === undefined) return '';
   const who = fullName(city.souls[patron]);
   if (matter.kind === 'repair') {
     const b = city.buildings[matter.target.id];
     const pneumatic = Boolean(b && b.postSeg >= 0 && serviceAt(city.networks.post, b.id));
     const sound = pressureOf(city.press, 'coin') >= 360 && pressureOf(city.press, 'rot') < 520;
-    return `${who} says the case will travel ${pneumatic ? 'by pneumatic post' : 'by hand'}; ${sound ? 'the money and the hall look sound' : 'either the money or the hall looks doubtful'}.`;
+    return `${who} says the case will travel ${pneumatic ? 'by pneumatic post' : 'by hand'}; ${sound ? 'the treasury and Works Committee appear ready' : 'either the treasury or the Works Committee is doubtful'}.`;
   }
   if (matter.kind === 'labour') {
-    return `${who} says the first four hours will decide it; ${pressureOf(city.press, 'coin') < 320 ? 'the hall is ready to clear the gate' : 'the hall can afford to let the hands stand'}.`;
+    return `${who} says the first four hours will decide it; ${pressureOf(city.press, 'coin') < 320 ? 'the council is likely to clear the gate' : 'the council can afford to leave the picket standing'}.`;
   }
   if (matter.kind === 'sanitation') {
     const sick = sickOnStreet(city, matter.subjectId).length;
     return `${who} has counted ${sick} sick residents now, against ${matter.baseline} when the petition opened.`;
   }
   if (matter.kind === 'inquiry') {
-    return `${who} says the paper stands at ${city.paperCredibility}/1000 credibility; a false first-hand story will be retracted.`;
+    return `${who} puts the Herald's credit at ${city.paperCredibility}/1000; a false first-hand account will bring a retraction.`;
   }
   if (matter.kind === 'turnout') {
     const visit = pendingMeetingVisit(city);
@@ -770,7 +784,7 @@ export function matterInsight(city: City, matter: Matter): string {
   const b = city.buildings[matter.target.id];
   const gas = b && (!DEFS[b.kind].needsGas || serviceAt(city.networks.gas, b.id));
   const drains = b && (!DEFS[b.kind].needsDrain || serviceAt(city.networks.drain, b.id));
-  return `${who} has looked at the room: heat ${gas ? 'served' : 'failed'}, drains ${drains ? 'served' : 'failed'}.`;
+  return `${who} has viewed the room: gas ${gas ? 'connected' : 'failed'}, drains ${drains ? 'connected' : 'failed'}.`;
 }
 
 export function recommendedFor(matter: Matter): InterventionKind[] {

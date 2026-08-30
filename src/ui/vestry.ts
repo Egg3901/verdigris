@@ -1,4 +1,4 @@
-// The vestry: where the player passes and repeals ordinances.
+// The council chamber: where the player makes and repeals bylaws.
 //
 // Ten laws existed in the simulation, with real mechanisms, compliance keyed to
 // character, enforcement, capture and repeal, and there was no way to reach any
@@ -6,9 +6,9 @@
 // in the product.
 //
 // The panel is deliberately a MINUTE BOOK rather than a control surface: rows of
-// ordinances, the hour or the fee each is set at, whether it is in force, and
+// bylaws, the hour or the fee each is set at, whether it is in force, and
 // whether the sitting was packed. The verbs are "move" and "rescind", because
-// this is a parish vestry and not a settings screen.
+// this is a municipal minute book and not a settings screen.
 import { formatClock } from '../sim/clock';
 import type { City } from '../sim/city';
 import {
@@ -53,12 +53,12 @@ export function mountVestry(hooks: VestryHooks): Vestry {
   root.id = 'vestry';
   root.hidden = true;
   root.setAttribute('role', 'region');
-  root.setAttribute('aria-label', 'The vestry');
+  root.setAttribute('aria-label', 'The council chamber');
 
-  const head = el('div', 'name', 'THE VESTRY');
+  const head = el('div', 'name', 'THE COUNCIL MINUTE BOOK');
   const status = el('div', 'vstatus');
   const close = el('button', 'close', '×') as HTMLButtonElement;
-  close.setAttribute('aria-label', 'Close the vestry');
+  close.setAttribute('aria-label', 'Close the council minute book');
   close.addEventListener('click', () => { root.hidden = true; });
   root.append(close, head, status);
 
@@ -177,7 +177,7 @@ export function mountVestry(hooks: VestryHooks): Vestry {
     // panel reading "a dead letter" almost permanently.
     const enf = city.laws.enforcement;
     const word = enf > 330 ? 'firmly kept' : enf > 210 ? 'kept after a fashion' : 'a dead letter';
-    status.textContent = `Enforcement ${enf} of 1000: ${word}.`;
+    status.textContent = `EXECUTION OF THE BYLAWS · ${word.toUpperCase()} · ${enf}/1000`;
 
     for (const r of rows) {
       const spec = paramSpecOf(r.kind);
@@ -197,16 +197,16 @@ export function mountVestry(hooks: VestryHooks): Vestry {
       r.act.setAttribute('aria-disabled', String(why !== null));
       // The generic "already sat today" applies to every row at once, so it goes
       // in the footer rather than repeated ten times down the page.
-      r.why.textContent = why && why !== 'The vestry has already sat today.' ? why : '';
+      r.why.textContent = why && why !== 'The council has already sat today.' ? why : '';
       if (live && ord.enforced + ord.breached > 0) {
         r.why.textContent = `${ord.enforced} turned back, ${ord.breached} defied it.`;
       }
     }
 
-    const sat = canEnact(city, 'curfew') === 'The vestry has already sat today.';
+    const sat = canEnact(city, 'curfew') === 'The council has already sat today.';
     footer.textContent = sat
-      ? 'The vestry has sat today. It meets again tomorrow.'
-      : 'The vestry will hear one motion today.';
+      ? 'The council has risen for the day. It meets again tomorrow.'
+      : 'One motion may be entered today.';
   };
 
   return { node: root, update };

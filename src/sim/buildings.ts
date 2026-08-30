@@ -41,7 +41,7 @@ function def(
 
 export const DEFS: Record<BuildingKind, BuildingDef> = {
   // Landmarks. The postcard.
-  townhall: def('Civic Hall', 4, [4, 4], 40, { publicAccess: true, baseFacade: 980, baseFabric: 640, storeys: 3, landmark: true }),
+  townhall: def('Town Hall', 4, [4, 4], 40, { publicAccess: true, baseFacade: 980, baseFabric: 640, storeys: 3, landmark: true }),
   exchange: def('Corn Exchange', 3, [3, 3], 30, { publicAccess: true, baseFacade: 900, storeys: 2, landmark: true }),
   newspaper: def('Newspaper Office', 2, [3, 2], 18, { publicAccess: true, baseFabric: 600, storeys: 3, landmark: true }),
   constabulary: def('Constabulary', 2, [3, 2], 14, { publicAccess: true, storeys: 2, landmark: true }),

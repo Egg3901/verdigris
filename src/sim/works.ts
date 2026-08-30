@@ -28,6 +28,8 @@ export interface WorkOrder {
   pneumatic: boolean;
   /** The alderman spent further influence to keep this exact case off the shelf. */
   pressed: boolean;
+  /** A recent personal view by the inspector of nuisances supports the case. */
+  inspected: boolean;
 }
 
 export interface WorksState {
@@ -99,6 +101,7 @@ export function fileWorks(city: City, buildingId: number): WorkOrder {
     workshopFirmId: workshop?.id ?? -1,
     pneumatic,
     pressed: false,
+    inspected: city.wardRounds.inspectedUntil[buildingId] > city.tick,
   };
   city.works.orders.push(order);
   city.works.revision++;
@@ -180,7 +183,7 @@ export function tickWorksHourly(city: City): WorksUpdate[] {
 
     if (order.status !== 'working' || city.tick < order.dueAt) continue;
     const workshop = city.firms[order.workshopFirmId];
-    const honest = order.pressed || pressureOf(city.press, 'rot') < 520;
+    const honest = order.pressed || order.inspected || pressureOf(city.press, 'rot') < 520;
     const funded = order.pressed || pressureOf(city.press, 'coin') >= 360;
     const crewWorking = Boolean(workshop && isRunning(workshop, city.tick));
     order.resolvedAt = city.tick;

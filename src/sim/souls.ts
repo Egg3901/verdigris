@@ -120,7 +120,7 @@ export function soulPos(g: StreetGraph, s: Soul, fracMin: number): { cx: number;
   // a half cells a minute crosses several one-cell edges within a single tick,
   // and stopping the interpolation at the first junction pins it there until the
   // sim catches up. This is a pure lookahead: it reads state and never writes it,
-  // so the sim stays a function of (seed, tick, nudges) and the renderer stays
+  // so the sim stays a function of (seed, tick, player actions) and the renderer stays
   // free to ask for any moment in between.
   let from = s.atNode;
   let to = s.toNode;

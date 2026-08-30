@@ -43,24 +43,24 @@ export const BINDINGS: readonly Binding[] = [
   { verb: 'hide', keys: ['h'], label: 'Hide this', group: 'verbs' },
   { verb: 'dismiss', keys: ['Escape'], label: 'Let it go', group: 'verbs' },
 
-  { verb: 'nudgeRumour', keys: ['q'], label: 'Start a rumour', group: 'nudges' },
+  { verb: 'nudgeRumour', keys: ['q'], label: 'Put about an allegation', group: 'nudges' },
   { verb: 'nudgeGas', keys: ['g'], label: 'Cut off the gas', group: 'nudges' },
   { verb: 'nudgeTram', keys: ['t'], label: 'Delay the tram', group: 'nudges' },
-  { verb: 'nudgeTip', keys: ['c'], label: 'Set the police on them', group: 'nudges' },
+  { verb: 'nudgeTip', keys: ['c'], label: 'Lay an information', group: 'nudges' },
   { verb: 'nudgeStrike', keys: ['k'], label: 'Back a strike', group: 'nudges' },
-  { verb: 'nudgeStory', keys: ['p'], label: 'Plant a newspaper story', group: 'nudges' },
-  { verb: 'nudgeQuarantine', keys: ['x'], label: 'Quarantine a street', group: 'nudges' },
-  { verb: 'nudgeBunting', keys: ['b'], label: 'Put on a celebration', group: 'nudges' },
-  { verb: 'nudgeWorks', keys: ['o'], label: 'Order repairs', group: 'nudges' },
-  { verb: 'nudgeDeputation', keys: ['u'], label: 'Send a delegation', group: 'nudges' },
-  { verb: 'nudgeShelter', keys: ['e'], label: 'Open a shelter', group: 'nudges' },
+  { verb: 'nudgeStory', keys: ['p'], label: 'Put it in the Herald', group: 'nudges' },
+  { verb: 'nudgeQuarantine', keys: ['x'], label: 'Cordon the street', group: 'nudges' },
+  { verb: 'nudgeBunting', keys: ['b'], label: 'Pay for the flags', group: 'nudges' },
+  { verb: 'nudgeWorks', keys: ['o'], label: 'Enter a works case', group: 'nudges' },
+  { verb: 'nudgeDeputation', keys: ['u'], label: 'Call a deputation', group: 'nudges' },
+  { verb: 'nudgeShelter', keys: ['e'], label: 'Open a refuge', group: 'nudges' },
   { verb: 'nudgeFire', keys: ['i'], label: 'Set it alight', group: 'nudges' },
   { verb: 'nudgeFlood', keys: ['j'], label: 'Flood it out', group: 'nudges' },
   { verb: 'nudgeCondemn', keys: ['n'], label: 'Condemn it', group: 'nudges' },
 
   { verb: 'selectNear', keys: ['Shift + arrows'], label: 'Move the selection about the district', group: 'verbs' },
 
-  { verb: 'vestry', keys: ['v'], label: 'The vestry: pass an ordinance', group: 'meta' },
+  { verb: 'vestry', keys: ['v'], label: 'Council chamber: move a bylaw', group: 'meta' },
   { verb: 'help', keys: ['?'], label: 'This list', group: 'meta' },
 ];
 

@@ -212,7 +212,7 @@ pipes, damp and puddles all put case state directly on the building.
 ### `civic-visits.ts`
 
 A petition may be readable as soon as the morning papers reach the desk, but its
-authors still walk to Civic Hall. Kept promises send a named patron to speak at
+authors still walk to the Town Hall. Kept promises send a named patron to speak at
 the newspaper; broken or declined promises send a named opponent to a public
 house. Support or opposition changes the ward only after the person arrives.
 

@@ -46,7 +46,7 @@ VERDIGRIS_WEB_ROOT=/path/to/webroot ./deploy.sh   # build, then rsync dist/
 
 - `src/sim/` is pure and deterministic. Zero DOM, zero `Math.random`, zero
   `Date.now`. Integers only in state. The world is a pure function of
-  `(seedStr, tickCount, nudges)`, which is why the save format is the nudge log
+  `(seedStr, tickCount, player action log)`, which is why the save format is the action log
   and why `hashWorld()` can anchor every determinism test.
 - `src/render/` never writes to the sim. Buildings are flattened once into their
   own sprites and sorted per object; the ID buffer is stamped in the same
@@ -70,7 +70,7 @@ Live at **https://lakesidegames.net/games/verdigris/**
 Built and playing:
 
 - The deterministic core. The world is a pure function of
-  `(seedStr, tickCount, nudges)`, so the save format is the nudge log and
+  `(seedStr, tickCount, player action log)`, so the save format is the action log and
   `hashWorld()` anchors every determinism test.
 - Worldgen on a 64 by 64 grid: seeded coves and headlands, polite and
   working banks, two or three crossings, a variable civic square, five to eight

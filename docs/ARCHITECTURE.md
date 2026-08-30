@@ -23,12 +23,12 @@ selectable, accessible and stylable without reimplementing text layout.
 
 ## The determinism contract
 
-The world is a pure function of `(seedStr, tickCount, nudges)`.
+The world is a pure function of `(seedStr, tickCount, player action log)`.
 
 That single sentence is the most important constraint in the codebase, and most
 of the odd looking decisions below exist to preserve it.
 
-**What it buys.** The save format is the nudge log, not a state dump: a handful
+**What it buys.** The save format is the player action log, not a state dump: a handful
 of integers replays a month of city history exactly. Every test can assert on
 `hashWorld()` rather than on a hand written expectation. Bug reports are a seed
 and a tick count.
@@ -175,7 +175,10 @@ exactly what a language model in this slot would destroy.
 
 Nothing teleports a crowd or fires an effect before a named body arrives.
 
-- Petitioners walk to Civic Hall (`civic-visits.ts`).
+- Petitioners walk to the Town Hall (`civic-visits.ts`).
+- Personal calls are stored in the ward book (`ward-rounds.ts`). Hearing affects
+  named civic relations, inspection supports a concrete works case, and canvass
+  pledges enter the next ratepayers' sitting.
 - Patrons and opponents carry a verdict to a newspaper office or a public house,
   and the ward's support changes only once they arrive.
 - Storm refuges relieve a person only when that person is physically inside
