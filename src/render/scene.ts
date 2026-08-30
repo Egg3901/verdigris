@@ -1136,7 +1136,7 @@ export function flattenBuilding(
     depth: depthKey(sx, sy, LAYER_STRUCT),
     windows,
     wallH: spec.wallH,
-    washing: spec.washing === true,
+    washing: spec.washing === true && ((spec.salt ?? 0) % 6) === 0,
   };
 }
 

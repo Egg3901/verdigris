@@ -777,6 +777,24 @@ export function drawRidgeCrest(
   }
 }
 
+/** Static washing for most addresses. A sparse subset moves in the pulse pass. */
+export function drawWashingLine(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, salt: number,
+): void {
+  const top = Math.max(3, wallH - 12);
+  const cloth = [PAL.buntCream, PAL.buntBlue, PAL.plaster2, PAL.ochre2];
+  const n = 3 + (salt % 2);
+  lineHard(ctx, f.at(0.12, top), f.at(0.88, top + 2), PAL.wood0);
+  for (let i = 0; i < n; i++) {
+    const t = 0.2 + (0.6 * i) / Math.max(1, n - 1);
+    const p = f.at(t, top + Math.sin(t * Math.PI) * 2);
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    ctx.fillStyle = cloth[(i + salt) % cloth.length];
+    ctx.fillRect(x - 2, y + 1, 3, 5 + (i % 3));
+  }
+}
+
 /**
  * Soot streaks down a wall from the eave. Working-bank weathering, not a wash
  * of the whole face.
