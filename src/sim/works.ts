@@ -136,19 +136,26 @@ function firstBrokenOnPath(net: City['networks']['gas'], buildingId: number): nu
   return -1;
 }
 
-function completePhysicalWork(city: City, order: WorkOrder): void {
-  const b = city.buildings[order.buildingId];
-  if (order.kind === 'fabric') {
-    b.fabric = Math.min(1000, b.fabric + 180);
+/** Make good one exact defect. Public works and private compliance share this
+ * operation so both routes alter the same physical city state. */
+export function makeGoodAt(city: City, buildingId: number, kind: WorksKind): void {
+  const b = city.buildings[buildingId];
+  if (!b) return;
+  if (kind === 'fabric') {
+    b.fabric = Math.min(1000, Math.max(780, b.fabric + 180));
     b.facade = Math.min(1000, b.facade + 20);
     return;
   }
 
-  const net = order.kind === 'drain' ? city.networks.drain : city.networks.gas;
+  const net = kind === 'drain' ? city.networks.drain : city.networks.gas;
   if (net.buildingSeg[b.id] < 0) connectBuilding(net, b.id, b.doorNode);
-  const broken = firstBrokenOnPath(net, b.id);
-  if (broken >= 0) repairSegment(net, broken);
-  if (order.kind === 'drain') b.drainSeg = net.buildingSeg[b.id];
+  let broken = firstBrokenOnPath(net, b.id);
+  let guard = 0;
+  while (broken >= 0 && guard++ < net.parent.length) {
+    repairSegment(net, broken);
+    broken = firstBrokenOnPath(net, b.id);
+  }
+  if (kind === 'drain') b.drainSeg = net.buildingSeg[b.id];
   else b.gasSeg = net.buildingSeg[b.id];
   // Opening a wall and making good also fixes some of the surrounding fabric.
   b.fabric = Math.min(1000, b.fabric + 70);
@@ -190,7 +197,7 @@ export function tickWorksHourly(city: City): WorksUpdate[] {
     city.works.revision++;
 
     if (honest && funded && crewWorking) {
-      completePhysicalWork(city, order);
+      makeGoodAt(city, order.buildingId, order.kind);
       order.status = 'completed';
       resolveCivicWorks(city, order, true);
       emit(city.events, 'worksCompleted', b.id, [], 220, city.tick);

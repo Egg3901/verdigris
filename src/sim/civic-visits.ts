@@ -299,7 +299,7 @@ export function civicVisitSummary(city: City, buildingId: BuildingId): string {
     && visit.status !== 'scheduled' && visit.status !== 'ended');
   if (!visits.length) return '';
   const visit = visits[0];
-  const label = visit.kind === 'petition' ? 'PETITIONERS AT CIVIC HALL'
+  const label = visit.kind === 'petition' ? 'PETITIONERS AT TOWN HALL'
     : visit.kind === 'meeting' ? 'RATEPAYERS GATHERING'
       : visit.kind === 'support' ? 'A PATRON IS SPEAKING HERE' : 'AN OPPONENT IS SPEAKING HERE';
   return `${label} · ${visit.arrivedIds.length}/${visit.actorIds.length} ARRIVED`;

@@ -34,6 +34,7 @@ import { mix, Stream } from '../sim/rng';
 import { buildMarketProps, buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
 import { worksStageFor, latestOrderFor } from '../sim/works';
+import { noticeVisualStage } from '../sim/notices';
 import { isClosed, isStruck } from '../sim/firms';
 import { isDeputationActive } from '../sim/deputations';
 import { activePublicVisit } from '../sim/civic-visits';
@@ -281,6 +282,7 @@ export function buildingVisualRevision(city: City): number {
     if (firm && isStruck(firm, city.tick)) bands |= 1 << 8;
     if (firm && isClosed(firm, city.tick)) bands |= 1 << 9;
     if (firm && firm.output <= 0) bands |= 1 << 10;
+    if (noticeVisualStage(city, b.id)) bands |= 1 << 11;
     hash = Math.imul(hash ^ b.id ^ (bands << 16), 16777619);
   }
   return hash >>> 0;
@@ -530,7 +532,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   const dwelling = b.kind === 'terrace' || b.kind === 'tenement'
     || b.kind === 'courtdwelling' || b.kind === 'lodging';
   const finial: Finial = fam.finial ?? 'none';
-  const worksStage = worksStageFor(city, b.id);
+  const worksStage = Math.max(worksStageFor(city, b.id), noticeVisualStage(city, b.id)) as 0 | 1 | 2 | 3;
   const repairMemory = buildingRepairMemory(city, b.id);
   const drainState: 0 | 1 | 2 = !def.needsDrain ? 0 : serviceAt(city.networks.drain, b.id) ? 1 : 2;
   const wardWear = wardKind === 'works' || wardKind === 'courts' || wardKind === 'quayside' ? 1 : 0;

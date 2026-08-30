@@ -5,7 +5,7 @@
 // residents bring a real condition to the desk, the player may investigate and
 // answer it, and the ledger records what the simulation eventually did.
 //
-// A matter is never a random quest. Its cause, deadline and verdict are all read
+// A matter is never a random quest. Its cause, day for answer and verdict are all read
 // from existing city state. Pressing the suggested button is not success: a works
 // case can still be skimmed, a strike can still be cleared, and a refuge only
 // counts if somebody physically reaches it.
@@ -25,6 +25,7 @@ import {
 
 export type MatterKind = 'repair' | 'labour' | 'refuge' | 'sanitation' | 'inquiry' | 'turnout';
 export type MatterStatus = 'open' | 'pending' | 'kept' | 'failed' | 'declined' | 'overtaken';
+export type MatterResponseKind = InterventionKind | 'serveNotice';
 
 export interface Matter {
   id: number;
@@ -46,7 +47,7 @@ export interface Matter {
   petition: string;
   cause: string;
   test: string;
-  response: InterventionKind | null;
+  response: MatterResponseKind | null;
   /** One further use of influence while the city is still deciding. */
   pressedAt: number;
   /** When at least one named petitioner physically reached the Town Hall. */
@@ -464,10 +465,14 @@ export function regardFor(city: City, soulId: SoulId): number {
 /** Match an intervention to a petition. The eventual verdict still comes from state. */
 export function noteMatterResponse(city: City, kind: InterventionKind, target: Target): void {
   const matches = activeMatters(city.matters).filter((m) => {
-    if (m.status !== 'open') return false;
+    const noticeMayBecomeWorks = m.status === 'pending' && m.response === 'serveNotice'
+      && kind === 'fileWorks' && target.id === m.target.id
+      && (m.kind === 'repair' || m.kind === 'sanitation');
+    if (m.status !== 'open' && !noticeMayBecomeWorks) return false;
     if (m.kind === 'repair') return (kind === 'fileWorks' || kind === 'callDeputation') && target.id === m.target.id;
     if (m.kind === 'labour') {
-      return kind === 'fundStrike' && (target.id === m.target.id || target.id === m.subjectId);
+      return (kind === 'fundStrike' && (target.id === m.target.id || target.id === m.subjectId))
+        || (kind === 'tipOff' && target.kind === 'soul' && m.partyIds.includes(target.id));
     }
     if (m.kind === 'refuge') return kind === 'openShelter' && target.id === m.target.id;
     if (m.kind === 'sanitation') {
@@ -499,10 +504,27 @@ export function noteMatterResponse(city: City, kind: InterventionKind, target: T
         ? target.kind === 'claim' ? target.id : city.souls[target.id]?.beliefs[0]?.claimId ?? -1
         : target.kind === 'soul' ? target.id : -1;
     }
+    if (matter.kind === 'labour' && kind === 'tipOff') matter.evidenceId = target.id;
     if (matter.kind === 'turnout' && kind === 'fundBunting') reinforceMeetingVisit(city);
     matter.status = 'pending';
     matter.respondedAt = city.tick;
     matter.response = kind;
+    city.matters.revision++;
+  }
+}
+
+/** Bind a statutory notice to the petition at the same address. */
+export function noteNoticeResponse(city: City, noticeId: number): void {
+  const notice = city.notices.notices[noticeId];
+  if (!notice) return;
+  for (const matter of activeMatters(city.matters)) {
+    if (matter.status !== 'open' || matter.target.id !== notice.buildingId
+      || (matter.kind !== 'repair' && matter.kind !== 'sanitation')) continue;
+    matter.status = 'pending';
+    matter.respondedAt = city.tick;
+    matter.response = 'serveNotice';
+    if (matter.kind === 'repair') matter.subjectId = notice.id;
+    else matter.evidenceId = notice.id;
     city.matters.revision++;
   }
 }
@@ -527,6 +549,7 @@ export function declineMatter(city: City, id: number): boolean {
 export function canPressMatter(city: City, id: number): string | null {
   const matter = city.matters.items.find((item) => item.id === id);
   if (!matter || matter.status !== 'pending') return 'Only a pending promise can be pressed.';
+  if (matter.response === 'serveNotice') return 'A statutory notice must run its course, or be brought before the petty sessions after default.';
   if (matter.kind === 'inquiry' || (matter.kind === 'sanitation' && matter.response !== 'fileWorks')) {
     return 'There is no clerk who can press this kind of promise.';
   }
@@ -675,18 +698,33 @@ export function tickMatters(city: City): void {
       continue;
     }
     if (matter.kind === 'repair' && matter.status === 'pending') {
+      if (matter.response === 'serveNotice') {
+        const notice = city.notices.notices[matter.subjectId];
+        if ((notice?.status === 'complied' || notice?.status === 'abated')
+          && !worksNeededAt(city, matter.target.id)) {
+          resolve(city, matter, 'kept', `${matter.title}: the occupier complied with the nuisance notice and made good the defect.`);
+          continue;
+        }
+      }
       const order = city.works.orders[matter.subjectId];
-      if (order?.status === 'completed') {
+      if (matter.response === 'fileWorks' && order?.status === 'completed') {
         resolve(city, matter, 'kept', `${matter.title}: the repair was actually made.`);
         continue;
       }
-      if (order?.status === 'skimmed' || order?.status === 'shelved') {
+      if (matter.response === 'fileWorks' && (order?.status === 'skimmed' || order?.status === 'shelved')) {
         resolve(city, matter, 'failed', `${matter.title}: the case ended in ${order.status === 'skimmed' ? 'fresh paint and the same defect' : 'the shelf'}.`);
         continue;
       }
     }
     if (matter.kind === 'labour' && matter.status === 'pending') {
       const firm = city.firms[matter.subjectId as FirmId];
+      if (matter.response === 'tipOff' && city.tick >= matter.respondedAt + 60) {
+        const held = matter.evidenceId >= 0 && city.souls[matter.evidenceId]?.activity === 'held';
+        resolve(city, matter, 'failed', held
+          ? `${matter.title}: the petition was answered by taking a named worker. The hands will remember the constables at the gate.`
+          : `${matter.title}: the information brought no settlement, and the workers were left without an answer.`);
+        continue;
+      }
       const contestAt = matter.respondedAt + 240;
       if (city.tick < contestAt) continue;
       if (firm && firm.strikeUntil > contestAt) {
@@ -714,6 +752,16 @@ export function tickMatters(city: City): void {
         }
         if (order?.status === 'skimmed' || order?.status === 'shelved') {
           resolve(city, matter, 'failed', `${matter.title}: the works case did not restore the drain.`);
+          continue;
+        }
+      } else if (matter.response === 'serveNotice') {
+        const notice = city.notices.notices[matter.evidenceId];
+        if ((notice?.status === 'complied' || notice?.status === 'abated')
+          && !worksNeededAt(city, matter.target.id)) {
+          const sick = sickOnStreet(city, matter.subjectId).length;
+          resolve(city, matter, sick <= matter.baseline ? 'kept' : 'failed', sick <= matter.baseline
+            ? `${matter.title}: the occupier complied with the notice and restored the drain before sickness spread.`
+            : `${matter.title}: the drain was restored, but ${sick} residents are now sick.`);
           continue;
         }
       } else if (city.tick >= matter.respondedAt + 360) {
@@ -746,7 +794,7 @@ export function tickMatters(city: City): void {
       }
     }
     if (city.tick >= matter.dueAt) {
-      resolve(city, matter, 'failed', `${matter.title}: the deadline passed before the promise was kept.`);
+      resolve(city, matter, 'failed', `${matter.title}: the day for answer passed before the promise was kept.`);
     }
   }
 }
@@ -788,9 +836,9 @@ export function matterInsight(city: City, matter: Matter): string {
 }
 
 export function recommendedFor(matter: Matter): InterventionKind[] {
-  if (matter.kind === 'repair') return ['fileWorks', 'callDeputation', 'fundBunting'];
-  if (matter.kind === 'labour') return ['fundStrike', 'tipOff', 'rumour', 'plantStory'];
-  if (matter.kind === 'refuge') return ['openShelter', 'quarantine', 'delayTram'];
+  if (matter.kind === 'repair') return ['fileWorks', 'callDeputation'];
+  if (matter.kind === 'labour') return ['fundStrike', 'tipOff'];
+  if (matter.kind === 'refuge') return ['openShelter'];
   if (matter.kind === 'sanitation') return ['quarantine', 'fileWorks'];
   if (matter.kind === 'inquiry') return ['tipOff', 'plantStory'];
   return ['fundBunting', 'tipOff'];
