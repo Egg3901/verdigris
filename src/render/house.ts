@@ -23,7 +23,7 @@ import {
   drawPartyPipe, drawAreaRailing,
   drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
   drawPilasters, drawCorbelTable, quadAt,
-  drawStuccoMottle, drawRidgeCrest, drawWashingLine, drawSootStreaks,
+  drawStuccoMottle, drawRidgeCrest, drawSootStreaks,
   drawRoofPatch, drawEaveRail, drawRoofPatina, drawFacadePatina, drawFreightDoor, drawCivicThreshold,
   drawVerdigrisStreaks, drawWallPosters,
 } from './detail';
@@ -255,8 +255,6 @@ export function drawHouse(
   if (roofQuad && spec.damage === 'burning') drawBurnedRoof(ctx, roofQuad, spec);
   if (roofQuad && spec.scorched) drawCharredRoof(ctx, roofQuad, spec);
   if (spec.shelterOpen) drawShelterEntrance(ctx, eave, roofQuad, spec);
-
-  if (spec.washing && lit.span >= 10) drawWashingLine(ctx, lit, wallH, spec.salt ?? 0);
 
   if (spec.worksStage) drawWorks(ctx, eave, roofQuad, spec);
 

@@ -133,8 +133,10 @@ Built and playing:
 - Isometric renderer: gable, hip, pyramid, flat, mansard, gambrel, sawtooth and
   dome roofs, varied per address and ward; chimneys, dormers, bay windows,
   facade materials, window rhythm, opening-hour shutters and awnings, dry-day
-  washing and work displays, vehicles, smoke, lit windows, trees, ground
-  texture, a slowly filling river with animated outfalls, a weather-gated packet airship,
+  work displays, wind-driven washing, working flywheels and pump beams, live
+  gas-holder collars and civic clocks, hoisting dock cranes, shift-weighted
+  freight traffic, vehicles, smoke, lit windows, trees, ground texture, a slowly
+  filling river with animated outfalls, a weather-gated packet airship,
   flatten-per-building compositor, one depth merge for buildings, props, people,
   trams, and carts, pixel-exact ID-buffer picking and discrete zoom.
 - The full UI shell, and a keyboard equivalent for every verb.

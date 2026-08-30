@@ -83,6 +83,12 @@ buffer is stamped in the same painter's order as the colour buffer, so a click
 resolves to exactly the object drawn at that pixel, through roofs and overhangs.
 This is why contracts 1 and 2 are not stylistic preferences.
 
+A narrow pulse pass runs immediately after each visible building or marked prop
+in that same depth merge. It owns only details that must move or report live
+state, such as clock hands, machinery, washing and crane falls. The building and
+prop bodies remain flattened, while their moving parts cannot float over a
+nearer roof or corrupt the ID buffer.
+
 ### The atlas seam
 
 `art/bake.py` and the baked pixel atlas are not built. The city currently renders
