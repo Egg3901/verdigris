@@ -13,17 +13,19 @@ The ledger judges what the city actually did, not which button you pressed.
 
 - Read the matter. Find out who is bringing it and why.
 - Look at the place and the people before you answer.
-- Spend a follow-up measure only when a pending undertaking is worth pursuing.
+- Spend influence only when a pending undertaking is worth pressing or a default
+  is worth bringing before the petty sessions.
 - Every seventh dawn, the ratepayers vote on your record. That vote sets how many
   measures you get for the following week.
 
 ## Your day
 
-**Follow-up measures** are scarce. You get 2, 3, or 4 a day depending on how the
+**Influence** is scarce. You get 2, 3, or 4 measures a day depending on how the
 last ratepayers' sitting went. They let you send a clerk after an undertaking
-that is already pending. Looking, walking, reading, ordinary civic powers, and
-following somebody do not spend them. Those powers have costs in public temper,
-order, the purse, and the record of high-handed conduct instead.
+that is already pending, or lay a complaint after a nuisance notice expires.
+Looking, walking, reading, ordinary civic powers, and following somebody do not
+spend influence. Those powers have costs in public temper, order, the purse, and
+the record of high-handed conduct instead.
 
 **Ward calls** are limited to three a day. A call belongs to one address, so the
 choice matters:
@@ -31,8 +33,9 @@ choice matters:
 - **Take a statement** enters a named occupant's account and establishes a civic
   relationship. A person heard at the address may give you a private warning
   about its petition.
-- **View premises** sends the inspector of nuisances. A recent return supports a
-  real works case against civic skimming, but cannot supply an empty treasury or
+- **View premises** sends the inspector of nuisances. A recent return lets you
+  serve the named occupier with a nuisance notice, or support a public works case
+  against civic skimming. It cannot supply an empty purse, an empty treasury, or
   a stopped crew.
 - **Canvass** asks a ratepayer for a pledge. The answer depends on your standing,
   their grievance, and traced high-handed acts. Either answer is carried into the
@@ -51,12 +54,16 @@ A bounded daily agenda derived from live city state. Each matter carries:
 - A **named petitioner**, who is a real resident with a real address.
 - An **inspectable place**.
 - **Visible causes**: the chain of events that produced the condition.
-- A **deadline**.
+- A **day for answer**.
 - A **delayed verdict**.
 
-Matters are not quests. Their cause, deadline and verdict are all read out of the
+Matters are not quests. Their cause, day for answer and verdict are all read out of the
 simulation, which means an answer that does not change the underlying condition
 will be recorded as a failure however good it sounded at the desk.
+
+Each open card carries its available courses and the clerk's risk note. You can
+act from the desk, inspect the address first, or decline. An unavailable course
+stays visible with the fact that prevents it.
 
 ### Verdicts are judged on outcomes
 
@@ -66,13 +73,13 @@ same as fixing the thing:
 | You promise | It counts only if |
 | --- | --- |
 | A repair | The fabric is actually made good |
-| To clear a strike | You win a real four hour clearing contest |
+| To back a stoppage | The picket survives the first four hours |
 | A refuge | Somebody vulnerable actually reaches it |
 | Sanitation | Sickness on the named street actually falls |
 | An inquiry | A detention still holds, or an account stays credible |
 | Turnout | The actual weekly vote bears it out |
 
-Pending undertakings can be **followed up** at further political cost. Work you filed
+Pending undertakings can be **pressed** at further political cost. Work you filed
 *before* a petition arrived still receives its proper credit, so acting early on
 something you noticed yourself is rewarded.
 
@@ -83,7 +90,23 @@ unclear**. These forecasts come from the same deterministic predicates the sim
 uses, so they are not flavour: an "unclear" really is a state the simulation
 cannot currently resolve.
 
-Selecting a petition marks the relevant measures but never chooses one for you.
+Selecting a petition marks the relevant powers in the ACT panel. The same
+courses are available directly on the petition without changing targets by hand.
+
+## Nuisance notices
+
+View defective premises, then serve the occupier entered in the rate book. Six
+hours are allowed for compliance.
+
+- If that household is out of arrears and can meet the real cost, its purse pays
+  for the work and the exact defect is made good.
+- If it cannot pay, the notice falls into default. You may enter public works, or
+  spend influence to lay the complaint before the petty sessions.
+- The magistrates can make an order of abatement. The order is paper. The wall,
+  drain, or gas service remains defective until somebody executes the work.
+
+The posted paper and survey mark remain visible on the building while the notice
+is alive.
 
 ## The Works Register
 

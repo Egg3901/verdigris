@@ -254,7 +254,7 @@ export function civicHouseholdClause(city: City, householdId: HouseholdId): stri
 function institutionSummary(city: City, buildingId: BuildingId): string {
   const kind = city.buildings[buildingId]?.kind;
   const l = city.civic.institutions;
-  if (kind === 'townhall' && (l.hallHeard || l.hallDismissed)) return `CIVIC HALL · ${l.hallHeard} HEARD · ${l.hallDismissed} TURNED AWAY`;
+  if (kind === 'townhall' && (l.hallHeard || l.hallDismissed)) return `TOWN HALL · ${l.hallHeard} HEARD · ${l.hallDismissed} TURNED AWAY`;
   if (kind === 'workshop' && (l.worksKept || l.worksFailed)) return `WORKS RECORD · ${l.worksKept} MADE GOOD · ${l.worksFailed} FAILED`;
   if ((kind === 'chapel' || kind === 'bathhouse' || kind === 'dispensary') && (l.reliefHelped || l.reliefHarmed)) {
     return `RELIEF RECORD · ${l.reliefHelped} HELPED · ${l.reliefHarmed} HARMED`;

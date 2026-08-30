@@ -212,7 +212,7 @@ export function deputationSummary(city: City, buildingId: BuildingId): string {
   const current = city.deputations.current;
   if (!current || current.buildingId !== buildingId || city.tick >= current.endsAt) return '';
   const present = current.attendeeIds.filter((id) => presentAtSquare(city, current, id)).length;
-  if (current.status === 'heard') return `DEPUTATION ${current.id + 1} \u00b7 ${present} HEARD AT CIVIC HALL`;
+  if (current.status === 'heard') return `DEPUTATION ${current.id + 1} \u00b7 ${present} HEARD AT TOWN HALL`;
   if (current.status === 'dispersed') return `DEPUTATION ${current.id + 1} \u00b7 DISPERSED UNDER PUBLIC ORDER`;
   if (current.status === 'thin') return `DEPUTATION ${current.id + 1} \u00b7 TOO FEW TO BE HEARD`;
   return `DEPUTATION ${current.id + 1} \u00b7 ${present} OF ${current.attendeeIds.length} ON THE SQUARE`;

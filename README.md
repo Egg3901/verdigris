@@ -92,7 +92,7 @@ Built and playing:
 - Eleven interventions, each with a second-order effect and a backfire that is
   a documented state condition rather than a dice roll.
 - The Alderman's Desk: a bounded daily agenda derived from live city state, with
-  named petitioners, inspectable places, visible causes, deadlines, a political
+  named petitioners, inspectable places, visible causes, days for answer, a political
   standing, persistent patrons and opponents, and delayed verdicts. A filed
   repair counts only if the fabric is actually made good; a strike faces a real
   four-hour clearing contest; a refuge counts only when somebody vulnerable
@@ -101,7 +101,11 @@ Built and playing:
   turnout is judged by the actual weekly vote. Pending promises can be pressed
   at further political cost, and work filed before a petition receives its
   proper credit.
-- Street politics: petitioners walk to Civic Hall without delaying an actionable
+- Nuisance enforcement: a premises view can become a notice against the named
+  occupier. Six hours later the household's real means decide private compliance
+  or default. A complaint may produce an abatement order, but the paper does not
+  repair the physical defect; public works remains a separate route.
+- Street politics: petitioners walk to Town Hall without delaying an actionable
   case. Kept promises send a named patron to speak at the newspaper; broken or
   declined promises send a named opponent to a public house. Their support or
   opposition changes the ward only after the person reaches the destination.

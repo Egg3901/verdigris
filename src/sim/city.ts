@@ -62,6 +62,8 @@ import { newCivicVisits, tickCivicVisits } from './civic-visits';
 import type { CivicVisitState } from './civic-visits';
 import { newWardRounds, resetWardRounds } from './ward-rounds';
 import type { WardRoundState } from './ward-rounds';
+import { newNotices, tickNoticesHourly } from './notices';
+import type { NoticeState } from './notices';
 
 export interface LogEvent {
   tick: number;
@@ -133,6 +135,8 @@ export interface City extends World {
   civicVisits: CivicVisitState;
   /** Personal calls, premises viewed and ratepayers canvassed in the ward. */
   wardRounds: WardRoundState;
+  /** Statutory nuisance notices, private compliance and petty-sessions orders. */
+  notices: NoticeState;
   /** How many high-heat nudges have been traced back toward the player. */
   traced: number;
 
@@ -172,6 +176,7 @@ export function newCity(seedStr: string): City {
     matters: newMatters(),
     civicVisits: newCivicVisits(),
     wardRounds: newWardRounds(world.buildings.length),
+    notices: newNotices(),
     traced: 0,
     tramDelayedUntil: -1,
     buntingUntil: -1,
@@ -773,6 +778,7 @@ function tickHour(city: City): void {
     applyPressure(city.press, 'mood', 8, 'intervention', 0, 'the flags are still up', tick);
   }
 
+  for (const update of tickNoticesHourly(city)) pushLog(city, update.text, update.kind);
   for (const update of tickWorksHourly(city)) pushLog(city, update.text, update.kind);
 
   tickOrdinancesHourly(city);
@@ -1137,6 +1143,22 @@ export function hashWorld(city: City): number {
     put(call.favourable ? 1 : 0);
   }
   for (const until of city.wardRounds.inspectedUntil) put(until);
+  put(city.notices.revision);
+  put(city.notices.notices.length);
+  for (const notice of city.notices.notices) {
+    put(notice.id);
+    put(notice.buildingId);
+    put(notice.kind === 'fabric' ? 1 : notice.kind === 'drain' ? 2 : 3);
+    put(notice.householdId);
+    put(notice.cost);
+    put(notice.status === 'served' ? 1 : notice.status === 'complied' ? 2
+      : notice.status === 'defaulted' ? 3 : notice.status === 'summoned' ? 4
+        : notice.status === 'orderMade' ? 5 : 6);
+    put(notice.servedAt);
+    put(notice.dueAt);
+    put(notice.summonedAt);
+    put(notice.resolvedAt);
+  }
   put(city.matters.meetings.length);
   for (const meeting of city.matters.meetings) {
     put(meeting.tick);

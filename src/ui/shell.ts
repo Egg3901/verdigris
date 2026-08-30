@@ -32,6 +32,7 @@ import { wardMetrics, metricWord } from '../sim/metrics';
 import { civicVisitSummary } from '../sim/civic-visits';
 import { canMakeWardCall, wardCallSummary } from '../sim/ward-rounds';
 import type { WardCallKind } from '../sim/ward-rounds';
+import { canServeNotice, canSummonNotice, noticeSummary } from '../sim/notices';
 
 interface NudgeDecision {
   reason: string | null;
@@ -53,8 +54,11 @@ export interface ShellHooks {
   onFocusTarget: (target: Target) => void;
   onDeclineMatter: (id: number) => void;
   onPressMatter: (id: number) => void;
+  onAnswerMatter: (kind: InterventionKind, target: Target) => void;
   /** Make one personal call at the selected address. */
   onWardCall: (kind: WardCallKind, buildingId: number) => void;
+  onServeNotice: (buildingId: number) => void;
+  onSummonNotice: (buildingId: number) => void;
   /** Sandbox: pin the weather to a kind, or null to hand it back to the clock. */
   onForceWeather: (kind: 'fair' | 'overcast' | 'rain' | 'storm' | 'fog' | 'snow' | 'drought' | null) => void;
   /** Sandbox: loose a disaster on the selected building, or a random fit one. */
@@ -182,6 +186,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
   const insRound = el('div', 'ward-round');
   const insRoundHead = el('div', 'heading');
   const insRoundActions = el('div', 'ward-actions');
+  const insNoticeActions = el('div', 'notice-actions');
   const wardButtons: { kind: WardCallKind; node: HTMLButtonElement }[] = [];
   for (const [kind, label] of [
     ['hear', 'TAKE A STATEMENT'], ['inspect', 'VIEW PREMISES'], ['canvass', 'CANVASS'],
@@ -194,7 +199,18 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     wardButtons.push({ kind, node });
     insRoundActions.append(node);
   }
-  insRound.append(insRoundHead, insRoundActions);
+  const serveNotice = el('button', 'brass', 'SERVE NOTICE') as HTMLButtonElement;
+  serveNotice.addEventListener('click', () => {
+    if (serveNotice.getAttribute('aria-disabled') === 'true' || selBuilding < 0) return;
+    hooks.onServeNotice(selBuilding);
+  });
+  const summon = el('button', 'brass', 'LAY COMPLAINT · 1 INFLUENCE') as HTMLButtonElement;
+  summon.addEventListener('click', () => {
+    if (summon.getAttribute('aria-disabled') === 'true' || selBuilding < 0) return;
+    hooks.onSummonNotice(selBuilding);
+  });
+  insNoticeActions.append(serveNotice, summon);
+  insRound.append(insRoundHead, insRoundActions, insNoticeActions);
   inspector.append(insClose, insName, insDistrict, insProse, insRound, insHeading, insList, insMore);
   let selBuilding = -1;
 
@@ -517,6 +533,9 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     onFocus: hooks.onFocusTarget,
     onDecline: hooks.onDeclineMatter,
     onPress: hooks.onPressMatter,
+    onAnswer: hooks.onAnswerMatter,
+    onServeNotice: hooks.onServeNotice,
+    onSummonNotice: hooks.onSummonNotice,
   });
   const toggleDesk = () => {
     if (desk.node.hidden) {
@@ -562,6 +581,10 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       // Selection and the vestry can change without the clock moving.
       paintIfChanged(city, sel);
       vestry.update(city);
+      // Desk actions also change revisions while paused. Its own diff key keeps
+      // this cheap and prevents a filed answer from staying visibly disabled
+      // until the clock advances.
+      desk.update(city);
       return;
     }
     prevKey = key;
@@ -699,6 +722,7 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
       const occasion = occasionSummary(city, b.id);
       const civicVisit = civicVisitSummary(city, b.id);
       const ward = wardCallSummary(city, b.id);
+      const notice = noticeSummary(city, b.id);
       insRoundHead.textContent = `WARD ROUND · ${city.wardRounds.callsLeft} CALL${city.wardRounds.callsLeft === 1 ? '' : 'S'} LEFT TODAY`;
       for (const item of wardButtons) {
         const why = canMakeWardCall(city, item.kind, b.id);
@@ -707,7 +731,13 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
           : item.kind === 'inspect' ? 'Send the inspector of nuisances to support a real works case.'
             : 'Ask a ratepayer for a pledge before the next ward meeting.');
       }
-      insMore.textContent = [more > 0 ? `…and ${more} more` : '', ward, civicVisit, civic, shelter, occasion, disaster, works, deputation].filter(Boolean).join('\n');
+      const serveWhy = canServeNotice(city, b.id);
+      serveNotice.setAttribute('aria-disabled', String(serveWhy !== null));
+      serveNotice.title = serveWhy ?? 'Require the named occupier to abate the nuisance within six hours.';
+      const summonWhy = canSummonNotice(city, b.id);
+      summon.setAttribute('aria-disabled', String(summonWhy !== null));
+      summon.title = summonWhy ?? 'Spend one measure of influence to lay the default before the petty sessions.';
+      insMore.textContent = [more > 0 ? `…and ${more} more` : '', ward, notice, civicVisit, civic, shelter, occasion, disaster, works, deputation].filter(Boolean).join('\n');
       return;
     }
     inspector.hidden = true;

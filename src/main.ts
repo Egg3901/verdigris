@@ -4,7 +4,7 @@
 // sim never sees a fraction, which is what makes the world a pure function of
 // (seedStr, tickCount, player action log) and lets the QA goldens exist at all.
 import './style.css';
-import { newCity, tickCity, warp, hashWorld, soulsOutdoors } from './sim/city';
+import { newCity, tickCity, warp, hashWorld, soulsOutdoors, pushLog } from './sim/city';
 import type { City } from './sim/city';
 import { MAX_TICKS_PER_FRAME, MIN_PER_DAY, SPEEDS, minuteOfDay } from './sim/clock';
 import {
@@ -37,8 +37,9 @@ import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
 import { weatherAt, forceWeather, seasonRevisionAt } from './sim/weather';
 import { riverLevelAt, riverDropAt } from './sim/hydrology';
 import type { ForcedWeather } from './sim/weather';
-import { activeMatters, declineMatter, pressMatter, recommendedFor } from './sim/matters';
+import { activeMatters, declineMatter, noteNoticeResponse, pressMatter, recommendedFor } from './sim/matters';
 import { makeWardCall } from './sim/ward-rounds';
+import { serveNotice, summonOnNotice } from './sim/notices';
 
 const params = new URLSearchParams(location.search);
 const SEED = params.get('seed') ?? 'verdigris';
@@ -338,14 +339,36 @@ shell = mountShell(shellRoot, {
     }
   },
   onDeclineMatter: (id) => {
-    if (declineMatter(city, id)) shell.toast('The petition is declined. No follow-up is spent, but the refusal is entered against the chair.', 'loss');
+    if (declineMatter(city, id)) shell.toast('The petition is declined. No influence is spent, but the refusal is entered against the chair.', 'loss');
   },
   onPressMatter: (id) => {
-    if (pressMatter(city, id)) shell.toast('A clerk is sent after the undertaking. One follow-up measure is spent.', 'gain');
+    if (pressMatter(city, id)) shell.toast('A clerk is sent after the undertaking. One measure of influence is spent.', 'gain');
+  },
+  onAnswerMatter: (kind, target) => {
+    if (!applyVisibleNudge(kind, target)) return;
+    shell.toast(city.log.at(-1)?.text ?? 'The course is entered in the minute book.', 'info');
   },
   onWardCall: (kind, buildingId) => {
     const text = makeWardCall(city, kind, buildingId);
     if (text) shell.toast(text, kind === 'canvass' && text.includes('refuses') ? 'loss' : 'gain');
+  },
+  onServeNotice: (buildingId) => {
+    const notice = serveNotice(city, buildingId);
+    if (!notice) return;
+    noteNoticeResponse(city, notice.id);
+    const household = city.households[notice.householdId];
+    const building = city.buildings[buildingId];
+    const text = `A nuisance notice is served upon the ${household.name} household, entered as occupier of ${building.name}. Six hours are allowed for compliance.`;
+    pushLog(city, text, 'info');
+    currentBuildingVisualRevision = buildingVisualRevision(city);
+    shell.toast(text, 'info');
+  },
+  onSummonNotice: (buildingId) => {
+    const notice = summonOnNotice(city, buildingId);
+    if (!notice) return;
+    const text = `A complaint on notice ${notice.id + 1} is laid before the petty sessions. One measure of influence is spent.`;
+    pushLog(city, text, 'info');
+    shell.toast(text, 'info');
   },
   onForceWeather: (kind) => {
     forceWeather(kind as ForcedWeather | null, city.tick);

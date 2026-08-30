@@ -182,7 +182,7 @@ and then wait for the player to invent a reason to care about one. Instead, name
 residents bring a real condition to the desk, the player may investigate and
 answer it, and the ledger records what the simulation eventually did.
 
-A matter is never a random quest. Its cause, deadline and verdict are all read
+A matter is never a random quest. Its cause, day for answer and verdict are all read
 out of live city state. Verdicts are delayed and judged on outcomes:
 
 - A filed repair counts only if the fabric is actually made good.
@@ -195,6 +195,15 @@ out of live city state. Verdicts are delayed and judged on outcomes:
 
 Pending promises can be pressed at further political cost, and work filed before
 a petition receives its proper credit.
+
+### `notices.ts`
+
+Statutory nuisance enforcement tied to a recent premises view. A notice names a
+real household, waits six hours, and tests that household's purse and arrears.
+Compliance executes the same physical repair primitive used by public works.
+Default may be summoned before the petty sessions, but an abatement order does
+not change fabric or reconnect a service. The player must still secure private
+compliance or enter public works.
 
 ### `works.ts`
 

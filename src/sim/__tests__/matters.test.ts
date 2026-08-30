@@ -190,14 +190,14 @@ describe("the alderman's matters", () => {
     expect(city.matters.standing).toBe(494);
   });
 
-  it('fails an unanswered deadline and records the standing loss', () => {
+  it('fails when the day for answer passes and records the standing loss', () => {
     const city = newCity('verdigris');
     warp(city, 180);
     const matter = activeMatters(city.matters)[0];
     matter.dueAt = city.tick + 1;
     tickCity(city);
     expect(matter.status).toBe('failed');
-    expect(matter.outcome).toContain('deadline passed');
+    expect(matter.outcome).toContain('day for answer passed');
     expect(city.matters.standing).toBe(482);
   });
 
@@ -239,6 +239,21 @@ describe("the alderman's matters", () => {
     expect(matter!.standingDelta).toBe(25);
     expect(matter!.partyIds.every((id) => regardFor(city, id) > 0)).toBe(true);
     expect(matterInsight(city, matter!)).toContain('first four hours');
+  });
+
+  it('records a constabulary answer to a labour petition as a political failure', () => {
+    const city = newCity('verdigris');
+    warp(city, 180);
+    const matter = activeMatters(city.matters).find((item) => item.kind === 'labour')!;
+    const workerId = matter.partyIds[0];
+    expect(apply(city, 'tipOff', { kind: 'soul', id: workerId })).toBe(true);
+    expect(matter.status).toBe('pending');
+    expect(matter.response).toBe('tipOff');
+
+    warp(city, 60);
+    expect(matter.status).toBe('failed');
+    expect(matter.outcome).toContain('answered by taking a named worker');
+    expect(regardFor(city, workerId)).toBeLessThan(0);
   });
 
   it('lets the hall clear an unfunded stoppage after four truthful hours', () => {

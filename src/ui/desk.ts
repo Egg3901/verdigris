@@ -8,11 +8,17 @@ import { recentCauses } from '../sim/pressures';
 import type { Target } from '../sim/types';
 import { fullName } from '../sim/souls';
 import { pendingMeetingVisit, visitForMatter } from '../sim/civic-visits';
+import { canApply, forecastIntervention, INTERVENTIONS } from '../sim/interventions';
+import { activeNoticeFor, canServeNotice, canSummonNotice } from '../sim/notices';
+import type { InterventionKind } from '../sim/types';
 
 export interface DeskHooks {
   onFocus: (target: Target) => void;
   onDecline: (id: number) => void;
   onPress: (id: number) => void;
+  onAnswer: (kind: InterventionKind, target: Target) => void;
+  onServeNotice: (buildingId: number) => void;
+  onSummonNotice: (buildingId: number) => void;
 }
 
 export interface Desk {
@@ -40,16 +46,53 @@ const RESPONSE: Record<string, string> = {
   plantStory: 'put an account in the Herald',
   tipOff: 'laid an information',
   fundBunting: 'paid for the flags',
+  serveNotice: 'served a nuisance notice',
 };
 
 const WAY_IN: Record<Matter['kind'], string> = {
-  repair: 'COURSES OPEN · Enter the defect in the Works Register. A deputation may bring forward a stalled case.',
-  labour: 'COURSES OPEN · Maintain the picket, use the constables against it, or decline to interfere.',
-  refuge: 'COURSES OPEN · View the public room, then open it as a refuge when the rain begins.',
-  sanitation: 'COURSES OPEN · Establish a cordon, or enter the defective drain in the Works Register.',
-  inquiry: 'COURSES OPEN · Lay an information before the constabulary, or put a defensible account in the Herald.',
-  turnout: 'COURSES OPEN · Bring out supporters in the square, or prevent an opponent from attending.',
+  repair: 'COURSES OPEN · Require private abatement after a view, or enter public works.',
+  labour: 'COURSES OPEN · Back the stoppage, answer with the constables, or decline to interfere.',
+  refuge: 'COURSE OPEN · Open the named public room while the wet watch lasts.',
+  sanitation: 'COURSES OPEN · Serve the inspected nuisance, establish a cordon, or enter public works.',
+  inquiry: 'COURSES OPEN · Lay a named information, or put a witness account in the Herald.',
+  turnout: 'COURSE OPEN · Dress the square and reinforce the public call.',
 };
+
+interface Course {
+  kind: InterventionKind;
+  target: Target;
+}
+
+function coursesFor(city: City, matter: Matter): Course[] {
+  if (matter.status === 'pending') {
+    if (matter.response === 'fileWorks' && (matter.kind === 'repair' || matter.kind === 'sanitation')) {
+      return [{ kind: 'callDeputation', target: matter.target }];
+    }
+    const notice = matter.response === 'serveNotice' ? activeNoticeFor(city, matter.target.id) : null;
+    if (notice && notice.status !== 'served' && (matter.kind === 'repair' || matter.kind === 'sanitation')) {
+      return [{ kind: 'fileWorks', target: matter.target }];
+    }
+    return [];
+  }
+  if (matter.kind === 'repair') return [{ kind: 'fileWorks', target: matter.target }];
+  if (matter.kind === 'labour') return [
+    { kind: 'fundStrike', target: matter.target },
+    { kind: 'tipOff', target: { kind: 'soul', id: matter.partyIds[0] ?? -1 } },
+  ];
+  if (matter.kind === 'refuge') return [{ kind: 'openShelter', target: matter.target }];
+  if (matter.kind === 'sanitation') return [
+    { kind: 'quarantine', target: matter.target },
+    { kind: 'fileWorks', target: matter.target },
+  ];
+  if (matter.kind === 'inquiry') {
+    const witness = matter.partyIds.find((id) => city.souls[id]?.beliefs.length) ?? matter.partyIds[0] ?? -1;
+    return [
+      { kind: 'tipOff', target: { kind: 'soul', id: matter.partyIds[0] ?? -1 } },
+      { kind: 'plantStory', target: { kind: 'soul', id: witness } },
+    ];
+  }
+  return [{ kind: 'fundBunting', target: { kind: 'square', id: city.squareNode } }];
+}
 
 function dueLabel(matter: Matter): string {
   return `DUE DAY ${matterDay(matter)}, ${formatClock(matter.dueAt)}`;
@@ -99,10 +142,10 @@ export function mountDesk(hooks: DeskHooks): Desk {
     const petition = el('p', 'dpetition', matter.petition);
     const visit = visitForMatter(current, matter.id);
     const visitText = !visit ? ''
-      : visit.status === 'scheduled' ? `PETITIONERS DUE AT CIVIC HALL · ${formatClock(visit.startsAt)}`
+      : visit.status === 'scheduled' ? `PETITIONERS DUE AT TOWN HALL · ${formatClock(visit.startsAt)}`
         : visit.status === 'travelling' ? `PETITIONERS ON THE ROAD · ${visit.arrivedIds.length}/${visit.actorIds.length} ARRIVED`
           : visit.status === 'gathered' || visit.status === 'resolved'
-            ? `AT CIVIC HALL · ${visit.arrivedIds.length}/${visit.actorIds.length} PRESENT`
+            ? `AT TOWN HALL · ${visit.arrivedIds.length}/${visit.actorIds.length} PRESENT`
             : matter.presentedAt >= 0 ? `PRESENTED IN PERSON · ${formatClock(matter.presentedAt)}` : 'THE LETTER ARRIVED; ITS AUTHORS DID NOT';
     const visitLine = el('div', 'dvisit', visitText);
     const people = el('div', 'dpeople');
@@ -136,18 +179,62 @@ export function mountDesk(hooks: DeskHooks): Desk {
     });
     actions.append(inspect);
     if (matter.status === 'open') {
+      const courses = el('div', 'dcourses');
+      if (matter.kind === 'repair' || matter.kind === 'sanitation') {
+        const row = el('div', 'dcourse');
+        const notice = el('button', 'brass', 'SERVE NUISANCE NOTICE') as HTMLButtonElement;
+        const why = canServeNotice(current, matter.target.id);
+        notice.setAttribute('aria-disabled', String(why !== null));
+        notice.title = why ?? 'Require the named occupier to make good the inspected nuisance within six hours.';
+        notice.addEventListener('click', () => { if (!why) hooks.onServeNotice(matter.target.id); });
+        row.append(notice, el('span', 'dcourse-note', why ?? 'PUBLIC · Six hours to comply from private means.'));
+        courses.append(row);
+      }
+      for (const course of coursesFor(current, matter)) {
+        const row = el('div', 'dcourse');
+        const def = INTERVENTIONS[course.kind];
+        const why = canApply(current, course.kind, course.target);
+        const forecast = why ? null : forecastIntervention(current, course.kind, course.target);
+        const button = el('button', 'brass', def.label.toUpperCase()) as HTMLButtonElement;
+        button.setAttribute('aria-disabled', String(why !== null));
+        button.title = def.blurb;
+        button.addEventListener('click', () => { if (!why) hooks.onAnswer(course.kind, course.target); });
+        const note = why ?? `${forecast?.exposure.toUpperCase()} · ${forecast?.posture.toUpperCase()} · ${forecast?.text}`;
+        row.append(button, el('span', 'dcourse-note', note));
+        courses.append(row);
+      }
+      actions.append(courses);
       const decline = el('button', 'brass', 'DECLINE') as HTMLButtonElement;
       decline.addEventListener('click', () => hooks.onDecline(matter.id));
       actions.append(decline);
     }
     if (matter.status === 'pending') {
       actions.append(el('span', 'danswer', `Minuted: ${RESPONSE[matter.response ?? ''] ?? 'action taken'}. ${remainingLabel(current, matter)}.`));
-      const press = el('button', 'brass', 'FOLLOW UP · 1') as HTMLButtonElement;
-      const why = canPressMatter(current, matter.id);
-      press.setAttribute('aria-disabled', String(why !== null));
-      press.title = why ?? 'Use one measure of influence to send a clerk after this undertaking.';
-      press.addEventListener('click', () => { if (!why) hooks.onPress(matter.id); });
-      actions.append(press);
+      const notice = matter.response === 'serveNotice' ? activeNoticeFor(current, matter.target.id) : null;
+      if (notice?.status === 'defaulted') {
+        const summon = el('button', 'brass', 'LAY COMPLAINT · 1 INFLUENCE') as HTMLButtonElement;
+        const why = canSummonNotice(current, matter.target.id);
+        summon.setAttribute('aria-disabled', String(why !== null));
+        summon.title = why ?? 'Bring the expired notice before the petty sessions.';
+        summon.addEventListener('click', () => { if (!why) hooks.onSummonNotice(matter.target.id); });
+        actions.append(summon);
+      } else if (matter.response !== 'serveNotice') {
+        const press = el('button', 'brass', 'PRESS · 1 INFLUENCE') as HTMLButtonElement;
+        const why = canPressMatter(current, matter.id);
+        press.setAttribute('aria-disabled', String(why !== null));
+        press.title = why ?? 'Use one measure of influence to send a clerk after this undertaking.';
+        press.addEventListener('click', () => { if (!why) hooks.onPress(matter.id); });
+        actions.append(press);
+      }
+      const extra = coursesFor(current, matter);
+      for (const course of extra) {
+        const why = canApply(current, course.kind, course.target);
+        const button = el('button', 'brass', INTERVENTIONS[course.kind].label.toUpperCase()) as HTMLButtonElement;
+        button.setAttribute('aria-disabled', String(why !== null));
+        button.title = why ?? INTERVENTIONS[course.kind].blurb;
+        button.addEventListener('click', () => { if (!why) hooks.onAnswer(course.kind, course.target); });
+        actions.append(button);
+      }
     }
     card.append(head, petition, visitLine, people, cause, insight, test, wayIn, due, actions);
     return card;
@@ -155,11 +242,11 @@ export function mountDesk(hooks: DeskHooks): Desk {
 
   const update = (next: City): void => {
     city = next;
-    const key = `${Math.floor(next.tick / 10)}|${next.matters.revision}|${next.civicVisits.revision}|${next.press.causeHead}|${next.traced}|${next.paperCredibility}|${next.budgetLeft}`;
+    const key = `${Math.floor(next.tick / 10)}|${next.matters.revision}|${next.civicVisits.revision}|${next.wardRounds.revision}|${next.notices.revision}|${next.press.causeHead}|${next.traced}|${next.paperCredibility}|${next.budgetLeft}`;
     if (key === prevKey) return;
     prevKey = key;
     const active = activeMatters(next.matters);
-    status.textContent = `DAY ${dayOf(next.tick)} · STANDING ${next.matters.standing}/1000 · FOLLOW-UP ${next.budgetLeft}/${next.matters.influenceCap} · ${active.length} MATTER${active.length === 1 ? '' : 'S'} BEFORE YOU`
+    status.textContent = `DAY ${dayOf(next.tick)} · STANDING ${next.matters.standing}/1000 · INFLUENCE ${next.budgetLeft}/${next.matters.influenceCap} · ${active.length} MATTER${active.length === 1 ? '' : 'S'} BEFORE YOU`
       + `${next.traced ? ` · ${next.traced} HIGH-HANDED ACT${next.traced === 1 ? '' : 'S'} TRACED` : ''}`;
     const gathering = pendingMeetingVisit(next);
     const lastMeeting = next.matters.meetings.at(-1);
@@ -169,7 +256,7 @@ export function mountDesk(hooks: DeskHooks): Desk {
         : `RATEPAYERS GATHERING · ${gathering.arrivedIds.length}/${gathering.actorIds.length} IN THE SQUARE · VOTE ${formatClock(next.matters.nextMeetingAt)}.`
       : lastMeeting
         ? `LAST MEETING · ${lastMeeting.outcome.toUpperCase()} · ${lastMeeting.text} NEXT SITTING DAY ${dayOf(next.matters.nextMeetingAt)}.`
-        : `RATEPAYERS SIT ON DAY ${dayOf(next.matters.nextMeetingAt)}. Their division will settle how many follow-up measures the chair may move each day.`;
+        : `RATEPAYERS SIT ON DAY ${dayOf(next.matters.nextMeetingAt)}. Their division will settle how much influence the chair may move each day.`;
 
     matters.textContent = '';
     if (!active.length) matters.append(el('p', 'dempty', 'No new petition is entered. Reports from the streets continue to arrive.'));
