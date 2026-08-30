@@ -18,7 +18,7 @@ import { shadeHex } from './palette';
 import { fillPolyHard, ditherPolyHard, lineHard } from './raster';
 import { PAL } from './palette';
 import {
-  makeFace, drawDoor, drawShopfront, drawSign, drawWindowGrid, drawBoarded,
+  makeFace, drawDoor, drawShopfront, drawBayWindow, drawSign, drawWindowGrid, drawBoarded,
   drawCourses, drawDormer, drawBunting, drawQuoins, drawStringCourse,
   drawPartyPipe, drawAreaRailing,
   drawBrickFace, drawAshlarFace, drawTimberFace, drawBoardFace, drawGlazedFace,
@@ -70,6 +70,9 @@ export interface HouseSpec {
   windowRows: number;
   /** A glazed ground floor with an awning: shops, pubs, banks. */
   shopfront?: boolean;
+  /** The shopfront glass is exposed and its awning may be out. Closed fronts use
+   * timber shutters. */
+  shopOpen?: boolean;
   /** A hanging signboard. */
   sign?: boolean;
   /** What the hanging sign says, for the customer who cannot read. */
@@ -114,6 +117,8 @@ export interface HouseSpec {
   railings?: boolean;
   /** Iron balconies under the first-floor windows: merchant-row dressing. */
   balcony?: boolean;
+  /** A projecting three-light bay on one visible facade. */
+  bayWindow?: boolean;
   /** 1 survey notice, 2 scaffold and tarpaulin, 3 signed-off plaque. */
   worksStage?: 0 | 1 | 2 | 3;
   /** 0 no drain needed, 1 served, 2 disconnected or behind a broken main. */
@@ -784,6 +789,10 @@ function drawFacade(
     if (spec.boarded) drawBoarded(ctx, f, spec.wallH, skin);
   }
 
+  if (spec.bayWindow && !spec.boarded && !spec.shopfront) {
+    drawBayWindow(ctx, lit, spec.wallH, skin, salt);
+  }
+
   // Area railings guard the light well in front of a civic frontage.
   if (spec.frontage === 'civic' && !spec.scorched && lit.span >= 14) {
     drawAreaRailing(ctx, lit, spec.wallH, PAL.soot2);
@@ -795,7 +804,7 @@ function drawFacade(
 
   // The shopfront and the door go on the lit face: the one the camera can see.
   if (spec.shopfront && lit.span >= 10) {
-    drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed, salt);
+    drawShopfront(ctx, lit, spec.wallH, skin, spec.awning ?? PAL.buntRed, salt, spec.shopOpen !== false);
   } else if (lit.span >= 8 && spec.material !== 'glazed') {
     const t = 0.28 + ((salt % 5) / 12);
     if (spec.frontage === 'works' || spec.frontage === 'warehouse' || spec.frontage === 'wharf') {

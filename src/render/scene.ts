@@ -68,6 +68,10 @@ export interface Scene {
   civicVisitRevision: number;
   disasterRevision: number;
   weatherRevision: number;
+  /** Opening hours and outdoor domestic/work routines baked into the sprites. */
+  dailyRevision: number;
+  /** Thresholded fabric, facade and service state baked into building sprites. */
+  buildingRevision: number;
   shelterRevision: number;
   occasionRevision: number;
   /** Combined river key this scene was baked at: surface drop in px and the
@@ -190,6 +194,58 @@ function pickFrom<T>(table: readonly T[], salt: number, shift = 0): T {
   return table[i];
 }
 
+interface DailyStreetState {
+  shopsOpen: boolean;
+  pubsOpen: boolean;
+  washingOut: boolean;
+  workSetOut: boolean;
+}
+
+/** Coarse routines that materially change the baked street and facades. */
+function dailyStreetState(tick: number): DailyStreetState {
+  const minute = minuteOfDay(tick);
+  return {
+    shopsOpen: minute >= 450 && minute < 1140,
+    pubsOpen: minute >= 630 || minute < 90,
+    washingOut: minute >= 480 && minute < 1020,
+    workSetOut: minute >= 360 && minute < 1080,
+  };
+}
+
+/** Small stable key used by the compositor to rebake at routine boundaries. */
+export function dailyStreetRevisionAt(tick: number): number {
+  const state = dailyStreetState(tick);
+  return Number(state.shopsOpen)
+    | (Number(state.pubsOpen) << 1)
+    | (Number(state.washingOut) << 2)
+    | (Number(state.workSetOut) << 3);
+}
+
+/**
+ * Hash only the slow state that crosses a visible threshold.
+ *
+ * Fabric and facade move without their own revision counter. Folding their
+ * rendered bands into one key means a repair can shed boards or grime on the
+ * hour it happens, while changes within a band do not trigger needless bakes.
+ */
+export function buildingVisualRevision(city: City): number {
+  let hash = 2166136261;
+  for (const b of city.buildings) {
+    const polite = city.district.polite[cellKey(city.district, b.ox, b.oy)] === 1;
+    const def = DEFS[b.kind];
+    let bands = Number(b.fabric < 220)
+      | (Number(b.fabric < 250) << 1)
+      | (Number(b.fabric < (polite ? 260 : 340)) << 2)
+      | (Number(b.fabric < 500) << 3)
+      | (Number(b.fabric < 540) << 4)
+      | (Number(b.facade > (polite ? 720 : 880)) << 5)
+      | (Number(b.burntAt >= 0) << 6);
+    if (def.needsDrain && !serviceAt(city.networks.drain, b.id)) bands |= 1 << 7;
+    hash = Math.imul(hash ^ b.id ^ (bands << 16), 16777619);
+  }
+  return hash >>> 0;
+}
+
 /** Buildings fronting the civic square. Bunting hangs here and nowhere else,
  *  because the point of the flags is that they are where they will be seen. */
 function nearSquare(city: City, b: Building): boolean {
@@ -233,6 +289,8 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   const def = DEFS[b.kind];
   const salt = mix(city.seed, 41, b.id);
   const polite = city.district.polite[cellKey(city.district, b.ox, b.oy)] === 1;
+  const weather = weatherAt(city.seed, city.tick);
+  const daily = dailyStreetState(city.tick);
   // Soot on the same ladder as everything else, in five steps rather than 255.
   // The working bank carries more of it: that is the class geography, rendered.
   const soot = Math.round(Math.min(polite ? 0.28 : 0.42, grime / 760 + (polite ? 0 : 0.08)) / 0.06) * 0.06;
@@ -338,6 +396,33 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     }
   }
 
+  // One family still needs several rooflines. These are restrained by building
+  // kind and ward so the town keeps its grammar while adjacent addresses stop
+  // reading as cloned stamps.
+  if (!def.landmark) {
+    const roofVariant = (salt >>> 18) % 6;
+    if (b.kind === 'villa') {
+      if (polite && roofVariant < 2) shape = 'mansard';
+      else if (roofVariant === 2) shape = 'pyramid';
+      else if (roofVariant === 3) shape = 'hip';
+    } else if (b.kind === 'terrace') {
+      if ((wardKind === 'civic' || wardKind === 'garden' || polite) && roofVariant === 0) shape = 'mansard';
+      else if ((wardKind === 'courts' || wardKind === 'quayside') && roofVariant < 2) shape = 'gambrel';
+    } else if (b.kind === 'tenement') {
+      if ((wardKind === 'merchant' || polite) && roofVariant === 0) shape = 'mansard';
+      else if ((wardKind === 'works' || wardKind === 'courts') && roofVariant === 1) shape = 'flat';
+    } else if (b.kind === 'lodging') {
+      shape = pickFrom(['gable', 'gambrel', 'mansard'] as const, salt, 19);
+    } else if (b.kind === 'shop' || b.kind === 'pub') {
+      if (roofVariant === 0 && polite) shape = 'mansard';
+      else if (roofVariant === 1) shape = 'hip';
+    } else if ((b.kind === 'workshop' || b.kind === 'warehouse') && Math.min(b.w, b.d) >= 2) {
+      shape = pickFrom(['gable', 'gambrel', 'sawtooth'] as const, salt, 20);
+    } else if (b.kind === 'courtdwelling' && roofVariant === 0) {
+      shape = 'flat';
+    }
+  }
+
   // The covering family, read off the roof colours before they are washed. It
   // drives baked texture only, never geometry.
   // Works roofs are tarred boards and felt over iron, not hung slate: the
@@ -391,6 +476,10 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
       : shape === 'pyramid' ? Math.round(16 + storeys * 3)
         : shape === 'dome' ? Math.max(12, Math.round(wallH * 0.55 + (salt % 3)))
           : Math.max(8, Math.round(wallH * 0.65 + (salt % 3)));
+  const dormerBase = fam.dormers ?? 0;
+  const dormers = roofH >= 12 && shape !== 'sawtooth' && shape !== 'flat'
+    ? Math.min(3, dormerBase + (polite && ((salt >>> 15) % 4 === 0) ? 1 : 0))
+    : 0;
 
   const AWNINGS = [PAL.buntRed, PAL.buntBlue, PAL.verd1, PAL.brick1, PAL.ochre0];
   const dwelling = b.kind === 'terrace' || b.kind === 'tenement'
@@ -446,11 +535,12 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     shape,
     salt: salt >>> 11,
     shopfront: fam.shop === true && b.w * b.d >= 1,
+    shopOpen: b.kind === 'pub' ? daily.pubsOpen : daily.shopsOpen,
     sign: fam.shop === true,
     signGlyph: fam.shop === true && (b.kind === 'shop' || b.kind === 'pub') ? glyphFor(b, salt) : undefined,
     awning: gradeHex(pickFrom(AWNINGS, salt, 7), variant),
     // Dormers need a slope deep enough to sit one on.
-    dormers: fam.dormers && roofH >= 12 && shape !== 'sawtooth' ? fam.dormers : 0,
+    dormers,
     // The rot, on the building rather than only in the prose. A building whose
     // fabric has genuinely failed gets its windows boarded. The working bank
     // fails earlier.
@@ -482,7 +572,8 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     patched: !polite && dwelling && ((salt >>> 9) % (wardKind === 'courts' ? 2 : 3) === 0),
     roofWear: scorched ? 2 : roofWear,
     facadeWear: scorched ? 2 : facadeWear,
-    washing: !polite && dwelling && ((salt >>> 11) % (wardKind === 'courts' ? 2 : 3) === 0),
+    washing: daily.washingOut && weather.precipitation === 0
+      && !polite && dwelling && ((salt >>> 11) % (wardKind === 'courts' ? 2 : 3) === 0),
     cresting: fam.cresting === true || ((wardKind === 'garden' || polite) && b.kind === 'villa'),
     railings: (polite || wardKind === 'garden' || wardKind === 'civic')
       && (b.kind === 'villa' || b.kind === 'bank' || b.kind === 'townhall' || b.kind === 'terrace'),
@@ -490,6 +581,9 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // shop, dressed for the street below. About half the row, hashed per address.
     balcony: wardKind === 'merchant' && fam.shop === true && storeys >= 2
       && ((salt >>> 13) & 1) === 0,
+    bayWindow: !fam.shop && (polite || wardKind === 'garden')
+      && (b.kind === 'villa' || b.kind === 'terrace' || b.kind === 'lodging')
+      && ((salt >>> 16) % 3 === 0),
     worksStage,
     drainState,
     // A mill or foundry has a fire in it around the clock; a scorched shell does
@@ -497,8 +591,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     furnace: (b.kind === 'mill' || b.kind === 'foundry') && !scorched && damage === 'none',
     // Snow is precipitation, but it does not run off a roof or pool in a
     // gutter, so a snow watch gets no drips and no puddles.
-    rainStrength: weatherAt(city.seed, city.tick).kind === 'snow'
-      ? 0 : weatherAt(city.seed, city.tick).precipitation,
+    rainStrength: weather.kind === 'snow' ? 0 : weather.precipitation,
     snowCover: snowCoverAt(city.seed, city.tick),
     finial,
     finialH: fam.finialH ?? 0,
@@ -613,7 +706,12 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     }
   }
   const naturalProps = buildProps(d, city.seed, variant, city.wards);
-  const streetProps = buildStreetProps(d, city.seed, variant, city.wards);
+  const daily = dailyStreetState(city.tick);
+  const streetProps = buildStreetProps(d, city.seed, variant, city.wards, {
+    displaysOut: daily.shopsOpen && weather.precipitation === 0,
+    workSetOut: daily.workSetOut && weather.precipitation === 0,
+    washingOut: daily.washingOut && weather.precipitation === 0,
+  });
   const squareProps = buildSquareProps(
     d, city.seed, variant, city.streetPlan.squareX, city.streetPlan.squareY, city.streetPlan.squareW,
   );
@@ -989,6 +1087,8 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     civicVisitRevision: city.civicVisits.revision,
     disasterRevision: city.disasters.revision,
     weatherRevision: weather.revision,
+    dailyRevision: dailyStreetRevisionAt(city.tick),
+    buildingRevision: buildingVisualRevision(city),
     shelterRevision: city.shelters.revision,
     occasionRevision: city.occasions.revision,
     riverLevel: drop * 8 + riverLevel,
@@ -1615,7 +1715,6 @@ function drawOutfalls(
   const HH = TILE_H / 2;
   const level = riverLevelAt(city.seed, city.tick);
   if (level === 0) return;
-  const water = gradeHex(PAL.riv2, variant);
   const pale = gradeHex(PAL.rivGlint, variant);
   const deep = gradeHex(shadeHex(PAL.riv1, -0.2), variant);
   for (let ty = 0; ty < d.height; ty++) {
@@ -1636,33 +1735,13 @@ function drawOutfalls(
         const b = dx === 1 ? { x: cx, y: cy + HH } : { x: cx - HW, y: cy };
         // The lip: a bright line of broken water right at the edge.
         lineHard(ctx, a, b, pale);
-        // The fall itself, in columns down the cliff face. Each column is
-        // hashed so the sheet has structure instead of reading as a curtain.
+        // Only the permanently wet stain is baked. The falling sheet and both
+        // foam banks move per frame in drawOutfallFx, after the ground blit.
         const H = 34;
-        const n = Math.max(3, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / 3));
-        for (let i = 0; i <= n; i++) {
-          const t = i / n;
-          const px = Math.round(a.x + (b.x - a.x) * t);
-          const py = Math.round(a.y + (b.y - a.y) * t);
-          const h = mix(city.seed, 58, k, i);
-          const len = H - (h % 10);
-          ctx.fillStyle = (h >>> 4) % 3 === 0 ? pale : water;
-          ctx.fillRect(px, py, 1, len);
-          // A darker thread beside the bright one gives the sheet depth.
-          if ((h >>> 8) % 2 === 0) {
-            ctx.fillStyle = deep;
-            ctx.fillRect(px, py + 2 + (h % 5), 1, Math.max(3, len - 8));
-          }
-        }
-        // Mist where it goes over the edge and where it disappears.
         ditherPolyHard(ctx, [
-          { x: a.x, y: a.y + H - 8 }, { x: b.x, y: b.y + H - 8 },
-          { x: b.x, y: b.y + H + 8 }, { x: a.x, y: a.y + H + 8 },
-        ], gradeHex(PAL.smoke2, variant), 5);
-        ditherPolyHard(ctx, [
-          { x: a.x, y: a.y - 2 }, { x: b.x, y: b.y - 2 },
-          { x: b.x, y: b.y + 5 }, { x: a.x, y: a.y + 5 },
-        ], pale, 4);
+          { x: a.x, y: a.y + 2 }, { x: b.x, y: b.y + 2 },
+          { x: b.x, y: b.y + H }, { x: a.x, y: a.y + H },
+        ], deep, 3);
       }
     }
   }

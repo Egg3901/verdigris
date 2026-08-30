@@ -5,7 +5,7 @@ import {
   weatherFabricWear, weatherOutputPermille, seasonColdness, snowCoverAt, forceWeather,
 } from '../weather';
 import { MIN_PER_DAY } from '../clock';
-import { riverLevelAt } from '../hydrology';
+import { riverFillAt, riverLevelAt } from '../hydrology';
 import { newCity, tickCity, warp } from '../city';
 import { breakSegment, serviceAt } from '../networks';
 
@@ -78,6 +78,43 @@ describe('derived weather', () => {
     const snowed = read('snow');
     forceWeather(null);
     expect(snowed).toBeLessThan(rained);
+  });
+
+  it('feeds a pinned rain watch into the channel gradually', () => {
+    const seed = hashString('slow-river');
+    const start = 20 * MIN_PER_DAY;
+    forceWeather(null);
+    forceWeather('rain', start);
+    const samples = [0, 60, 120, 180, 240, 300, 359]
+      .map((minutes) => riverFillAt(seed, start + minutes));
+    forceWeather(null);
+    for (let i = 1; i < samples.length; i++) expect(samples[i]).toBeGreaterThanOrEqual(samples[i - 1]);
+    expect(new Set(samples).size).toBeGreaterThan(2);
+  });
+
+  it('joins natural runoff watches without a river-level seam', () => {
+    forceWeather(null);
+    for (let s = 0; s < 16; s++) {
+      const seed = hashString(`seam-${s}`);
+      for (let watch = 1; watch < 48; watch++) {
+        const boundary = watch * WEATHER_WATCH_MINUTES;
+        expect(Math.abs(riverFillAt(seed, boundary) - riverFillAt(seed, boundary - 1))).toBeLessThanOrEqual(6);
+      }
+    }
+  });
+
+  it('drains a full channel over minutes rather than at the drought click', () => {
+    const start = 20 * MIN_PER_DAY;
+    forceWeather(null);
+    let seed = hashString('draining-0');
+    for (let i = 1; i < 64 && riverFillAt(seed, start) < 500; i++) seed = hashString(`draining-${i}`);
+    expect(riverFillAt(seed, start)).toBeGreaterThanOrEqual(500);
+    forceWeather('drought', start);
+    const samples = [0, 60, 120, 180, 240, 300, 359]
+      .map((minutes) => riverFillAt(seed, start + minutes));
+    forceWeather(null);
+    for (let i = 1; i < samples.length; i++) expect(samples[i]).toBeLessThanOrEqual(samples[i - 1]);
+    expect(new Set(samples).size).toBeGreaterThan(2);
   });
 
   it('reduces optional errands without erasing street life', () => {

@@ -24,6 +24,12 @@ export interface Prop {
   depth: number;
 }
 
+export interface StreetPropState {
+  displaysOut: boolean;
+  workSetOut: boolean;
+  washingOut: boolean;
+}
+
 const CANOPY = [PAL.leaf1, PAL.leaf2, PAL.leaf3, PAL.moss1, PAL.moss2];
 
 /** A lime tree, eighteen pixels tall. Three overlapping canopy blobs so the
@@ -993,6 +999,7 @@ function bakeBench(variant: Variant): HTMLCanvasElement {
  */
 export function buildStreetProps(
   district: District, seed: number, variant: Variant, wards: readonly Ward[] = [],
+  state: StreetPropState = { displaysOut: true, workSetOut: true, washingOut: true },
 ): Prop[] {
   const out: Prop[] = [];
   const lampGas = bakeLamp(variant, false);
@@ -1160,15 +1167,18 @@ export function buildStreetProps(
           continue;
         }
       }
-      if (ward === 'merchant' && (t === Tile.Street || t === Tile.Square) && roll >= 20 && roll < 24) {
+      if (state.displaysOut && ward === 'merchant'
+        && (t === Tile.Street || t === Tile.Square) && roll >= 20 && roll < 24) {
         push(display, 8, 11);
         continue;
       }
-      if (ward === 'works' && (t === Tile.Street || t === Tile.Yard) && roll >= 20 && roll < 24) {
+      if (state.workSetOut && ward === 'works'
+        && (t === Tile.Street || t === Tile.Yard) && roll >= 20 && roll < 24) {
         push(toolBench, 8, 12);
         continue;
       }
-      if (ward === 'courts' && (t === Tile.Street || t === Tile.Alley) && roll >= 20 && roll < 24) {
+      if (state.washingOut && ward === 'courts'
+        && (t === Tile.Street || t === Tile.Alley) && roll >= 20 && roll < 24) {
         push(washTub, 7, 10);
         continue;
       }

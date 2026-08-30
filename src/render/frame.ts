@@ -18,7 +18,7 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectHazards, collectVehicles, drawAirship, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawSky, drawAerialHaze, drawSnowCover, drawLamps, drawBirds, drawDoorGlow } from './fx';
+import { collectHazards, collectVehicles, drawAirship, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawOutfallFx, drawSky, drawAerialHaze, drawSnowCover, drawLamps, drawBirds, drawDoorGlow } from './fx';
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
@@ -93,6 +93,7 @@ export function drawFrame(
   // per frame, they catch one at a time as evening comes on and flicker.
   // The river moves under everything that stands beside it.
   stats.calls += drawRiverFx(ctx, city, fracMin, scene.variant, tl, br);
+  stats.calls += drawOutfallFx(ctx, city, fracMin, scene.variant, tl, br);
   stats.calls += drawLamps(ctx, city, fracMin, scene.variant, tl, br);
   // Doorway light goes down with the lamp pools, for the same occlusion reason:
   // it lies on the pavement, and the buildings drawn after it stand over it.
