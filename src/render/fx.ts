@@ -668,7 +668,8 @@ export function drawSmoke(
       if (m > 540 && m < 1020) continue;
       if (b.id % 6 !== 0) continue;
       if (!serviceAt(city.networks.gas, b.id)) continue;
-    } else if (b.firmId >= 0 && !isRunning(city.firms[b.firmId], city.tick)) {
+    } else if (b.firmId >= 0
+      && (!isRunning(city.firms[b.firmId], city.tick) || city.firms[b.firmId].output <= 0)) {
       // A struck or shut mill does not smoke. This is the clearest visual signal
       // in the game that an intervention landed.
       continue;

@@ -32,6 +32,13 @@ const SCENES = [
   { name: 'courts-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'courts' },
   { name: 'quayside-ward', seed: 'verdigris', tick: 641, zoom: 2, ward: 'quayside' },
   { name: 'works-scaffold', seed: 'verdigris', tick: 641, zoom: 3, works: true },
+  { name: 'works-completed', seed: 'verdigris', tick: 120, zoom: 3, completedWorks: true },
+  { name: 'pipe-repair-scar', seed: 'verdigris', tick: 120, zoom: 3, completedPipe: true },
+  { name: 'strike-gate', seed: 'verdigris', tick: 641, zoom: 3, strike: true },
+  { name: 'evolved-roof', seed: 'verdigris', tick: 48 * 1440 + 641, zoom: 3, roofLife: true,
+    forceWeather: 'fair', weatherWarp: 9 },
+  { name: 'evolved-city', seed: 'verdigris', tick: 48 * 1440 + 641, zoom: 1,
+    forceWeather: 'fair', weatherWarp: 9 },
   { name: 'civic-deputation', seed: 'verdigris', tick: 641, zoom: 2, deputation: true },
   { name: 'fire-day', seed: 'verdigris', tick: 641, zoom: 3, disaster: 'fire' },
   { name: 'fire-night', seed: 'verdigris', tick: 1320, zoom: 3, disaster: 'fire' },
@@ -82,6 +89,75 @@ for (const scene of SCENES) {
         window.__verdigris.select('building', target.id);
         window.__verdigris.lookAt(target.ox, target.oy);
       }
+    }
+    if (s.completedWorks) {
+      const city = window.__verdigris.city;
+      city.press.pressures.coin.value = 900;
+      city.press.pressures.coin.baseline = 900;
+      city.press.pressures.rot.value = 0;
+      city.press.pressures.rot.baseline = 0;
+      const workshop = city.firms.find((firm) => firm.kind === 'workshop');
+      if (workshop) {
+        workshop.closedUntil = -1;
+        workshop.strikeUntil = -1;
+        workshop.output = 80;
+      }
+      const target = city.buildings
+        .filter((building) => building.fabric < 760 && building.drainSeg >= 0)
+        .sort((a, b) => a.fabric - b.fabric || (b.w * b.d) - (a.w * a.d))[0];
+      if (!target || !window.__verdigris.nudge('fileWorks', { kind: 'building', id: target.id })) {
+        throw new Error('completed works fixture refused');
+      }
+      const order = city.works.orders[city.works.orders.length - 1];
+      const toDue = Math.max(0, order.dueAt - city.tick);
+      const nextHour = (60 - ((city.tick + toDue) % 60)) % 60;
+      window.__verdigris.warp(toDue + nextHour);
+      if (order.status !== 'completed') throw new Error(`works resolved as ${order.status}`);
+      window.__verdigris.select('building', target.id);
+      window.__verdigris.lookAt(target.ox, target.oy);
+    }
+    if (s.completedPipe) {
+      const city = window.__verdigris.city;
+      city.press.pressures.coin.value = 900;
+      city.press.pressures.coin.baseline = 900;
+      city.press.pressures.rot.value = 0;
+      city.press.pressures.rot.baseline = 0;
+      const workshop = city.firms.find((firm) => firm.kind === 'workshop');
+      if (workshop) {
+        workshop.closedUntil = -1;
+        workshop.strikeUntil = -1;
+        workshop.output = 80;
+      }
+      const target = city.buildings
+        .filter((building) => building.drainSeg >= 0 && building.drainSeg !== city.networks.drain.root)
+        .sort((a, b) => (b.w * b.d) - (a.w * a.d) || a.id - b.id)[0];
+      if (!target) throw new Error('pipe repair target missing');
+      city.networks.drain.segBroken[target.drainSeg] = 1;
+      if (!window.__verdigris.nudge('fileWorks', { kind: 'building', id: target.id })) {
+        throw new Error('pipe repair fixture refused');
+      }
+      const order = city.works.orders[city.works.orders.length - 1];
+      if (order.kind !== 'drain') throw new Error(`pipe fixture filed ${order.kind}`);
+      const toDue = Math.max(0, order.dueAt - city.tick);
+      const nextHour = (60 - ((city.tick + toDue) % 60)) % 60;
+      window.__verdigris.warp(toDue + nextHour);
+      if (order.status !== 'completed') throw new Error(`pipe works resolved as ${order.status}`);
+      window.__verdigris.select('building', target.id);
+      window.__verdigris.lookAt(target.ox, target.oy);
+    }
+    if (s.strike) {
+      const city = window.__verdigris.city;
+      city.press.pressures.coin.value = 800;
+      city.press.pressures.coin.baseline = 800;
+      const target = city.buildings
+        .filter((building) => (building.kind === 'mill' || building.kind === 'foundry' || building.kind === 'workshop')
+          && building.firmId >= 0 && city.firms[building.firmId].workerIds.length >= 4)
+        .sort((a, b) => (b.w * b.d) - (a.w * a.d) || a.id - b.id)[0];
+      if (!target || !window.__verdigris.nudge('fundStrike', { kind: 'building', id: target.id })) {
+        throw new Error('strike fixture refused');
+      }
+      window.__verdigris.select('building', target.id);
+      window.__verdigris.lookAt(target.ox, target.oy);
     }
     if (s.deputation) {
       const city = window.__verdigris.city;
@@ -181,6 +257,13 @@ for (const scene of SCENES) {
     if (s.washing) {
       const city = window.__verdigris.city;
       const target = city.buildings.find((building) => window.__verdigris.debugSkin(building.id).washing);
+      if (target) window.__verdigris.lookAt(target.ox, target.oy);
+    }
+    if (s.roofLife) {
+      const city = window.__verdigris.city;
+      const target = city.buildings
+        .filter((building) => window.__verdigris.debugSkin(building.id).roofLife !== 'none')
+        .sort((a, b) => (b.w * b.d) - (a.w * a.d) || a.id - b.id)[0];
       if (target) window.__verdigris.lookAt(target.ox, target.oy);
     }
     if (s.outfall) {

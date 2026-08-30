@@ -152,6 +152,11 @@ coldest day at the center of winter. The season is render input only: it changes
 foliage, open ground and ambient leaf or blossom movement without introducing a
 second mutable calendar into the simulation.
 
+The renderer also reads three broad term-age bands from the clock, at days 7,
+21 and 42. They do not change simulation rules. They allow occupied homes and
+working premises to acquire sparse rooftop coops, tanks and lifting frames over
+time while firm shutdowns and strikes remain direct readings of firm state.
+
 ## What the player does
 
 ### `interventions.ts`

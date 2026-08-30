@@ -119,7 +119,8 @@ Built and playing:
   post access changes lead time; coin, rot and workshop state decide whether it
   is repaired, cosmetically skimmed or shelved. Survey marks, scaffold, blue
   sheeting, completion plaques, gutters, broken pipes, damp and puddles put that
-  state directly on the building.
+  state directly on the building. Honest completed work leaves permanent roof,
+  masonry, pipe and repaved-street scars, so a repaired district keeps its history.
 - Predicate-gated prose that cannot assert anything the sim does not contain.
 - Seeded six-hour weather watches with rain, storms, fog, wind, wet streets,
   umbrellas, exposure, failed-drain wear, altered wharf output, and weather-gated
@@ -137,7 +138,8 @@ Built and playing:
   work displays, wind-driven washing, working flywheels and pump beams, live
   gas-holder collars and civic clocks, hoisting dock cranes, shift-weighted
   freight traffic, vehicles, smoke, lit windows, seasonal trees and ground texture,
-  drifting blossom and leaves, a slowly
+  drifting blossom and leaves, immediate picket and shutdown signals, rooftop
+  coops, tanks and hoists that accumulate over a long aldermanic term, a slowly
   filling river with animated outfalls, a weather-gated packet airship,
   flatten-per-building compositor, one depth merge for buildings, props, people,
   trams, and carts, pixel-exact ID-buffer picking and discrete zoom.
