@@ -22,6 +22,9 @@ export interface Prop {
   wx: number;
   wy: number;
   depth: number;
+  /** 1 right-facing quay crane, 2 left-facing quay crane. */
+  pulse?: 1 | 2;
+  pulseSalt?: number;
 }
 
 export interface StreetPropState {
@@ -506,14 +509,9 @@ function bakeCrane(variant: Variant, timber: boolean): HTMLCanvasElement {
   lineHard(ctx, { x: 13, y: 16 }, { x: 30, y: 5 }, dark);
   lineHard(ctx, { x: 12, y: 3 }, { x: 29, y: 3 }, dark);
 
-  // Fall, block and hook, hanging free off the jib head.
-  ctx.fillStyle = dark;
-  ctx.fillRect(29, 5, 1, 12);
+  // The fall, block and hook move per frame. Only the jib and sheave are baked.
   ctx.fillStyle = g(PAL.brassInk);
-  ctx.fillRect(28, 17, 3, 3);
-  ctx.fillStyle = dark;
-  ctx.fillRect(29, 20, 1, 2);
-  ctx.fillRect(28, 21, 1, 1);
+  ctx.fillRect(28, 4, 3, 3);
 
   hardenAlpha(ctx, c.width, c.height, variant);
   return c;
@@ -1100,12 +1098,14 @@ export function buildStreetProps(
         const pushQuay = (
           sprite: HTMLCanvasElement, ax: number, ay: number,
           ox: number, oy: number, dtx = tx, dty = ty,
+          pulse?: 1 | 2, pulseSalt?: number,
         ) => {
           out.push({
             sprite, ax, ay,
             wx: isoX(tx, ty) + ox,
             wy: isoY(tx, ty) + oy,
             depth: depthKey(dtx, dty, LAYER_STRUCT),
+            pulse, pulseSalt,
           });
         };
 
@@ -1129,7 +1129,8 @@ export function buildStreetProps(
           const sprite = cranes[(right ? 0 : 2) + (timber ? 0 : 1)];
           const ox = (east || north ? 6 : -6);
           const oy = (east || south ? 3 : -3);
-          pushQuay(sprite, right ? CRANE_AX : CRANE_W - 1 - CRANE_AX, CRANE_AY, ox, oy);
+          pushQuay(sprite, right ? CRANE_AX : CRANE_W - 1 - CRANE_AX, CRANE_AY, ox, oy,
+            right ? 1 : 2, mix(seed, 97, tx, ty));
           continue;
         }
         if (!nearBridge && anyWater && t === Tile.Wharf && q >= 470 && q < 530) {

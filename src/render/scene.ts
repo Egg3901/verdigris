@@ -55,6 +55,9 @@ export interface StaticSprite {
   depth: number;
   /** Window panes in sprite coordinates, lit per frame on their own schedules. */
   windows: WindowLight[];
+  /** Facade height and routine flags used by depth-correct per-frame details. */
+  wallH: number;
+  washing: boolean;
 }
 
 export interface Scene {
@@ -1132,6 +1135,8 @@ export function flattenBuilding(
     wx: isoX(sx, sy), wy: isoY(sx, sy),
     depth: depthKey(sx, sy, LAYER_STRUCT),
     windows,
+    wallH: spec.wallH,
+    washing: spec.washing === true,
   };
 }
 

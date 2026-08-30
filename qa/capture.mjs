@@ -44,6 +44,12 @@ const SCENES = [
   { name: 'merchant-frontage', seed: 'verdigris', tick: 641, zoom: 3, ward: 'merchant' },
   { name: 'works-yard', seed: 'verdigris', tick: 641, zoom: 3, ward: 'works' },
   { name: 'courts-patina', seed: 'verdigris', tick: 641, zoom: 3, ward: 'courts' },
+  { name: 'mill-machinery', seed: 'verdigris', tick: 641, zoom: 3, buildingKind: 'mill' },
+  { name: 'gas-holder', seed: 'verdigris', tick: 641, zoom: 3, buildingKind: 'gasworks' },
+  { name: 'pump-beam', seed: 'verdigris', tick: 641, zoom: 3, buildingKind: 'pumphouse' },
+  { name: 'tram-contact', seed: 'verdigris', tick: 641, zoom: 3, buildingKind: 'tramdepot' },
+  { name: 'civic-clock', seed: 'verdigris', tick: 641, zoom: 3, buildingKind: 'townhall' },
+  { name: 'washing-wind', seed: 'verdigris', tick: 641, zoom: 3, washing: true },
 ];
 
 mkdirSync(OUT, { recursive: true });
@@ -159,6 +165,18 @@ for (const scene of SCENES) {
         .filter((building) => city.plots[building.plotId].wardId === ward.id)
         .sort((a, b) => ((a.ox - ward.anchorX) ** 2 + (a.oy - ward.anchorY) ** 2)
           - ((b.ox - ward.anchorX) ** 2 + (b.oy - ward.anchorY) ** 2))[0] : null;
+      if (target) window.__verdigris.lookAt(target.ox, target.oy);
+    }
+    if (s.buildingKind) {
+      const city = window.__verdigris.city;
+      const target = city.buildings
+        .filter((building) => building.kind === s.buildingKind)
+        .sort((a, b) => (b.w * b.d) - (a.w * a.d) || a.id - b.id)[0];
+      if (target) window.__verdigris.lookAt(target.ox, target.oy);
+    }
+    if (s.washing) {
+      const city = window.__verdigris.city;
+      const target = city.buildings.find((building) => window.__verdigris.debugSkin(building.id).washing);
       if (target) window.__verdigris.lookAt(target.ox, target.oy);
     }
     if (s.outfall) {

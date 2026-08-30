@@ -1,7 +1,7 @@
 // Per-frame effects: the tram, and the smoke.
 //
-// Everything here is deterministic from (seed, tick) and allocates nothing, so it
-// costs the same whether the sim is paused or running at forty times speed.
+// Everything here is deterministic from (seed, tick) and keeps no hidden
+// animation state, so replay can reconstruct the same frame exactly.
 import type { City } from '../sim/city';
 import { tramPos } from '../sim/city';
 import { serviceAt } from '../sim/networks';
@@ -19,8 +19,231 @@ import { isDisasterActive } from '../sim/disasters';
 import { weatherAt, snowCoverAt } from '../sim/weather';
 import type { Weather } from '../sim/weather';
 import { riverFillAt, riverLevelAt, riverDropAt } from '../sim/hydrology';
+import { pressureOf } from '../sim/pressures';
+import { houseCorners } from './house';
+import { makeFace } from './detail';
+import type { Prop } from './props';
 
 const OUTFALL_FRONT_EDGES = [[1, 0], [0, 1]] as const;
+const PULSE_CLOTH = [PAL.buntCream, PAL.buntBlue, PAL.plaster2, PAL.ochre2] as const;
+
+/** Route thinning makes freight follow the working day without stored traffic. */
+export function freightStrideAt(tick: number): 1 | 2 | 5 {
+  const minute = minuteOfDay(tick);
+  return minute >= 360 && minute < 1080 ? 1
+    : minute >= 300 && minute < 1260 ? 2 : 5;
+}
+
+/** River work also ebbs after shift while a high channel keeps one night boat. */
+export function riverBoatCountAt(level: number, tick: number): number {
+  if (level <= 0) return 0;
+  const minute = minuteOfDay(tick);
+  const fullTraffic = level >= 3 ? 3 : level === 2 ? 2 : 1;
+  return minute >= 330 && minute < 1200
+    ? fullTraffic : minute >= 240 && minute < 1320 ? Math.max(1, Math.ceil(fullTraffic / 2))
+      : level >= 3 ? 1 : 0;
+}
+
+function pixelRing(
+  ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, colour: string, radiusY = radius,
+): void {
+  ctx.fillStyle = colour;
+  const points = Math.max(12, radius * 4);
+  for (let i = 0; i < points; i++) {
+    const angle = (Math.PI * 2 * i) / points;
+    ctx.fillRect(Math.round(cx + Math.cos(angle) * radius), Math.round(cy + Math.sin(angle) * radiusY), 1, 1);
+  }
+}
+
+/**
+ * Moving cloth and landmark machinery, drawn immediately after its building.
+ * This keeps every wheel, clock hand and washing line in the same depth slot as
+ * the facade it belongs to instead of floating over a nearer roof.
+ */
+export function drawBuildingPulse(
+  ctx: CanvasRenderingContext2D, city: City, buildingId: number,
+  wx: number, wy: number, wallH: number, washing: boolean,
+  fracMin: number, variant: Variant,
+): number {
+  const b = city.buildings[buildingId];
+  if (!b) return 0;
+  const machinery = b.kind === 'mill' || b.kind === 'foundry' || b.kind === 'workshop'
+    || b.kind === 'pumphouse' || b.kind === 'gasworks' || b.kind === 'tramdepot'
+    || b.kind === 'townhall';
+  if (!washing && !machinery) return 0;
+  const t = city.tick + fracMin;
+  const weather = weatherAt(city.seed, city.tick);
+  const eave = houseCorners(wx, wy, b.w, b.d, wallH);
+  const ground = houseCorners(wx, wy, b.w, b.d, 0);
+  const face = makeFace(eave.W, eave.S, true);
+  let calls = 0;
+
+  if (washing && face.span >= 10) {
+    const top = Math.max(3, wallH - 12);
+    const salt = mix(city.seed, 41, b.id) >>> 11;
+    const n = 3 + (salt % 2);
+    lineHard(ctx, face.at(0.12, top), face.at(0.88, top + 2), gradeHex(PAL.wood0, variant));
+    for (let i = 0; i < n; i++) {
+      const u = 0.2 + (0.6 * i) / Math.max(1, n - 1);
+      const p = face.at(u, top + Math.sin(u * Math.PI) * 2);
+      const flap = Math.round(weather.windX * 1.5 + Math.sin(t * 1.25 + salt + i * 1.7) * 2);
+      const h = 5 + (i % 3);
+      const x = Math.round(p.x);
+      const y = Math.round(p.y) + 1;
+      fillPolyHard(ctx, [
+        { x: x - 2, y }, { x: x + 1, y },
+        { x: x + 1 + flap, y: y + h }, { x: x - 2 + flap, y: y + h },
+      ], gradeHex(PULSE_CLOTH[(i + salt) % PULSE_CLOTH.length], variant));
+      calls++;
+    }
+    calls++;
+  }
+
+  if (b.fabric <= 0 || b.burntAt >= 0) return calls;
+
+  if (b.kind === 'townhall' && face.span >= 16) {
+    // Civic Hall is the district's public clock. Its hands read the actual game
+    // minute, so a long view of the square shows time passing without the HUD.
+    const c = face.at(0.5, Math.min(10, Math.max(5, wallH * 0.3)));
+    const cx = Math.round(c.x);
+    const cy = Math.round(c.y);
+    fillEllipseHard(ctx, cx, cy, 4, 4, gradeHex(PAL.gold, variant, true));
+    fillEllipseHard(ctx, cx, cy, 3, 3, gradeHex(PAL.buntCream, variant));
+    const minute = (minuteOfDay(city.tick) + fracMin) % 1440;
+    const minuteAngle = (minute % 60) * Math.PI / 30 - Math.PI / 2;
+    const hourAngle = (minute / 60) * Math.PI / 6 - Math.PI / 2;
+    const ink = gradeHex(PAL.soot0, variant);
+    lineHard(ctx, { x: cx, y: cy }, {
+      x: cx + Math.cos(hourAngle) * 2, y: cy + Math.sin(hourAngle) * 2,
+    }, ink);
+    lineHard(ctx, { x: cx, y: cy }, {
+      x: cx + Math.cos(minuteAngle) * 3, y: cy + Math.sin(minuteAngle) * 3,
+    }, ink);
+    calls += 4;
+  }
+
+  const firm = b.firmId >= 0 ? city.firms[b.firmId] : null;
+  const running = firm ? isRunning(firm, city.tick) && firm.output > 0 : true;
+  if ((b.kind === 'mill' || b.kind === 'foundry' || b.kind === 'workshop') && face.span >= 14) {
+    const c = face.at(0.72, wallH - 10);
+    const cx = Math.round(c.x);
+    const cy = Math.round(c.y);
+    const iron = gradeHex(running ? PAL.soot3 : PAL.soot1, variant);
+    const hub = gradeHex(running ? PAL.brass2 : PAL.soot2, variant);
+    pixelRing(ctx, cx, cy, 4, iron);
+    const phase = running ? t * 1.8 + b.id : b.id;
+    for (let i = 0; i < 3; i++) {
+      const angle = phase + (Math.PI * 2 * i) / 3;
+      lineHard(ctx, { x: cx, y: cy }, {
+        x: cx + Math.cos(angle) * 4, y: cy + Math.sin(angle) * 4,
+      }, iron);
+    }
+    ctx.fillStyle = hub;
+    ctx.fillRect(cx - 1, cy - 1, 2, 2);
+    const piston = face.at(0.42, wallH - 10 + (running ? Math.sin(phase) * 2 : 0));
+    lineHard(ctx, { x: cx - 2, y: cy }, piston, hub);
+    calls += 6;
+    if (b.kind === 'foundry' && running) {
+      const frame = Math.floor(t * 4);
+      ctx.fillStyle = gradeHex(PAL.brass3, variant, true);
+      for (let i = 0; i < 3; i++) {
+        const h = mix(city.seed, 208, b.id, frame + i);
+        if ((h & 3) === 0) continue;
+        ctx.fillRect(cx - 6 + (h % 5), cy - 5 - ((h >>> 5) % 5), 1, 1);
+        calls++;
+      }
+    }
+  }
+
+  if (b.kind === 'pumphouse') {
+    const served = serviceAt(city.networks.drain, b.id);
+    const pivot = face.at(0.5, 1);
+    const phase = served ? Math.sin(t * 0.72 + b.id) * 3 : 0;
+    const left = { x: pivot.x - 9, y: pivot.y - 5 - phase };
+    const right = { x: pivot.x + 9, y: pivot.y - 5 + phase };
+    const iron = gradeHex(served ? PAL.soot3 : PAL.soot1, variant);
+    lineHard(ctx, left, right, iron);
+    lineHard(ctx, { x: left.x, y: left.y + 1 }, { x: right.x, y: right.y + 1 }, iron);
+    lineHard(ctx, right, { x: right.x, y: face.at(0.8, wallH - 3).y }, iron);
+    ctx.fillStyle = gradeHex(PAL.brass2, variant);
+    ctx.fillRect(Math.round(pivot.x) - 1, Math.round(pivot.y) - 7, 3, 3);
+    calls += 4;
+  }
+
+  if (b.kind === 'gasworks') {
+    // The moving collar shows gas pressure on the holder itself. A cut main or
+    // prolonged shortage is visible as the ring settling toward the base.
+    const c = {
+      x: (ground.W.x + ground.N.x + ground.E.x + ground.S.x) / 4,
+      y: (ground.W.y + ground.N.y + ground.E.y + ground.S.y) / 4,
+    };
+    const pressure = pressureOf(city.press, 'gas');
+    const cy = Math.round(c.y + 3 - 8 - pressure * 0.025);
+    const ring = gradeHex(pressure > 420 ? PAL.verd3 : PAL.brick2, variant, pressure > 700);
+    pixelRing(ctx, Math.round(c.x - 7), cy, 12, ring, 4);
+    ctx.fillStyle = gradeHex(PAL.brass2, variant);
+    ctx.fillRect(Math.round(c.x - 22), cy - 1, 2, 3);
+    calls += 2;
+  }
+
+  if (b.kind === 'tramdepot' && face.span >= 16) {
+    const operating = city.tramDelayedUntil <= city.tick;
+    const wireA = face.at(0.12, -3);
+    const wireB = face.at(0.88, -3);
+    lineHard(ctx, wireA, wireB, gradeHex(operating ? PAL.soot3 : PAL.soot1, variant));
+    if (operating) {
+      const sweep = 0.18 + ((t * 0.22 + (b.id % 7) / 7) % 0.64);
+      const p = face.at(sweep, -3);
+      const flash = Math.floor(t * 6 + b.id) % 9;
+      if (flash < 5) {
+        const arc = gradeHex(flash < 2 ? PAL.gas2 : PAL.rivGlint, variant, true);
+        ctx.fillStyle = arc;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y) - 2, 1, 3);
+        ctx.fillRect(Math.round(p.x) + (flash & 1 ? 1 : -1), Math.round(p.y) - 1, 1, 1);
+        calls += 2;
+      }
+    }
+    calls++;
+  }
+
+  return calls;
+}
+
+/** A quay crane's moving fall, block, hook and occasional suspended load. */
+export function drawPropPulse(
+  ctx: CanvasRenderingContext2D, prop: Prop, city: City, fracMin: number, variant: Variant,
+): number {
+  if (!prop.pulse) return 0;
+  const t = city.tick + fracMin;
+  const minute = minuteOfDay(city.tick);
+  const working = minute >= 360 && minute < 1080;
+  const salt = prop.pulseSalt ?? 0;
+  const px = prop.wx - prop.ax;
+  const py = prop.wy - prop.ay;
+  const hx = Math.round(px + (prop.pulse === 1 ? 29 : 2));
+  const hy = Math.round(py + 6);
+  const cycle = working ? (Math.sin(t * 0.18 + salt) + 1) / 2 : 0.55;
+  const length = 8 + Math.round(cycle * 12);
+  const lean = weatherAt(city.seed, city.tick).windX;
+  const bx = hx + lean;
+  const by = hy + length;
+  const rope = gradeHex(PAL.soot1, variant);
+  lineHard(ctx, { x: hx, y: hy }, { x: bx, y: by }, rope);
+  ctx.fillStyle = gradeHex(PAL.brassInk, variant);
+  ctx.fillRect(bx - 1, by - 1, 3, 3);
+  ctx.fillStyle = rope;
+  ctx.fillRect(bx, by + 2, 1, 3);
+  ctx.fillRect(bx + (prop.pulse === 1 ? -1 : 1), by + 4, 2, 1);
+  if (working && ((salt >>> 5) % 3) !== 0 && cycle > 0.18 && cycle < 0.82) {
+    const load = gradeHex((salt & 1) === 0 ? PAL.wood1 : PAL.ochre0, variant);
+    ctx.fillStyle = load;
+    ctx.fillRect(bx - 4, by + 5, 8, 5);
+    lineHard(ctx, { x: bx, y: by + 2 }, { x: bx - 4, y: by + 5 }, rope);
+    lineHard(ctx, { x: bx, y: by + 2 }, { x: bx + 4, y: by + 5 }, rope);
+    return 7;
+  }
+  return 4;
+}
 
 export interface VehicleDraw {
   /** 0 tram, 1 cart, 2 barge. */
@@ -210,7 +433,9 @@ export function collectVehicles(
   }
 
   const t = city.tick + fracMin;
+  const freightStride = freightStrideAt(Math.floor(t));
   for (let i = 0; i < routes.length; i++) {
+    if (i % freightStride !== 0) continue;
     const r = routes[i];
     if (r.nodes.length < 2) continue;
     // Triangle wave: out along the route and back, forever, with a per-cart phase.
@@ -250,7 +475,7 @@ export function collectVehicles(
     }
     const span = x1 - x0 - 4;
     if (span > 8) {
-      const boats = level >= 3 ? 3 : level === 2 ? 2 : 1;
+      const boats = riverBoatCountAt(level, Math.floor(t));
       for (let i = 0; i < boats; i++) {
         // Triangle wave along the reach: down with the current, then poled back.
         const ph = ((t * 0.22 + (i * span * 2) / boats) % (span * 2) + span * 2) % (span * 2);

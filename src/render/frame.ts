@@ -18,7 +18,7 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectHazards, collectVehicles, drawAirship, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawOutfallFx, drawSky, drawAerialHaze, drawSnowCover, drawLamps, drawBirds, drawDoorGlow } from './fx';
+import { collectHazards, collectVehicles, drawAirship, drawBuildingPulse, drawHazard, drawPropPulse, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawOutfallFx, drawSky, drawAerialHaze, drawSnowCover, drawLamps, drawBirds, drawDoorGlow } from './fx';
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
@@ -140,6 +140,7 @@ export function drawFrame(
       if (px > br.wx || py > br.wy || px + p.sprite.width < tl.wx || py + p.sprite.height < tl.wy) continue;
       ctx.drawImage(p.sprite, Math.round(px), Math.round(py));
       stats.calls++;
+      stats.calls += drawPropPulse(ctx, p, city, fracMin, scene.variant);
       continue;
     }
     const useStatic = sDepth <= aDepth && sDepth <= vDepth && sDepth <= hDepth;
@@ -179,6 +180,9 @@ export function drawFrame(
           stats.calls++;
         }
       }
+      stats.calls += drawBuildingPulse(
+        ctx, city, s.buildingId, s.wx, s.wy, s.wallH, s.washing, fracMin, scene.variant,
+      );
     } else if (vDepth <= aDepth && vDepth <= hDepth) {
       stats.calls += drawVehicle(ctx, vehiclePool[vi++], scene.variant);
     } else if (aDepth <= hDepth) {
