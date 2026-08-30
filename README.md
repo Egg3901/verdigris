@@ -131,8 +131,10 @@ Built and playing:
   the square, whose goods appear only after vendors arrive, and whose turnout can
   be thinned or cancelled by weather, public order, a deputation or storm relief.
 - Isometric renderer: gable, hip, pyramid, flat, mansard, gambrel, sawtooth and
-  dome roofs; chimneys, dormers, facade materials, window rhythm, vehicles,
-  smoke, lit windows, trees, ground texture, a weather-gated packet airship,
+  dome roofs, varied per address and ward; chimneys, dormers, bay windows,
+  facade materials, window rhythm, opening-hour shutters and awnings, dry-day
+  washing and work displays, vehicles, smoke, lit windows, trees, ground
+  texture, a slowly filling river with animated outfalls, a weather-gated packet airship,
   flatten-per-building compositor, one depth merge for buildings, props, people,
   trams, and carts, pixel-exact ID-buffer picking and discrete zoom.
 - The full UI shell, and a keyboard equivalent for every verb.

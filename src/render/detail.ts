@@ -110,17 +110,27 @@ const FASCIA_PAINT = [PAL.soot2, PAL.buntBlue, PAL.verd1, PAL.brick1, PAL.brassI
 
 export function drawShopfront(
   ctx: CanvasRenderingContext2D, f: Face, wallH: number, skin: DetailSkin, awning: string,
-  salt = 0,
+  salt = 0, open = true,
 ): void {
   const top = Math.max(4, wallH - 13);
-  // The glass, over a low stallriser panel so the window sits on joinery rather
-  // than running into the pavement.
-  faceQuad(ctx, f, 0.08, 0.92, top + 3, wallH - 3, skin.glassLit ? PAL.litWindow : shadeHex(skin.glass, -0.1));
-  faceQuad(ctx, f, 0.08, 0.92, wallH - 3, wallH - 1, shadeHex(skin.timber, -0.05));
-  // Mullions, so it reads as panes and not as a hole.
-  for (let i = 1; i < 4; i++) {
-    const t = 0.08 + (0.84 * i) / 4;
-    lineHard(ctx, f.at(t, top + 3), f.at(t, wallH - 3), skin.timber);
+  if (open) {
+    // The glass, over a low stallriser panel so the window sits on joinery rather
+    // than running into the pavement.
+    faceQuad(ctx, f, 0.08, 0.92, top + 3, wallH - 3, skin.glassLit ? PAL.litWindow : shadeHex(skin.glass, -0.1));
+    faceQuad(ctx, f, 0.08, 0.92, wallH - 3, wallH - 1, shadeHex(skin.timber, -0.05));
+    // Mullions, so it reads as panes and not as a hole.
+    for (let i = 1; i < 4; i++) {
+      const t = 0.08 + (0.84 * i) / 4;
+      lineHard(ctx, f.at(t, top + 3), f.at(t, wallH - 3), skin.timber);
+    }
+  } else {
+    // Timber shutters after hours. Horizontal slats are visible at zoom 1 and
+    // change the whole commercial row from glassy to closed without a label.
+    faceQuad(ctx, f, 0.08, 0.92, top + 3, wallH - 1, shadeHex(skin.timber, -0.05));
+    for (let h = top + 5; h < wallH - 1; h += 2) {
+      lineHard(ctx, f.at(0.08, h), f.at(0.92, h), shadeHex(skin.timber, 0.12));
+    }
+    lineHard(ctx, f.at(0.5, top + 3), f.at(0.5, wallH - 1), skin.outline);
   }
   // The fascia: a painted lettering board over the glass. Dark signwriter's
   // paint, the shop's name in cream dashes, which is all the type five pixels
@@ -140,7 +150,7 @@ export function drawShopfront(
   // blind wound out over the door side only, or wound in altogether so the
   // fascia does the talking.
   const blind = (salt >>> 4) % 3;
-  if (blind < 2) {
+  if (open && blind < 2) {
     const a0 = blind === 0 ? 0.06 : 0.5;
     const a1 = 0.94;
     faceQuad(ctx, f, a0, a1, top + 3, top + 6, awning);
@@ -159,6 +169,34 @@ export function drawShopfront(
       faceQuad(ctx, f, s0, s1, top + 6, top + 7, awning);
     }
   }
+}
+
+/**
+ * A projecting bay on the better ordinary houses. Three tall panes, a stone
+ * apron and a tiny lead cap break the otherwise flat frontage without changing
+ * the building footprint or its pick silhouette.
+ */
+export function drawBayWindow(
+  ctx: CanvasRenderingContext2D, f: Face, wallH: number, skin: DetailSkin, salt: number,
+): void {
+  if (f.span < 14 || wallH < 18) return;
+  const left = (salt & 1) === 0;
+  const t0 = left ? 0.08 : 0.58;
+  const t1 = left ? 0.42 : 0.92;
+  const top = Math.max(4, wallH - 17);
+  const bottom = wallH - 3;
+  const body = skin.dress ?? shadeHex(skin.wall, 0.12);
+  faceQuad(ctx, f, t0 - 0.025, t1 + 0.025, top - 1, bottom + 2, skin.outline);
+  faceQuad(ctx, f, t0, t1, top, bottom, body);
+  const glass = skin.glassLit ? PAL.litWindow : shadeHex(skin.glass, 0.04);
+  for (let i = 0; i < 3; i++) {
+    const a = t0 + ((t1 - t0) * i) / 3 + 0.012;
+    const b = t0 + ((t1 - t0) * (i + 1)) / 3 - 0.012;
+    faceQuad(ctx, f, a, b, top + 2, bottom - 2, glass);
+    lineHard(ctx, f.at(a, top + 2), f.at(a, bottom - 2), skin.timber);
+  }
+  lineHard(ctx, f.at(t0 - 0.04, top - 2), f.at(t1 + 0.04, top - 2), shadeHex(body, -0.18));
+  lineHard(ctx, f.at(t0 - 0.05, bottom + 2), f.at(t1 + 0.05, bottom + 2), shadeHex(body, -0.22));
 }
 
 /** The trades a hanging sign can speak for without any lettering at all. */

@@ -7,7 +7,9 @@ import './style.css';
 import { newCity, tickCity, warp, hashWorld, soulsOutdoors } from './sim/city';
 import type { City } from './sim/city';
 import { MAX_TICKS_PER_FRAME, MIN_PER_DAY, SPEEDS, minuteOfDay } from './sim/clock';
-import { buildScene, refreshBuilding, debugSkin } from './render/scene';
+import {
+  buildScene, refreshBuilding, debugSkin, buildingVisualRevision, dailyStreetRevisionAt,
+} from './render/scene';
 import { renderPalette, variantFor } from './render/palette';
 import { applyDitherVeil } from './render/raster';
 import type { Scene } from './render/scene';
@@ -66,6 +68,8 @@ const city: City = newCity(SEED);
   warp(city, Number.isFinite(at) && at > 0 ? at : OPENING_TICK);
 }
 let scene: Scene = buildScene(city);
+let visualStateTick = city.tick;
+let currentBuildingVisualRevision = scene.buildingRevision;
 // The outgoing lighting band, kept alive through a transition so the two can
 // crossfade by ordered dither instead of the world snapping to the new light.
 let prevScene: Scene | null = null;
@@ -605,21 +609,28 @@ function loop(now: number): void {
     }
   }
 
-  // Rebake when the light changes. Three or four times a game-day, never per
-  // frame: the whole point of baking is that the expensive pass is rare.
+  // Rebake when light, a daily routine, or a visible condition band changes.
+  // The building scan runs once per game-minute, not once per animation frame.
   const wantVariant = variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind);
   const buntingNow = city.buntingUntil > city.tick;
+  if (visualStateTick !== city.tick) {
+    visualStateTick = city.tick;
+    currentBuildingVisualRevision = buildingVisualRevision(city);
+  }
   if (wantVariant !== scene.variant || buntingNow !== buntingShown
     || scene.worksRevision !== city.works.revision
     || scene.deputationRevision !== city.deputations.revision
     || scene.civicVisitRevision !== city.civicVisits.revision
     || scene.disasterRevision !== city.disasters.revision
     || scene.weatherRevision !== weatherAt(city.seed, city.tick).revision
+    || scene.dailyRevision !== dailyStreetRevisionAt(city.tick)
+    || scene.buildingRevision !== currentBuildingVisualRevision
     || scene.riverLevel !== riverDropAt(city.seed, city.tick) * 8 + riverLevelAt(city.seed, city.tick)
     || scene.shelterRevision !== city.shelters.revision
     || scene.occasionRevision !== city.occasions.revision) {
     buntingShown = buntingNow;
     scene = buildScene(city, wantVariant);
+    currentBuildingVisualRevision = scene.buildingRevision;
   }
 
   const trans = bandTransition();
@@ -627,6 +638,8 @@ function loop(now: number): void {
     if (!prevScene || prevScene.variant !== trans.from
       || prevScene.riverLevel !== scene.riverLevel
       || prevScene.weatherRevision !== scene.weatherRevision
+      || prevScene.dailyRevision !== scene.dailyRevision
+      || prevScene.buildingRevision !== scene.buildingRevision
       || prevScene.disasterRevision !== scene.disasterRevision
       || prevScene.worksRevision !== scene.worksRevision) {
       prevScene = buildScene(city, trans.from);

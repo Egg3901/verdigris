@@ -16,7 +16,8 @@ const BASE_FLOW = 40;
 
 const RIVER_SURFACE_DROP: readonly number[] = [10, 8, 6, 4, 2];
 
-function wetAt(seed: number, tick: number): number {
+/** The runoff ledger at one instant, before the channel's inertia is applied. */
+function runoffTargetAt(seed: number, tick: number, naturalOnly = false): number {
   const currentWatch = Math.floor(Math.max(0, tick) / WEATHER_WATCH_MINUTES);
   let wet = 0;
   // Runoff is carried in quarters of one step of rain so that snow can count
@@ -33,7 +34,7 @@ function wetAt(seed: number, tick: number): number {
     // Borrowed prehistory reads the natural clock: a pin applies forward, and
     // reading history through it would let one click drain a week of rain.
     const w = sampleTick >= 0
-      ? weatherAt(seed, sampleTick)
+      ? naturalOnly ? naturalWeatherAt(seed, sampleTick) : weatherAt(seed, sampleTick)
       : naturalWeatherAt(seed, sampleTick + RIVER_LOOKBACK_WATCHES * WEATHER_WATCH_MINUTES);
     quarters += (RIVER_LOOKBACK_WATCHES - age) * precipitationRunoffQuarters(w);
   }
@@ -46,11 +47,54 @@ function wetAt(seed: number, tick: number): number {
     wet -= 120;
   }
 
-  // The sandbox drought is faster than any natural dry spell: the bed empties
-  // over hours, not days, draining harder the longer the pin holds.
+  return wet;
+}
+
+/** Interpolate between adjacent natural watch ledgers with no boundary seam. */
+function naturalWetAt(seed: number, tick: number): number {
+  const watchStart = Math.floor(tick / WEATHER_WATCH_MINUTES) * WEATHER_WATCH_MINUTES;
+  const previousTick = Math.max(0, watchStart - WEATHER_WATCH_MINUTES);
+  const previous = runoffTargetAt(seed, previousTick, true);
+  const target = runoffTargetAt(seed, watchStart, true);
+  const elapsed = tick - watchStart;
+  return previous + Math.round((target - previous) * elapsed / WEATHER_WATCH_MINUTES);
+}
+
+/**
+ * Water has inertia.
+ *
+ * A six-hour weather watch changes at one tick, but the channel must not gain a
+ * whole watch of runoff on that same minute. Interpolating from the previous
+ * watch's ledger to the present one makes rain arrive through gutters, drains
+ * and upstream ground over the following six hours. At the next boundary the
+ * old target is exactly the value the last interpolation reached, so there is no
+ * seam.
+ */
+function wetAt(seed: number, tick: number): number {
+  const t = Math.max(0, tick);
   const pinned = forcedWeather();
-  if (pinned.kind === 'drought' && tick >= pinned.since) {
-    wet -= Math.floor((tick - pinned.since) * 2 / 3);
+  let wet: number;
+  if (pinned.kind !== null && t >= pinned.since) {
+    // Pins get their own watch cadence starting at the click. The first cycle
+    // begins at the natural channel value already on screen; later cycles begin
+    // at the exact target reached by the one before them.
+    const age = t - pinned.since;
+    const cycle = Math.floor(age / WEATHER_WATCH_MINUTES);
+    const cycleStart = pinned.since + cycle * WEATHER_WATCH_MINUTES;
+    const previous = cycle === 0
+      ? naturalWetAt(seed, pinned.since)
+      : runoffTargetAt(seed, cycleStart - WEATHER_WATCH_MINUTES);
+    const target = runoffTargetAt(seed, cycleStart);
+    wet = previous + Math.round(
+      (target - previous) * (t - cycleStart) / WEATHER_WATCH_MINUTES,
+    );
+  } else {
+    wet = naturalWetAt(seed, t);
+  }
+  // Drought is a sandbox fast-forward through a sustained deficit. It still
+  // drains minute by minute, and now starts from the inertial channel above.
+  if (pinned.kind === 'drought' && t >= pinned.since) {
+    return wet - Math.floor((t - pinned.since) * 2 / 3);
   }
   return wet;
 }
@@ -77,6 +121,15 @@ export function riverDropAt(seed: number, tick: number): number {
   if (wet <= 95) return 10;
   if (wet >= 300) return 2;
   return Math.round(10 - (8 * (wet - 95)) / 205);
+}
+
+/** Continuous channel fullness for effects whose density can change more finely
+ * than the five simulation-facing level bands. */
+export function riverFillAt(seed: number, tick: number): number {
+  const wet = wetAt(seed, tick);
+  if (wet <= 95) return 0;
+  if (wet >= 300) return 1000;
+  return Math.round(((wet - 95) * 1000) / 205);
 }
 
 export function riverSurfaceDrop(level: number): number {

@@ -18,7 +18,9 @@ import { cellKey, insideIsland } from '../sim/district';
 import { isDisasterActive } from '../sim/disasters';
 import { weatherAt, snowCoverAt } from '../sim/weather';
 import type { Weather } from '../sim/weather';
-import { riverLevelAt, riverDropAt } from '../sim/hydrology';
+import { riverFillAt, riverLevelAt, riverDropAt } from '../sim/hydrology';
+
+const OUTFALL_FRONT_EDGES = [[1, 0], [0, 1]] as const;
 
 export interface VehicleDraw {
   /** 0 tram, 1 cart, 2 barge. */
@@ -1333,6 +1335,99 @@ export function drawRiverFx(
         ctx.fillRect(wx + (k > 1 ? wob : 0), wy + k * 2, 1, 1);
       }
       calls++;
+    }
+  }
+  return calls;
+}
+
+/**
+ * Falling water at the camera-facing river mouths.
+ *
+ * The cliff stain and lip are baked with the ground. The water itself is not:
+ * bright beads run down longer dark threads, the lower foam crawls sideways,
+ * and the mist breathes with the actual channel fullness. A drought shortens
+ * and thins the sheet gradually before it disappears.
+ */
+export function drawOutfallFx(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const level = riverLevelAt(city.seed, city.tick);
+  const fill = riverFillAt(city.seed, city.tick);
+  if (level === 0 || fill <= 0) return 0;
+  const d = city.district;
+  const drop = riverDropAt(city.seed, city.tick);
+  const tNow = city.tick + fracMin;
+  const water = gradeHex(PAL.riv2, variant);
+  const pale = gradeHex(PAL.rivGlint, variant);
+  const deep = gradeHex(shadeHex(PAL.riv1, -0.2), variant);
+  const mist = gradeHex(PAL.smoke2, variant);
+  const HW = TILE_W / 2;
+  const HH = TILE_H / 2;
+  const length = 22 + Math.round((fill * 14) / 1000);
+  const density = 3 + Math.round((fill * 7) / 1000);
+  let calls = 0;
+
+  for (let ty = 0; ty < d.height; ty++) {
+    for (let tx = 0; tx < d.width; tx++) {
+      const k = cellKey(d, tx, ty);
+      if (d.tile[k] !== Tile.Water) continue;
+      for (const [dx, dy] of OUTFALL_FRONT_EDGES) {
+        const nx = tx + dx;
+        const ny = ty + dy;
+        const off = nx >= d.width || ny >= d.height || !insideIsland(d, nx, ny)
+          || d.tile[cellKey(d, nx, ny)] === Tile.Void;
+        if (!off) continue;
+        const cx = isoX(tx, ty);
+        const cy = isoY(tx, ty) + drop;
+        const a = dx === 1 ? { x: cx + HW, y: cy } : { x: cx, y: cy + HH };
+        const b = dx === 1 ? { x: cx, y: cy + HH } : { x: cx - HW, y: cy };
+        if (Math.max(a.x, b.x) < tl.wx - 12 || Math.min(a.x, b.x) > br.wx + 12
+          || Math.max(a.y, b.y) + length < tl.wy || Math.min(a.y, b.y) > br.wy) continue;
+
+        // A sparse solid sheet gives the moving beads something to travel in.
+        ditherPolyHard(ctx, [
+          a, b, { x: b.x, y: b.y + length }, { x: a.x, y: a.y + length },
+        ], water, density);
+        const columns = Math.max(4, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / 3));
+        for (let i = 0; i <= columns; i++) {
+          const u = i / columns;
+          const px = Math.round(a.x + (b.x - a.x) * u);
+          const py = Math.round(a.y + (b.y - a.y) * u);
+          const h = mix(city.seed, 204, k, i);
+          const phase = Math.floor(tNow * (1.35 + (h % 4) * 0.12) + (h >>> 5)) % 7;
+          const thread = Math.max(9, length - ((h >>> 9) % 9));
+          // Dark threads hold still enough to read as depth; bright beads race
+          // down them in broken two-pixel runs.
+          if ((h >>> 12) % 3 === 0) {
+            ctx.fillStyle = deep;
+            ctx.fillRect(px, py + 3, 1, thread - 5);
+          }
+          ctx.fillStyle = (h & 3) === 0 ? pale : water;
+          for (let y = phase; y < thread; y += 7) ctx.fillRect(px, py + y, 1, Math.min(2, thread - y));
+        }
+
+        // Foam at the brink and foot moves across the fall rather than blinking
+        // in place. Ordered dither keeps both banks within the palette contract.
+        const crawl = Math.round(Math.sin(tNow * 0.8 + k) * 3);
+        ditherPolyHard(ctx, [
+          { x: a.x - 2, y: a.y - 2 }, { x: b.x + 2, y: b.y - 2 },
+          { x: b.x + 1, y: b.y + 5 }, { x: a.x - 1, y: a.y + 5 },
+        ], pale, Math.min(12, density + 3));
+        ditherPolyHard(ctx, [
+          { x: a.x - 5 + crawl, y: a.y + length - 5 },
+          { x: b.x + 5 + crawl, y: b.y + length - 5 },
+          { x: b.x + 9 + crawl, y: b.y + length + 7 },
+          { x: a.x - 9 + crawl, y: a.y + length + 7 },
+        ], mist, 3 + Math.round((fill * 4) / 1000));
+        ditherPolyHard(ctx, [
+          { x: a.x - 3 - crawl, y: a.y + length - 3 },
+          { x: b.x + 3 - crawl, y: b.y + length - 3 },
+          { x: b.x + 6 - crawl, y: b.y + length + 4 },
+          { x: a.x - 6 - crawl, y: a.y + length + 4 },
+        ], pale, 3);
+        calls += columns + 4;
+      }
     }
   }
   return calls;
