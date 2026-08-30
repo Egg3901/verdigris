@@ -94,6 +94,14 @@ clock. Trees and ground rebake only when that revision changes. The much smaller
 blossom and leaf drift pass stays world-space, deterministic and strictly capped,
 and is drawn under the depth merge so buildings occlude it correctly.
 
+Building sprites have a similarly coarse evolution key. It combines visible
+condition bands with firm state and three term-age thresholds at days 7, 21 and
+42. A strike, shutdown or new rooftop addition therefore invalidates the scene
+once when its visible state changes. Interventions also refresh that key at the
+paused tick, so applying a measure never waits for the clock before changing the
+picture. Completed works are read back from the permanent works ledger and baked
+as repair scars rather than kept in renderer-owned history.
+
 ### The atlas seam
 
 `art/bake.py` and the baked pixel atlas are not built. The city currently renders

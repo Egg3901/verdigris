@@ -20,7 +20,7 @@ import { Tile } from '../sim/types';
 import type { TileCode } from '../sim/types';
 import { PAL, shadeHex, hexToRgb, rgbToHex, gradeHex, variantFor, isDarkVariant } from './palette';
 import type { Variant } from './palette';
-import { minuteOfDay } from '../sim/clock';
+import { MIN_PER_DAY, minuteOfDay } from '../sim/clock';
 import { TILE_W, TILE_H, HEAD_ROOM, isoX, isoY, worldBounds, depthKey, LAYER_STRUCT } from './iso';
 import { serviceAt } from '../sim/networks';
 import { drawIsoDiamond } from './fallback';
@@ -34,6 +34,7 @@ import { mix, Stream } from '../sim/rng';
 import { buildMarketProps, buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
 import { worksStageFor, latestOrderFor } from '../sim/works';
+import { isClosed, isStruck } from '../sim/firms';
 import { isDeputationActive } from '../sim/deputations';
 import { activePublicVisit } from '../sim/civic-visits';
 import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters';
@@ -235,6 +236,27 @@ export function dailyStreetRevisionAt(tick: number): number {
 }
 
 /**
+ * How far the district has grown into the player's term.
+ *
+ * These are deliberately broad thresholds. Rooftop additions should arrive as
+ * legible chapters, not make the whole town rebake every dawn.
+ */
+export function buildingEvolutionBandAt(tick: number): 0 | 1 | 2 | 3 {
+  const days = Math.floor(Math.max(0, tick) / MIN_PER_DAY);
+  return days < 7 ? 0 : days < 21 ? 1 : days < 42 ? 2 : 3;
+}
+
+/** Physical works remembered by the address after temporary staging is gone. */
+export function buildingRepairMemory(city: City, buildingId: number): number {
+  let memory = 0;
+  for (const order of city.works.orders) {
+    if (order.buildingId !== buildingId || order.status !== 'completed') continue;
+    memory |= order.kind === 'fabric' ? 1 : order.kind === 'drain' ? 2 : 4;
+  }
+  return memory;
+}
+
+/**
  * Hash only the slow state that crosses a visible threshold.
  *
  * Fabric and facade move without their own revision counter. Folding their
@@ -242,7 +264,8 @@ export function dailyStreetRevisionAt(tick: number): number {
  * hour it happens, while changes within a band do not trigger needless bakes.
  */
 export function buildingVisualRevision(city: City): number {
-  let hash = 2166136261;
+  const evolutionBand = buildingEvolutionBandAt(city.tick);
+  let hash = Math.imul(2166136261 ^ evolutionBand, 16777619);
   for (const b of city.buildings) {
     const polite = city.district.polite[cellKey(city.district, b.ox, b.oy)] === 1;
     const def = DEFS[b.kind];
@@ -254,6 +277,10 @@ export function buildingVisualRevision(city: City): number {
       | (Number(b.facade > (polite ? 720 : 880)) << 5)
       | (Number(b.burntAt >= 0) << 6);
     if (def.needsDrain && !serviceAt(city.networks.drain, b.id)) bands |= 1 << 7;
+    const firm = b.firmId >= 0 ? city.firms[b.firmId] : null;
+    if (firm && isStruck(firm, city.tick)) bands |= 1 << 8;
+    if (firm && isClosed(firm, city.tick)) bands |= 1 << 9;
+    if (firm && firm.output <= 0) bands |= 1 << 10;
     hash = Math.imul(hash ^ b.id ^ (bands << 16), 16777619);
   }
   return hash >>> 0;
@@ -304,6 +331,11 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
   const polite = city.district.polite[cellKey(city.district, b.ox, b.oy)] === 1;
   const weather = weatherAt(city.seed, city.tick);
   const daily = dailyStreetState(city.tick);
+  const firm = b.firmId >= 0 ? city.firms[b.firmId] : null;
+  const firmState: HouseSpec['firmState'] = !firm ? 'none'
+    : isStruck(firm, city.tick) ? 'strike'
+      : isClosed(firm, city.tick) ? 'closed'
+        : firm.output <= 0 ? 'idle' : 'running';
   // Soot on the same ladder as everything else, in five steps rather than 255.
   // The working bank carries more of it: that is the class geography, rendered.
   const soot = Math.round(Math.min(polite ? 0.28 : 0.42, grime / 760 + (polite ? 0 : 0.08)) / 0.06) * 0.06;
@@ -499,6 +531,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     || b.kind === 'courtdwelling' || b.kind === 'lodging';
   const finial: Finial = fam.finial ?? 'none';
   const worksStage = worksStageFor(city, b.id);
+  const repairMemory = buildingRepairMemory(city, b.id);
   const drainState: 0 | 1 | 2 = !def.needsDrain ? 0 : serviceAt(city.networks.drain, b.id) ? 1 : 2;
   const wardWear = wardKind === 'works' || wardKind === 'courts' || wardKind === 'quayside' ? 1 : 0;
   const roofWear: 0 | 1 | 2 = worksStage >= 2 ? 0
@@ -548,7 +581,8 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     shape,
     salt: salt >>> 11,
     shopfront: fam.shop === true && b.w * b.d >= 1,
-    shopOpen: b.kind === 'pub' ? daily.pubsOpen : daily.shopsOpen,
+    shopOpen: (b.kind === 'pub' ? daily.pubsOpen : daily.shopsOpen)
+      && (firmState === 'none' || firmState === 'running'),
     sign: fam.shop === true,
     signGlyph: fam.shop === true && (b.kind === 'shop' || b.kind === 'pub') ? glyphFor(b, salt) : undefined,
     awning: gradeHex(pickFrom(AWNINGS, salt, 7), variant),
@@ -583,6 +617,22 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     frontage,
     polite,
     patched: !polite && dwelling && ((salt >>> 9) % (wardKind === 'courts' ? 2 : 3) === 0),
+    repairMemory,
+    firmState,
+    roofLife: (() => {
+      if (damage !== 'none' || scorched) return 'none';
+      const band = buildingEvolutionBandAt(city.tick);
+      const candidate = (salt >>> 20) % 12;
+      if (band === 0 || candidate >= band) return 'none';
+      if (frontage === 'works' || frontage === 'warehouse' || frontage === 'wharf') {
+        return band >= 2 && ((salt >>> 17) & 1) === 0 ? 'tank' : 'hoist';
+      }
+      if (dwelling && b.householdIds.length > 0) {
+        return b.kind === 'tenement' || b.kind === 'lodging' || b.kind === 'courtdwelling'
+          ? 'coop' : 'tank';
+      }
+      return 'none';
+    })(),
     roofWear: scorched ? 2 : roofWear,
     facadeWear: scorched ? 2 : facadeWear,
     washing: daily.washingOut && weather.precipitation === 0
@@ -601,7 +651,8 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     drainState,
     // A mill or foundry has a fire in it around the clock; a scorched shell does
     // not, and neither does an idle collapsed one.
-    furnace: (b.kind === 'mill' || b.kind === 'foundry') && !scorched && damage === 'none',
+    furnace: (b.kind === 'mill' || b.kind === 'foundry') && !scorched && damage === 'none'
+      && firmState === 'running',
     // Snow is precipitation, but it does not run off a roof or pool in a
     // gutter, so a snow watch gets no drips and no puddles.
     rainStrength: weather.kind === 'snow' ? 0 : weather.precipitation,
@@ -651,6 +702,41 @@ function drawRoadWorks(
   ctx.fillRect(x + 8, by - 7, 1, 7);
   ctx.fillStyle = !isDarkVariant(variant) ? g(PAL.buntRed) : g(PAL.gas2, true);
   ctx.fillRect(x + 7, by - 8, 2, 2);
+}
+
+/** The setts never quite match after a main has been opened and made good. */
+function drawRoadRepairScar(
+  ctx: CanvasRenderingContext2D, cx: number, cy: number, kind: 'gas' | 'drain', variant: Variant,
+): void {
+  const g = (c: string) => gradeHex(c, variant);
+  const x = Math.round(cx);
+  const y = Math.round(cy);
+  const scar = [
+    { x: x - 12, y: y - 2 }, { x: x + 10, y: y - 4 },
+    { x: x + 13, y }, { x: x - 9, y: y + 3 },
+  ];
+  fillPolyHard(ctx, scar, g(PAL.cobble0));
+  ditherPolyHard(ctx, scar, g(PAL.cobble2), 6);
+  lineHard(ctx, scar[0], scar[1], g(PAL.soot1));
+  ctx.fillStyle = g(kind === 'gas' ? PAL.brassInk : PAL.soot3);
+  ctx.fillRect(x + 4, y - 2, 2, 2);
+}
+
+function streetMarkAt(
+  district: District, bld: Building, originX: number, originY: number,
+): { x: number; y: number } | null {
+  for (const [dx, dy] of [[0, 1], [1, 0], [1, 1], [-1, 0], [0, -1], [-1, 1], [1, -1], [-1, -1]]) {
+    const nx = bld.doorX + dx;
+    const ny = bld.doorY + dy;
+    if (nx < 0 || ny < 0 || nx >= district.width || ny >= district.height) continue;
+    const nk = cellKey(district, nx, ny);
+    const t = district.tile[nk];
+    if ((t === Tile.Street || t === Tile.Alley || t === Tile.Square || t === Tile.Embankment)
+      && district.buildingId[nk] < 0) {
+      return { x: originX + isoX(nx, ny), y: originY + isoY(nx, ny) };
+    }
+  }
+  return null;
 }
 
 function makeCanvas(w: number, h: number): HTMLCanvasElement {
@@ -1048,27 +1134,21 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   // in", and the reason a cut main and its repair both leave a mark on the ward.
   for (const bld of city.buildings) {
     const order = latestOrderFor(city, bld.id);
-    if (!order || order.status !== 'working' || order.kind === 'fabric') continue;
-    // The street cell the door opens onto, so the trench sits on the road.
-    let wx = -1;
-    let wy = -1;
-    // Prefer the cells toward the camera first, so the trench lands where it can
-    // be seen rather than tucked behind the building.
-    for (const [dx, dy] of [[0, 1], [1, 0], [1, 1], [-1, 0], [0, -1], [-1, 1], [1, -1], [-1, -1]]) {
-      const nx = bld.doorX + dx;
-      const ny = bld.doorY + dy;
-      if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height) continue;
-      const nk = cellKey(d, nx, ny);
-      const t = d.tile[nk];
-      if ((t === Tile.Street || t === Tile.Alley || t === Tile.Square || t === Tile.Embankment)
-        && d.buildingId[nk] < 0) {
-        wx = originX + isoX(nx, ny);
-        wy = originY + isoY(nx, ny);
+    let completedKind: 'gas' | 'drain' | null = null;
+    for (let i = city.works.orders.length - 1; i >= 0; i--) {
+      const old = city.works.orders[i];
+      if (old.buildingId === bld.id && old.status === 'completed' && old.kind !== 'fabric') {
+        completedKind = old.kind;
         break;
       }
     }
-    if (wx < 0) continue;
-    drawRoadWorks(gctx, wx, wy, order.kind, variant);
+    if (!completedKind && (!order || order.status !== 'working' || order.kind === 'fabric')) continue;
+    const mark = streetMarkAt(d, bld, originX, originY);
+    if (!mark) continue;
+    if (completedKind) drawRoadRepairScar(gctx, mark.x, mark.y, completedKind, variant);
+    if (order && order.status === 'working' && order.kind !== 'fabric') {
+      drawRoadWorks(gctx, mark.x, mark.y, order.kind, variant);
+    }
   }
 
   // Lamp pools are NO LONGER baked here. They are drawn per frame, right after

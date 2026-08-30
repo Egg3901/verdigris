@@ -119,6 +119,12 @@ export interface HouseSpec {
   balcony?: boolean;
   /** A projecting three-light bay on one visible facade. */
   bayWindow?: boolean;
+  /** Small additions that accumulate during the alderman's term. */
+  roofLife?: 'none' | 'coop' | 'tank' | 'hoist';
+  /** Permanent physical works: 1 fabric, 2 drain, 4 gas. */
+  repairMemory?: number;
+  /** Live commercial state, made visible at the threshold and factory door. */
+  firmState?: 'none' | 'running' | 'idle' | 'strike' | 'closed';
   /** 1 survey notice, 2 scaffold and tarpaulin, 3 signed-off plaque. */
   worksStage?: 0 | 1 | 2 | 3;
   /** 0 no drain needed, 1 served, 2 disconnected or behind a broken main. */
@@ -249,8 +255,14 @@ export function drawHouse(
       drawDormer(ctx, roofQuad, (i + 1) / (n + 1), detailSkin(spec), spec.skin.roofLit, (spec.salt ?? 0) + i * 7);
     }
   }
-  if (roofQuad && spec.patched) {
+  if (roofQuad && spec.patched && !((spec.repairMemory ?? 0) & 1)) {
     drawRoofPatch(ctx, roofQuad, shadeHex(skin.roofShade, -0.08));
+  }
+  if (roofQuad && ((spec.repairMemory ?? 0) & 1)) {
+    drawRoofPatch(ctx, roofQuad, shadeHex(skin.roofRidge, 0.14));
+  }
+  if (roofQuad && spec.roofLife && spec.roofLife !== 'none') {
+    drawRoofLife(ctx, roofQuad, spec.roofLife, spec.salt ?? 0);
   }
   if (roofQuad && spec.damage === 'burning') drawBurnedRoof(ctx, roofQuad, spec);
   if (roofQuad && spec.scorched) drawCharredRoof(ctx, roofQuad, spec);
@@ -261,6 +273,11 @@ export function drawHouse(
   }
 
   if (spec.worksStage) drawWorks(ctx, eave, roofQuad, spec);
+  if (spec.damage === 'none' && !spec.scorched && spec.repairMemory) drawRepairMemory(ctx, eave, spec);
+  if (spec.damage === 'none' && !spec.scorched
+    && (spec.firmState === 'strike' || spec.firmState === 'idle' || spec.firmState === 'closed')) {
+    drawFirmState(ctx, eave, spec);
+  }
 
   if (skin.trim) {
     // The cornice: one line where the wall meets the eave. This is the gilding,
@@ -301,6 +318,102 @@ export function drawHouse(
     lineHard(ctx, drop(eave.W), drop(eave.S), skin.outline);
     lineHard(ctx, drop(eave.S), drop(eave.E), skin.outline);
   }
+}
+
+/** Roofs acquire small, useful clutter as a long-running district is inhabited. */
+function drawRoofLife(
+  ctx: CanvasRenderingContext2D, quad: readonly Pt[], kind: 'coop' | 'tank' | 'hoist', salt: number,
+): void {
+  if (quad.length < 4) return;
+  const eave = lerp(quad[0], quad[1], 0.62 + (salt % 3) * 0.06);
+  const ridge = lerp(quad[3], quad[2], 0.62 + (salt % 3) * 0.06);
+  const p = lerp(eave, ridge, 0.48);
+  const x = Math.round(p.x);
+  const y = Math.round(p.y);
+  if (kind === 'coop') {
+    ctx.fillStyle = PAL.wood2;
+    ctx.fillRect(x - 3, y - 4, 7, 5);
+    fillPolyHard(ctx, [
+      { x: x - 4, y: y - 4 }, { x: x + 4, y: y - 4 }, { x, y: y - 7 },
+    ], PAL.thatch1);
+    ctx.fillStyle = PAL.soot0;
+    ctx.fillRect(x - 1, y - 3, 2, 3);
+    ctx.fillStyle = PAL.stone3;
+    ctx.fillRect(x + 3, y - 6, 1, 1);
+    return;
+  }
+  if (kind === 'tank') {
+    ctx.fillStyle = PAL.soot2;
+    ctx.fillRect(x - 4, y - 5, 8, 5);
+    lineHard(ctx, { x: x - 4, y: y - 5 }, { x: x + 4, y: y - 5 }, PAL.riv2);
+    lineHard(ctx, { x: x - 4, y }, { x: x - 4, y: y + 3 }, PAL.wood1);
+    lineHard(ctx, { x: x + 3, y }, { x: x + 3, y: y + 3 }, PAL.wood1);
+    ctx.fillStyle = PAL.verd1;
+    ctx.fillRect(x + 3, y - 4, 1, 3);
+    return;
+  }
+  // A small lifting frame over a warehouse or workshop roof.
+  lineHard(ctx, { x: x - 4, y: y + 1 }, { x, y: y - 7 }, PAL.wood1);
+  lineHard(ctx, { x: x + 3, y: y + 1 }, { x, y: y - 7 }, PAL.wood1);
+  lineHard(ctx, { x, y: y - 7 }, { x: x + 6, y: y - 6 }, PAL.wood2);
+  lineHard(ctx, { x: x + 5, y: y - 6 }, { x: x + 5, y: y - 1 }, PAL.soot1);
+  ctx.fillStyle = PAL.brassInk;
+  ctx.fillRect(x + 4, y - 1, 3, 2);
+}
+
+/** Completed pipe work remains as new iron, stitched masonry and an inspection plate. */
+function drawRepairMemory(
+  ctx: CanvasRenderingContext2D, eave: { W: Pt; N: Pt; E: Pt; S: Pt }, spec: HouseSpec,
+): void {
+  const face = makeFace(eave.W, eave.S, true);
+  if (face.span < 8) return;
+  const memory = spec.repairMemory ?? 0;
+  if (memory & 1) {
+    const h = Math.max(4, Math.round(spec.wallH * 0.42));
+    const fresh = spec.material === 'brick' ? PAL.brick2 : PAL.stone2;
+    lineHard(ctx, face.at(0.12, h), face.at(0.68, h + 1), fresh);
+    for (const t of [0.2, 0.38, 0.57]) {
+      const p = face.at(t, h);
+      ctx.fillStyle = PAL.stone3;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y) - 1, 1, 3);
+    }
+  }
+  if (memory & 2) {
+    const a = face.at(0.86, Math.max(4, spec.wallH - 8));
+    const b = face.at(0.96, spec.wallH - 2);
+    lineHard(ctx, a, b, PAL.soot3);
+    ctx.fillStyle = PAL.brass1;
+    ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y) - 1, 3, 2);
+  }
+  if (memory & 4) {
+    const a = face.at(0.08, Math.max(5, spec.wallH - 7));
+    const b = face.at(0.25, spec.wallH - 2);
+    fillPolyHard(ctx, [
+      a, face.at(0.25, Math.max(5, spec.wallH - 7)), b, face.at(0.08, spec.wallH - 2),
+    ], spec.material === 'brick' ? PAL.brick2 : PAL.stone2);
+    lineHard(ctx, a, face.at(0.25, Math.max(5, spec.wallH - 7)), PAL.stone1);
+  }
+}
+
+/** A silent works or a strike should be legible before the player opens its card. */
+function drawFirmState(
+  ctx: CanvasRenderingContext2D, eave: { W: Pt; N: Pt; E: Pt; S: Pt }, spec: HouseSpec,
+): void {
+  const face = makeFace(eave.W, eave.S, true);
+  if (face.span < 9) return;
+  if (spec.firmState === 'strike') {
+    const top = Math.max(3, spec.wallH - 13);
+    const banner = [face.at(0.12, top), face.at(0.88, top + 1), face.at(0.84, top + 6), face.at(0.16, top + 5)];
+    fillPolyHard(ctx, banner, PAL.buntRed);
+    lineHard(ctx, face.at(0.28, top + 2), face.at(0.72, top + 4), PAL.buntCream);
+    lineHard(ctx, face.at(0.7, top + 2), face.at(0.3, top + 4), PAL.buntCream);
+    return;
+  }
+  const lock = face.at(spec.frontage === 'shop' ? 0.5 : 0.3, spec.wallH - 4);
+  ctx.fillStyle = PAL.brassInk;
+  ctx.fillRect(Math.round(lock.x) - 1, Math.round(lock.y) - 1, 3, 3);
+  lineHard(ctx, { x: lock.x - 1, y: lock.y - 1 }, { x: lock.x, y: lock.y - 3 }, PAL.soot2);
+  lineHard(ctx, { x: lock.x, y: lock.y - 3 }, { x: lock.x + 1, y: lock.y - 1 }, PAL.soot2);
 }
 
 /**

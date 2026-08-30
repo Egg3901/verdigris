@@ -76,6 +76,12 @@ let prevScene: Scene | null = null;
 let offA: HTMLCanvasElement | null = null;
 let offB: HTMLCanvasElement | null = null;
 
+function applyVisibleNudge(kind: InterventionKind, target: Target): boolean {
+  const applied = applyNudge(city, kind, target);
+  if (applied) currentBuildingVisualRevision = buildingVisualRevision(city);
+  return applied;
+}
+
 /** Minutes a lighting band takes to dissolve in. Pure in (seed, tick). */
 const BAND_DISSOLVE_MIN = 8;
 
@@ -218,7 +224,7 @@ function doVerb(verb: Verb): void {
       shell.toast(why, 'loss');
       return;
     }
-    applyNudge(city, nudgeKind, target);
+    applyVisibleNudge(nudgeKind, target);
     shell.toast(city.log[city.log.length - 1]?.text ?? 'Done.', 'gain');
     return;
   }
@@ -719,7 +725,7 @@ interface QaHook {
   }),
   enact: (kind, param) => enactOrdinance(city, kind as OrdinanceKind, param),
   repeal: (kind) => repealOrdinance(city, kind as OrdinanceKind),
-  nudge: (kind, target) => applyNudge(city, kind as InterventionKind, target),
+  nudge: (kind, target) => applyVisibleNudge(kind as InterventionKind, target),
   disaster: (kind, buildingId) => startDisaster(city, kind as DisasterKind, buildingId) !== null,
   market: () => startMarketDay(city) > 0,
   weather: () => weatherAt(city.seed, city.tick).kind,
