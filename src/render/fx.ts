@@ -10,7 +10,7 @@ import { PAL, gradeHex, shadeHex, isDarkVariant } from './palette';
 import type { Variant } from './palette';
 import { minuteOfDay } from '../sim/clock';
 import { TILE_W, TILE_H, isoX, isoY, depthKey, worldBounds, LAYER_AGENT, LAYER_OVERHEAD } from './iso';
-import { fillPolyHard, lineHard, ditherPolyHard, applyDitherVeil } from './raster';
+import { fillPolyHard, fillEllipseHard, lineHard, ditherPolyHard, applyDitherVeil } from './raster';
 import { mix, Stream } from '../sim/rng';
 import { stepToward } from '../sim/graph';
 import { Tile } from '../sim/types';
@@ -1127,6 +1127,116 @@ export function drawSky(
     calls += 2;
   }
   return calls;
+}
+
+/**
+ * The district's airship.
+ *
+ * Verdigris has always had a mooring mast but, from the wide view, it read as an
+ * unexplained radio tower. One packet ship now crosses the high sky twice a day.
+ * It stays behind the ground pass, so roofs and the mast occlude it correctly,
+ * and it uses the same hard-edged palette as the town rather than becoming a
+ * soft vector sticker above it.
+ *
+ * The schedule and every moving part are pure in (seed, tick). Bad weather hides
+ * the ship, which makes a clear watch feel different before the player reads the
+ * weather instrument.
+ */
+export function drawAirship(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const weather = weatherAt(city.seed, city.tick);
+  if (weather.kind === 'storm' || weather.kind === 'fog' || weather.precipitation > 0) return 0;
+
+  const wb = worldBounds();
+  const t = city.tick + fracMin;
+  const cycle = 720;
+  // The offset puts the canonical 10:41 opening near the centre of a crossing.
+  const phase = ((t + 319) % cycle + cycle) % cycle;
+  const travel = phase / cycle;
+  const day = Math.floor((t + 319) / cycle);
+  const salt = mix(city.seed, 203, day);
+  const rightward = (salt & 1) === 0;
+  const margin = 84;
+  const run = wb.w + margin * 2;
+  const rawX = wb.minX - margin + travel * run;
+  const x = rightward ? rawX : wb.maxX + margin - travel * run;
+  // worldBounds includes mast headroom above the first ground row. Stay in the
+  // lower half of it: the camera may crop the very top of that allowance on a
+  // wide display, while this band remains visible above the rear roofs.
+  const y = wb.minY + 112 + ((salt >>> 7) % 12) + Math.sin(t * 0.045) * 2;
+  if (x < tl.wx - margin || x > br.wx + margin || y < tl.wy - 28 || y > br.wy + 28) return 0;
+
+  const dir = rightward ? 1 : -1;
+  const outline = gradeHex(PAL.soot0, variant);
+  const shade = gradeHex(PAL.cream0, variant);
+  const cloth = gradeHex(PAL.cream1, variant);
+  const light = gradeHex(PAL.cream3, variant);
+  const verdigris = gradeHex(PAL.verd2, variant);
+  const brass = gradeHex(PAL.brass2, variant, isDarkVariant(variant));
+  const timber = gradeHex(PAL.wood1, variant);
+
+  // Tail planes first, behind the envelope. Their asymmetric chevron gives the
+  // otherwise horizontal silhouette a direction at zoom 1.
+  const tailX = x - dir * 34;
+  fillPolyHard(ctx, [
+    { x: tailX, y: y - 2 }, { x: tailX - dir * 12, y: y - 10 },
+    { x: tailX - dir * 8, y: y + 1 },
+  ], outline);
+  fillPolyHard(ctx, [
+    { x: tailX, y: y + 1 }, { x: tailX - dir * 11, y: y + 9 },
+    { x: tailX - dir * 7, y: y - 1 },
+  ], shade);
+
+  // A dark keyline and two nested cloth masses make the envelope read as a
+  // volume without antialiasing or a gradient.
+  fillEllipseHard(ctx, x, y, 37, 12, outline);
+  fillEllipseHard(ctx, x, y - 1, 35, 10, cloth);
+  fillEllipseHard(ctx, x - dir * 3, y - 3, 29, 6, light);
+  // Verdigris registration stripe. Kept narrow so the civic colour remains an
+  // accent, as it is on the roofs below.
+  fillPolyHard(ctx, [
+    { x: x - 2, y: y - 10 }, { x: x + 3, y: y - 9 },
+    { x: x + 3, y: y + 8 }, { x: x - 2, y: y + 9 },
+  ], verdigris);
+  lineHard(ctx, { x: x - dir * 20, y: y - 7 }, { x: x - dir * 20, y: y + 7 }, shade);
+  lineHard(ctx, { x: x + dir * 17, y: y - 8 }, { x: x + dir * 17, y: y + 8 }, shade);
+
+  // Suspension stays and a brass-trimmed gondola. The cabin is large enough to
+  // survive zoom 1, but small enough that the envelope remains the silhouette.
+  const gy = y + 14;
+  lineHard(ctx, { x: x - 18, y: y + 6 }, { x: x - 11, y: gy }, outline);
+  lineHard(ctx, { x: x + 18, y: y + 6 }, { x: x + 11, y: gy }, outline);
+  fillPolyHard(ctx, [
+    { x: x - 14, y: gy - 1 }, { x: x + 14, y: gy - 1 },
+    { x: x + 10, y: gy + 6 }, { x: x - 11, y: gy + 6 },
+  ], outline);
+  fillPolyHard(ctx, [
+    { x: x - 12, y: gy }, { x: x + 12, y: gy },
+    { x: x + 9, y: gy + 4 }, { x: x - 9, y: gy + 4 },
+  ], timber);
+  lineHard(ctx, { x: x - 8, y: gy + 1 }, { x: x + 8, y: gy + 1 }, brass);
+
+  // A two-frame propeller and navigation lamps keep the small silhouette alive
+  // as the clock moves.
+  const propX = x - dir * 17;
+  const propFrame = Math.floor(t * 6) & 1;
+  ctx.fillStyle = outline;
+  if (propFrame === 0) {
+    ctx.fillRect(Math.round(propX), Math.round(gy - 4), 1, 9);
+  } else {
+    ctx.fillRect(Math.round(propX - 3), Math.round(gy), 7, 1);
+  }
+  ctx.fillStyle = brass;
+  ctx.fillRect(Math.round(x + dir * 13), Math.round(gy + 1), 1, 1);
+  if (isDarkVariant(variant)) {
+    const lamp = gradeHex(PAL.gas2, variant, true);
+    ctx.fillStyle = lamp;
+    ctx.fillRect(Math.round(x + dir * 35), Math.round(y), 1, 1);
+    ctx.fillRect(Math.round(x - dir * 12), Math.round(gy + 5), 1, 1);
+  }
+  return 1;
 }
 
 /**

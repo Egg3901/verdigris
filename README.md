@@ -132,9 +132,9 @@ Built and playing:
   be thinned or cancelled by weather, public order, a deputation or storm relief.
 - Isometric renderer: gable, hip, pyramid, flat, mansard, gambrel, sawtooth and
   dome roofs; chimneys, dormers, facade materials, window rhythm, vehicles,
-  smoke, lit windows, trees, ground texture, flatten-per-building compositor,
-  one depth merge for buildings, props, people, trams, and carts, pixel-exact
-  ID-buffer picking and discrete zoom.
+  smoke, lit windows, trees, ground texture, a weather-gated packet airship,
+  flatten-per-building compositor, one depth merge for buildings, props, people,
+  trams, and carts, pixel-exact ID-buffer picking and discrete zoom.
 - The full UI shell, and a keyboard equivalent for every verb.
 - A single-surface phone shell with persistent LOOK, ACT, DESK, VESTRY and HELP
   routes, dynamic bottom-bar clearance, stepped pinch zoom, coarse-pointer person
