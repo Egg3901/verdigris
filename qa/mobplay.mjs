@@ -9,9 +9,14 @@ const errs=[]; p.on('pageerror',e=>errs.push(e.message));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 await p.goto(`${BASE}?seed=verdigris`,{waitUntil:'networkidle'});
 await p.waitForFunction(()=>window.__verdigris);
-const welcome = p.getByRole('button', { name: 'TAKE THE CHAIR' });
+const welcome = p.getByRole('button', { name: 'TAKE OFFICE' });
 if (await welcome.count()) await welcome.tap();
-await p.evaluate(()=>{window.__verdigris.freeze();window.__verdigris.warp(1080);});
+await p.evaluate(()=>{
+  const hook=window.__verdigris;
+  hook.freeze();
+  const toSixPm=(1080-(hook.city.tick%1440)+1440)%1440;
+  hook.warp(toSixPm);
+});
 await p.waitForTimeout(250);
 
 // 1. Interventions reachable by touch?
@@ -25,21 +30,20 @@ const deskClosedForAct = await p.evaluate(()=>document.getElementById('desk').hi
 assert(deskClosedForAct, 'ACT opened behind the alderman desk');
 await p.screenshot({path:'/tmp/vqa/m-act-sheet.png'});
 
-// 2. Can we actually spend one?
-const before = await p.evaluate(()=>window.__verdigris.city.budgetLeft);
+// 2. Can we actually use one and see its result? Powers no longer consume a
+// daily allowance, so the observable contract is the effect plus its toast.
 const btns = await p.$$('#nudges button');
-let spent=false;
+let used=false;
 for (const b of btns) {
   if (await b.getAttribute('aria-disabled')==='true') continue;
-  await b.tap(); spent=true; break;
+  await b.tap(); used=true; break;
 }
 await p.waitForTimeout(250);
-const after = await p.evaluate(()=>window.__verdigris.city.budgetLeft);
 const toast = await p.evaluate(()=>{const t=document.getElementById('toast');
   return t && t.hasAttribute('data-show') ? t.textContent : null;});
-console.log(`spent an intervention by touch: ${spent}, budget ${before} -> ${after}`);
+console.log(`used an intervention by touch: ${used}`);
 console.log('on-screen toast:', toast ? JSON.stringify(toast.slice(0,70)) : 'NONE');
-assert(spent&&after===before-1&&toast, 'touch intervention did not spend once and report its result');
+assert(used&&toast, 'touch intervention did not apply and report its result');
 
 // 3. Refused action gives visible feedback?
 await p.evaluate(()=>document.documentElement.removeAttribute('data-sheet'));
@@ -77,6 +81,7 @@ assert(z1 > z0, 'pinch did not change zoom');
 const soul = await p.evaluate(()=>{
   const hook=window.__verdigris;
   const s=hook.city.souls.find(x=>x.inId<0&&x.atNode>=0);
+  if(!s) throw new Error('fixture has no outdoor soul at 6PM');
   hook.zoom(3);
   hook.lookAt(hook.city.graph.cx[s.atNode],hook.city.graph.cy[s.atNode]);
   return `${s.given} ${s.family}`;
@@ -133,7 +138,7 @@ for(const viewport of [
   const page=await mobile.newPage();
   await page.goto(`${BASE}?seed=verdigris&t=641&freeze=1${viewport.query}`,{waitUntil:'networkidle'});
   await page.waitForFunction(()=>window.__verdigris);
-  await page.getByRole('button',{name:'TAKE THE CHAIR'}).tap();
+  await page.getByRole('button',{name:'TAKE OFFICE'}).tap();
   const controls=await page.evaluate(()=>[...document.querySelectorAll('#sheetbar button')].map(node=>{
     const box=node.getBoundingClientRect();
     return {label:node.textContent,left:box.left,right:box.right,top:box.top,bottom:box.bottom,width:box.width,height:box.height};

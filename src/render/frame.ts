@@ -18,7 +18,7 @@ import type { Scene } from './scene';
 import { collectAgents } from './agents';
 import type { AgentDraw } from './agents';
 import { drawSoul } from './fallback';
-import { collectHazards, collectVehicles, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawSky, drawAerialHaze, drawSnowCover, drawLamps, drawBirds, drawDoorGlow } from './fx';
+import { collectHazards, collectVehicles, drawAirship, drawHazard, drawSmoke, drawVehicle, drawWeatherFx, drawFog, drawFloodFx, drawRiverFx, drawSky, drawAerialHaze, drawSnowCover, drawLamps, drawBirds, drawDoorGlow } from './fx';
 import type { HazardDraw, VehicleDraw } from './fx';
 import { variantFor } from './palette';
 import { minuteOfDay } from '../sim/clock';
@@ -29,6 +29,11 @@ import { weatherAt } from '../sim/weather';
 import { mix, Stream } from '../sim/rng';
 
 export interface Selection {
+  buildingId: number;
+  soulId: number;
+}
+
+export interface Hover {
   buildingId: number;
   soulId: number;
 }
@@ -47,7 +52,7 @@ const hazardPool: HazardDraw[] = [];
 
 export function drawFrame(
   ctx: CanvasRenderingContext2D, city: City, scene: Scene, cam: Camera,
-  viewW: number, viewH: number, fracMin: number, sel: Selection,
+  viewW: number, viewH: number, fracMin: number, sel: Selection, hover: Hover,
 ): FrameStats {
   const dpr = clampDpr(window.devicePixelRatio || 1);
   const k = cam.zoom * dpr;
@@ -73,6 +78,7 @@ export function drawFrame(
 
   // The sky the town hangs in, behind everything including the ground.
   stats.calls += drawSky(ctx, city, fracMin, scene.variant, tl, br);
+  stats.calls += drawAirship(ctx, city, fracMin, scene.variant, tl, br);
 
   ctx.drawImage(scene.ground, -scene.originX, -scene.originY);
   stats.calls++;
@@ -203,27 +209,46 @@ export function drawFrame(
   // Selection belongs to the ground plane, not to a sprite's rectangular canvas
   // bounds. Four iso corner brackets read as an instrument sight and never expose
   // the invisible padding around a flattened building.
-  const reticle = gradeHex(PAL.gas2, scene.variant, true);
-  if (sel.buildingId >= 0 && city.buildings[sel.buildingId]) {
-    const b = city.buildings[sel.buildingId];
+  const drawBuildingReticle = (id: number, colour: string, reach: number) => {
+    const b = city.buildings[id];
+    if (!b) return;
     const sx = b.ox + b.w - 1;
     const sy = b.oy + b.d - 1;
     const c = houseCorners(isoX(sx, sy), isoY(sx, sy), b.w, b.d, 0);
     const edges = [[c.W, c.N], [c.N, c.E], [c.E, c.S], [c.S, c.W]] as const;
     for (const [a, z] of edges) {
-      lineHard(ctx, a, { x: a.x + (z.x - a.x) * 0.22, y: a.y + (z.y - a.y) * 0.22 }, reticle);
-      lineHard(ctx, z, { x: z.x + (a.x - z.x) * 0.22, y: z.y + (a.y - z.y) * 0.22 }, reticle);
+      lineHard(ctx, a, { x: a.x + (z.x - a.x) * reach, y: a.y + (z.y - a.y) * reach }, colour);
+      lineHard(ctx, z, { x: z.x + (a.x - z.x) * reach, y: z.y + (a.y - z.y) * reach }, colour);
     }
     stats.calls += 8;
-  } else if (sel.soulId >= 0 && city.souls[sel.soulId]) {
-    const p = soulPos(city.graph, city.souls[sel.soulId], fracMin);
+  };
+  const drawSoulReticle = (id: number, colour: string, radius: number) => {
+    const soul = city.souls[id];
+    if (!soul) return;
+    const p = soulPos(city.graph, soul, fracMin);
     const x = isoX(p.cx, p.cy);
     const y = isoY(p.cx, p.cy);
-    lineHard(ctx, { x: x - 5, y }, { x, y: y - 3 }, reticle);
-    lineHard(ctx, { x, y: y - 3 }, { x: x + 5, y }, reticle);
-    lineHard(ctx, { x: x + 5, y }, { x, y: y + 3 }, reticle);
-    lineHard(ctx, { x, y: y + 3 }, { x: x - 5, y }, reticle);
+    lineHard(ctx, { x: x - radius, y }, { x, y: y - 3 }, colour);
+    lineHard(ctx, { x, y: y - 3 }, { x: x + radius, y }, colour);
+    lineHard(ctx, { x: x + radius, y }, { x, y: y + 3 }, colour);
+    lineHard(ctx, { x, y: y + 3 }, { x: x - radius, y }, colour);
     stats.calls += 4;
+  };
+
+  // Hover is a quieter verdigris sight, selection is the warm instrument light.
+  // Showing the exact pick target before the click makes a district of 350 roofs
+  // feel inspectable rather than decorative.
+  const hoverInk = gradeHex(PAL.verd3, scene.variant, true);
+  if (hover.buildingId >= 0 && hover.buildingId !== sel.buildingId) {
+    drawBuildingReticle(hover.buildingId, hoverInk, 0.14);
+  } else if (hover.soulId >= 0 && hover.soulId !== sel.soulId) {
+    drawSoulReticle(hover.soulId, hoverInk, 4);
+  }
+  const reticle = gradeHex(PAL.gas2, scene.variant, true);
+  if (sel.buildingId >= 0) {
+    drawBuildingReticle(sel.buildingId, reticle, 0.24);
+  } else if (sel.soulId >= 0) {
+    drawSoulReticle(sel.soulId, reticle, 5);
   }
 
   if (import.meta.env.DEV && stats.calls > CALL_BUDGET) {

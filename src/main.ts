@@ -13,6 +13,7 @@ import { applyDitherVeil } from './render/raster';
 import type { Scene } from './render/scene';
 import { drawFrame } from './render/frame';
 import type { Selection } from './render/frame';
+import type { Hover } from './render/frame';
 import { pickAt } from './render/pick';
 import {
   clampCamera, clampDpr, defaultCamera, centreOn, isoX, isoY, screenToWorld, worldBounds, zoomTo, zoomStepsFor,
@@ -89,6 +90,7 @@ let viewW = window.innerWidth;
 let viewH = window.innerHeight;
 let cam: Camera = defaultCamera(viewW, viewH);
 const sel: Selection = { buildingId: -1, soulId: -1 };
+const hover: Hover = { buildingId: -1, soulId: -1 };
 
 // Speed 1 is one game-minute per real second, so a day takes twenty-four real
 // minutes and a soul's routine is invisible on the timescale anybody watches for.
@@ -403,7 +405,20 @@ canvas.addEventListener('pointerdown', (ev) => {
 });
 
 canvas.addEventListener('pointermove', (ev) => {
-  if (!pointers.has(ev.pointerId)) return;
+  if (!pointers.has(ev.pointerId)) {
+    // A mouse can preview the exact pick target. Touch still selects on release,
+    // because a hover state there would only flash under the player's finger.
+    if (ev.pointerType === 'mouse' || ev.pointerType === 'pen') {
+      const hit = pickAt(city, scene, cam, fracMin(), ev.clientX, ev.clientY);
+      hover.buildingId = hit.kind === 'building' ? hit.id : -1;
+      hover.soulId = hit.kind === 'soul' ? hit.id : -1;
+      canvas.classList.toggle('can-pick', hover.buildingId >= 0 || hover.soulId >= 0);
+    }
+    return;
+  }
+  hover.buildingId = -1;
+  hover.soulId = -1;
+  canvas.classList.remove('can-pick');
   pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
 
   if (pointers.size >= 2) {
@@ -447,6 +462,11 @@ function endPointer(ev: PointerEvent, tap: boolean): void {
 
 canvas.addEventListener('pointerup', (ev) => endPointer(ev, true));
 canvas.addEventListener('pointercancel', (ev) => endPointer(ev, false));
+canvas.addEventListener('pointerleave', () => {
+  hover.buildingId = -1;
+  hover.soulId = -1;
+  canvas.classList.remove('can-pick');
+});
 
 canvas.addEventListener('wheel', (ev) => {
   ev.preventDefault();
@@ -619,8 +639,8 @@ function loop(now: number): void {
     const actx = offA.getContext('2d') as CanvasRenderingContext2D;
     const bctx = offB!.getContext('2d') as CanvasRenderingContext2D;
     const f = fracMin();
-    drawFrame(actx, city, prevScene, cam, viewW, viewH, f, sel);
-    drawFrame(bctx, city, scene, cam, viewW, viewH, f, sel);
+    drawFrame(actx, city, prevScene, cam, viewW, viewH, f, sel, hover);
+    drawFrame(bctx, city, scene, cam, viewW, viewH, f, sel, hover);
     applyDitherVeil(bctx, canvas.width, canvas.height, Math.round(trans.progress * 16));
     const c = ctx as CanvasRenderingContext2D;
     c.setTransform(1, 0, 0, 1, 0, 0);
@@ -629,7 +649,7 @@ function loop(now: number): void {
     c.drawImage(offB!, 0, 0);
   } else {
     prevScene = null;
-    drawFrame(ctx as CanvasRenderingContext2D, city, scene, cam, viewW, viewH, fracMin(), sel);
+    drawFrame(ctx as CanvasRenderingContext2D, city, scene, cam, viewW, viewH, fracMin(), sel, hover);
   }
   shell.update(city, sel, cam.zoom, speedIndex, city.budgetLeft);
   shell.nudgeReasons(nudgeReasons());
