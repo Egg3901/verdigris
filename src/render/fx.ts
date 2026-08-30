@@ -16,7 +16,7 @@ import { stepToward } from '../sim/graph';
 import { Tile } from '../sim/types';
 import { cellKey, insideIsland } from '../sim/district';
 import { isDisasterActive } from '../sim/disasters';
-import { weatherAt, snowCoverAt } from '../sim/weather';
+import { seasonAt, weatherAt, snowCoverAt } from '../sim/weather';
 import type { Weather } from '../sim/weather';
 import { riverFillAt, riverLevelAt, riverDropAt } from '../sim/hydrology';
 import { pressureOf } from '../sim/pressures';
@@ -902,6 +902,62 @@ export function drawWeatherFx(
       ctx.fillRect(x - 1, y, 3, 1);
       if (storm && (h & 7) === 0) ctx.fillRect(x, y - 1, 1, 1);
       calls++;
+    }
+  }
+  return calls;
+}
+
+/**
+ * Ground-skimming petals and leaves that make the season move as well as tint.
+ *
+ * The pattern is world-space and capped at a few marks, so panning cannot pin it
+ * to the screen and a leafy ward cannot threaten the frame's draw-call budget.
+ * Buildings are painted afterwards and naturally occlude every mark.
+ */
+export function drawSeasonFx(
+  ctx: CanvasRenderingContext2D, city: City, fracMin: number, variant: Variant,
+  tl: { wx: number; wy: number }, br: { wx: number; wy: number },
+): number {
+  const season = seasonAt(city.tick);
+  if (season !== 'spring' && season !== 'autumn') return 0;
+  const weather = weatherAt(city.seed, city.tick);
+  if (weather.precipitation > 0) return 0;
+
+  const cellW = 128;
+  const cellH = 96;
+  const limit = season === 'autumn' ? 20 : 12;
+  const t = city.tick + fracMin;
+  const d = city.district;
+  const colours = season === 'autumn'
+    ? [PAL.ochre1, PAL.ochre2, PAL.tileRed1, PAL.tileRed2]
+    : [PAL.buntCream, PAL.buntRedHi, PAL.stone3];
+  let calls = 0;
+  const left = Math.floor(tl.wx / cellW) - 1;
+  const right = Math.floor(br.wx / cellW) + 1;
+  const top = Math.floor(tl.wy / cellH) - 1;
+  const bottom = Math.floor(br.wy / cellH) + 1;
+  for (let cy = top; cy <= bottom && calls < limit; cy++) {
+    for (let cx = left; cx <= right && calls < limit; cx++) {
+      for (let i = 0; i < 2 && calls < limit; i++) {
+        const h = mix(city.seed, 212, cx * 31 + i, cy * 37 - i) >>> 0;
+        if ((h & 3) === 0) continue;
+        const gust = weather.windX === 0 ? ((h >>> 7) & 1) === 0 ? -1 : 1 : weather.windX;
+        const travel = (t * (season === 'autumn' ? 0.11 : 0.07) + (h >>> 10)) % 26;
+        const x = cx * cellW + 12 + (h % (cellW - 24)) + gust * travel
+          + Math.sin(t * 0.08 + (h & 63)) * 3;
+        const y = cy * cellH + 10 + ((h >>> 8) % (cellH - 20))
+          + Math.sin(t * 0.11 + ((h >>> 6) & 31)) * 2;
+        if (x < tl.wx || x > br.wx || y < tl.wy || y > br.wy) continue;
+        const tx = Math.round(x / TILE_W + y / TILE_H);
+        const ty = Math.round(y / TILE_H - x / TILE_W);
+        if (!insideIsland(d, tx, ty)) continue;
+        const k = cellKey(d, tx, ty);
+        if (d.tile[k] === Tile.Water || d.tile[k] === Tile.Void) continue;
+        ctx.fillStyle = gradeHex(colours[(h >>> 4) % colours.length], variant);
+        const long = season === 'autumn' && ((h >>> 3) & 1) === 1;
+        ctx.fillRect(Math.round(x), Math.round(y), long ? 2 : 1, 1);
+        calls++;
+      }
     }
   }
   return calls;

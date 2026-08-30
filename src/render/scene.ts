@@ -38,7 +38,8 @@ import { isDeputationActive } from '../sim/deputations';
 import { activePublicVisit } from '../sim/civic-visits';
 import { disasterAt, isBuildingClosed, isDisasterActive } from '../sim/disasters';
 import type { WardKind } from '../sim/gen/wards';
-import { weatherAt, WEATHER_WATCH_MINUTES } from '../sim/weather';
+import { seasonAt, seasonRevisionAt, weatherAt, WEATHER_WATCH_MINUTES } from '../sim/weather';
+import type { Season } from '../sim/weather';
 import { riverLevelAt, riverDropAt } from '../sim/hydrology';
 import { snowCoverAt } from '../sim/weather';
 import { isShelterActive } from '../sim/shelters';
@@ -71,6 +72,7 @@ export interface Scene {
   civicVisitRevision: number;
   disasterRevision: number;
   weatherRevision: number;
+  seasonRevision: number;
   /** Opening hours and outdoor domestic/work routines baked into the sprites. */
   dailyRevision: number;
   /** Thresholded fabric, facade and service state baked into building sprites. */
@@ -103,6 +105,14 @@ const GROUND_COLOUR: Partial<Record<TileCode, string>> = {
   [Tile.Park]: PAL.grass2,
   [Tile.Bridge]: PAL.wood2,
 };
+
+function seasonalGroundColour(tile: TileCode, season: Season): string | undefined {
+  if (tile !== Tile.Yard && tile !== Tile.Park) return GROUND_COLOUR[tile];
+  if (season === 'spring') return tile === Tile.Park ? PAL.grass3 : PAL.grass2;
+  if (season === 'autumn') return tile === Tile.Park ? PAL.moss1 : PAL.grass1;
+  if (season === 'winter') return tile === Tile.Park ? PAL.grass0 : PAL.dirt1;
+  return GROUND_COLOUR[tile];
+}
 
 // Roof and wall families. The district's social geography is a colour scheme:
 // terracotta and timber on the working bank, slate and cream on the polite one,
@@ -662,6 +672,7 @@ function ctxOf(c: HTMLCanvasElement, readFrequently = false): CanvasRenderingCon
 export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay(city.tick), weatherAt(city.seed, city.tick).kind)): Scene {
   const b = worldBounds();
   const weather = weatherAt(city.seed, city.tick);
+  const season = seasonAt(city.tick);
   // The water plane sits below the bank lip and moves with the trailing rain.
   // Everything below the lip, wall, bed, waterline, keys off these two numbers.
   let riverLevel = riverLevelAt(city.seed, city.tick);
@@ -708,7 +719,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       }
     }
   }
-  const naturalProps = buildProps(d, city.seed, variant, city.wards);
+  const naturalProps = buildProps(d, city.seed, variant, city.wards, season);
   const daily = dailyStreetState(city.tick);
   const streetProps = buildStreetProps(d, city.seed, variant, city.wards, {
     displaysOut: daily.shopsOpen && weather.precipitation === 0,
@@ -749,7 +760,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       const k = cellKey(d, tx, ty);
       const tile = d.tile[k] as TileCode;
       if (tile === Tile.Void) continue;
-      let colour = GROUND_COLOUR[tile] ?? PAL.soot2;
+      let colour = seasonalGroundColour(tile, season) ?? PAL.soot2;
       if (tile === Tile.Water) {
         const dep = depth[k];
         // The bed is not a flat floor: it terraces down toward the channel,
@@ -784,7 +795,9 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
           // Shallows at the bank, deep water in the channel.
           const wet = dep <= 1 ? PAL.riv2 : dep === 2 ? PAL.riv1 : shadeHex(PAL.riv1, -0.15);
           drawIsoDiamond(gctx, cx0, cy0 + wetY, gradeHex(wet, variant));
-          textureCell(gctx, city.seed, tx, ty, tile, originX, originY + wetY, variant, d.polite[k] === 1);
+          textureCell(
+            gctx, city.seed, tx, ty, tile, originX, originY + wetY, variant, d.polite[k] === 1, season,
+          );
         }
       }
       if (tile !== Tile.Water) {
@@ -802,7 +815,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       }
       if (tile !== Tile.Water) {
         drawIsoDiamond(gctx, originX + isoX(tx, ty), originY + isoY(tx, ty), gradeHex(colour, variant));
-        textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant, d.polite[k] === 1);
+        textureCell(gctx, city.seed, tx, ty, tile, originX, originY, variant, d.polite[k] === 1, season);
       }
 
       // Standing rain gathers in selected joints and wheel ruts. Patches are
@@ -1090,6 +1103,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     civicVisitRevision: city.civicVisits.revision,
     disasterRevision: city.disasters.revision,
     weatherRevision: weather.revision,
+    seasonRevision: seasonRevisionAt(city.tick),
     dailyRevision: dailyStreetRevisionAt(city.tick),
     buildingRevision: buildingVisualRevision(city),
     shelterRevision: city.shelters.revision,

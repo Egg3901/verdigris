@@ -34,7 +34,7 @@ import { startDisaster, canStartDisaster } from './sim/disasters';
 import type { DisasterKind } from './sim/disasters';
 import { startMarketDay } from './sim/occasions';
 import type { InterventionKind, OrdinanceKind, Target } from './sim/types';
-import { weatherAt, forceWeather } from './sim/weather';
+import { weatherAt, forceWeather, seasonRevisionAt } from './sim/weather';
 import { riverLevelAt, riverDropAt } from './sim/hydrology';
 import type { ForcedWeather } from './sim/weather';
 import { activeMatters, declineMatter, pressMatter, recommendedFor } from './sim/matters';
@@ -623,6 +623,7 @@ function loop(now: number): void {
     || scene.civicVisitRevision !== city.civicVisits.revision
     || scene.disasterRevision !== city.disasters.revision
     || scene.weatherRevision !== weatherAt(city.seed, city.tick).revision
+    || scene.seasonRevision !== seasonRevisionAt(city.tick)
     || scene.dailyRevision !== dailyStreetRevisionAt(city.tick)
     || scene.buildingRevision !== currentBuildingVisualRevision
     || scene.riverLevel !== riverDropAt(city.seed, city.tick) * 8 + riverLevelAt(city.seed, city.tick)
@@ -638,6 +639,7 @@ function loop(now: number): void {
     if (!prevScene || prevScene.variant !== trans.from
       || prevScene.riverLevel !== scene.riverLevel
       || prevScene.weatherRevision !== scene.weatherRevision
+      || prevScene.seasonRevision !== scene.seasonRevision
       || prevScene.dailyRevision !== scene.dailyRevision
       || prevScene.buildingRevision !== scene.buildingRevision
       || prevScene.disasterRevision !== scene.disasterRevision

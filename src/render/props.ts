@@ -14,6 +14,7 @@ import type { Ward } from '../sim/gen/wards';
 import { cellKey, insideIsland } from '../sim/district';
 import type { City } from '../sim/city';
 import { isOccasionActive } from '../sim/occasions';
+import type { Season } from '../sim/weather';
 
 export interface Prop {
   sprite: HTMLCanvasElement;
@@ -34,6 +35,8 @@ export interface StreetPropState {
 }
 
 const CANOPY = [PAL.leaf1, PAL.leaf2, PAL.leaf3, PAL.moss1, PAL.moss2];
+const SPRING_CANOPY = [PAL.leaf2, PAL.leaf3, PAL.grass2, PAL.grass3, PAL.moss2];
+const AUTUMN_CANOPY = [PAL.ochre1, PAL.ochre2, PAL.tileRed1, PAL.tileRed2, PAL.thatch2];
 
 /** A lime tree, eighteen pixels tall. Three overlapping canopy blobs so the
  *  silhouette is lumpy rather than a circle. */
@@ -46,19 +49,55 @@ type TreeShape = 'lime' | 'poplar' | 'scrub';
  * same size as a small house. Silhouette is what distinguishes vegetation at this
  * scale, exactly as it is for roofs.
  */
-function bakeTree(salt: number, shape: TreeShape, size: number, variant: Variant): HTMLCanvasElement {
+function bakeTree(
+  salt: number, shape: TreeShape, size: number, variant: Variant, season: Season,
+): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = 20;
   c.height = 26;
   const ctx = c.getContext('2d') as CanvasRenderingContext2D;
   ctx.imageSmoothingEnabled = false;
-  const lit = gradeHex(CANOPY[salt % CANOPY.length], variant);
+  const canopy = season === 'spring' ? SPRING_CANOPY
+    : season === 'autumn' ? AUTUMN_CANOPY : CANOPY;
+  const lit = gradeHex(canopy[salt % canopy.length], variant);
   const shade = shadeHex(lit, -0.3);
   const dark = shadeHex(lit, -0.5);
 
   const trunkH = shape === 'poplar' ? 5 : shape === 'scrub' ? 3 : 8;
   ctx.fillStyle = gradeHex(PAL.wood0, variant);
   ctx.fillRect(9, 24 - trunkH, shape === 'scrub' ? 1 : 2, trunkH);
+
+  // Winter changes the skyline, not merely its tint. Bare forks remain broad
+  // enough to read at zoom 1 and keep each of the three tree silhouettes.
+  if (season === 'winter') {
+    const wood = gradeHex(PAL.wood1, variant);
+    const twig = gradeHex(PAL.wood2, variant);
+    const forkY = shape === 'scrub' ? 21 : shape === 'poplar' ? 18 : 17;
+    lineHard(ctx, { x: 10, y: 23 }, { x: 10, y: forkY }, wood);
+    if (shape === 'poplar') {
+      lineHard(ctx, { x: 10, y: 19 }, { x: 7, y: 9 }, wood);
+      lineHard(ctx, { x: 10, y: 18 }, { x: 12, y: 5 }, wood);
+      lineHard(ctx, { x: 9, y: 14 }, { x: 5, y: 8 }, twig);
+      lineHard(ctx, { x: 11, y: 12 }, { x: 15, y: 7 }, twig);
+      lineHard(ctx, { x: 8, y: 11 }, { x: 8, y: 5 }, twig);
+    } else if (shape === 'scrub') {
+      lineHard(ctx, { x: 10, y: 22 }, { x: 4, y: 17 }, wood);
+      lineHard(ctx, { x: 10, y: 22 }, { x: 16, y: 17 }, wood);
+      lineHard(ctx, { x: 7, y: 20 }, { x: 3, y: 15 }, twig);
+      lineHard(ctx, { x: 13, y: 20 }, { x: 17, y: 14 }, twig);
+      lineHard(ctx, { x: 10, y: 21 }, { x: 10, y: 14 }, twig);
+    } else {
+      lineHard(ctx, { x: 10, y: 19 }, { x: 4, y: 9 }, wood);
+      lineHard(ctx, { x: 10, y: 18 }, { x: 15, y: 8 }, wood);
+      lineHard(ctx, { x: 7, y: 14 }, { x: 2, y: 12 }, twig);
+      lineHard(ctx, { x: 7, y: 14 }, { x: 6, y: 6 }, twig);
+      lineHard(ctx, { x: 13, y: 13 }, { x: 18, y: 10 }, twig);
+      lineHard(ctx, { x: 13, y: 13 }, { x: 14, y: 5 }, twig);
+      lineHard(ctx, { x: 10, y: 18 }, { x: 10, y: 4 }, twig);
+    }
+    hardenAlpha(ctx, c.width, c.height, variant);
+    return c;
+  }
 
   const k = size;
   const blobs: [number, number, number][] = shape === 'poplar'
@@ -77,6 +116,17 @@ function bakeTree(salt: number, shape: TreeShape, size: number, variant: Variant
   for (const [bx, by, r] of blobs) fillEllipseHard(ctx, bx - 1, by - 1, r - 2, r * 0.55, lit);
   // Break the canopy edge so it reads as leaves rather than as a blob.
   ditherPolyHard(ctx, [{x:2,y:2},{x:18,y:2},{x:18,y:17},{x:2,y:17}], shade, 3);
+  if (season === 'spring' && shape !== 'scrub') {
+    const bloom = gradeHex((salt & 1) === 0 ? PAL.buntCream : PAL.buntRedHi, variant);
+    ctx.fillStyle = bloom;
+    const n = 6 + (salt % 3);
+    for (let i = 0; i < n; i++) {
+      const h = mix(salt, 211, i, shape === 'poplar' ? 1 : 0);
+      const x = shape === 'poplar' ? 7 + (h % 7) : 4 + (h % 13);
+      const y = shape === 'poplar' ? 4 + ((h >>> 5) % 12) : 4 + ((h >>> 5) % 10);
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
   hardenAlpha(ctx, c.width, c.height, variant);
   return c;
 }
@@ -281,7 +331,7 @@ export function buildMarketProps(city: City, variant: Variant): Prop[] {
 }
 
 export function buildProps(
-  district: District, seed: number, variant: Variant, wards: readonly Ward[] = [],
+  district: District, seed: number, variant: Variant, wards: readonly Ward[] = [], season: Season = 'summer',
 ): Prop[] {
   const cache = new Map<number, HTMLCanvasElement>();
   const out: Prop[] = [];
@@ -318,7 +368,7 @@ export function buildProps(
       const key = canopy * 100 + shapes.indexOf(shape) * 10 + sizeIdx;
       let sprite = cache.get(key);
       if (!sprite) {
-        sprite = bakeTree(canopy, shape, size, variant);
+        sprite = bakeTree(canopy, shape, size, variant, season);
         cache.set(key, sprite);
       }
       // Jitter inside the cell, so trees do not sit on a lattice.
@@ -1257,7 +1307,7 @@ const GROUND: Record<number, string> = {
 export function textureCell(
   ctx: CanvasRenderingContext2D, seed: number,
   tx: number, ty: number, tile: number, ox: number, oy: number, variant: Variant,
-  polite = true,
+  polite = true, season: Season = 'summer',
 ): void {
   const cx = ox + isoX(tx, ty);
   const cy = oy + isoY(tx, ty);
@@ -1315,9 +1365,24 @@ export function textureCell(
       break;
     case Tile.Park:
     case Tile.Yard:
-      course(g(PAL.grass0), 5);
-      speck(6, g(PAL.grass3));
-      speck(4, g(PAL.leaf2));
+      if (season === 'spring') {
+        course(g(PAL.grass1), 5);
+        speck(7, g(PAL.grass3));
+        speck(4, g(PAL.leaf3));
+        if (tile === Tile.Park) speck(2, g(PAL.buntCream));
+      } else if (season === 'autumn') {
+        course(g(PAL.grass0), 5);
+        speck(5, g(PAL.ochre1));
+        speck(4, g(PAL.tileRed1));
+      } else if (season === 'winter') {
+        course(g(PAL.dirt0), 4);
+        speck(4, g(PAL.grass0));
+        speck(3, g(PAL.cobble0));
+      } else {
+        course(g(PAL.grass0), 5);
+        speck(6, g(PAL.grass3));
+        speck(4, g(PAL.leaf2));
+      }
       break;
     case Tile.Wharf:
     case Tile.Plot:

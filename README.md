@@ -123,7 +123,8 @@ Built and playing:
 - Predicate-gated prose that cannot assert anything the sim does not contain.
 - Seeded six-hour weather watches with rain, storms, fog, wind, wet streets,
   umbrellas, exposure, failed-drain wear, altered wharf output, and weather-gated
-  fires and floods.
+  fires and floods. A 48-day visible year turns gardens and street trees through
+  spring blossom, summer leaf, autumn colour and bare winter structure.
 - A fixed civic record at every address. Disasters, works cases, hearings and
   storm relief leave bounded household burdens, institutional evidence and
   persistent inspector history after the temporary event has cleared.
@@ -135,7 +136,8 @@ Built and playing:
   facade materials, window rhythm, opening-hour shutters and awnings, dry-day
   work displays, wind-driven washing, working flywheels and pump beams, live
   gas-holder collars and civic clocks, hoisting dock cranes, shift-weighted
-  freight traffic, vehicles, smoke, lit windows, trees, ground texture, a slowly
+  freight traffic, vehicles, smoke, lit windows, seasonal trees and ground texture,
+  drifting blossom and leaves, a slowly
   filling river with animated outfalls, a weather-gated packet airship,
   flatten-per-building compositor, one depth merge for buildings, props, people,
   trams, and carts, pixel-exact ID-buffer picking and discrete zoom.
