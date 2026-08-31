@@ -141,6 +141,8 @@ export interface City extends World {
   traced: number;
 
   tramDelayedUntil: number;
+  /** A wreck is a stoppage, not merely poor timekeeping. */
+  tramStoppedUntil: number;
   buntingUntil: number;
   quarantined: Set<number>;
   /** Falls permanently when a planted story is retracted. */
@@ -179,6 +181,7 @@ export function newCity(seedStr: string): City {
     notices: newNotices(),
     traced: 0,
     tramDelayedUntil: -1,
+    tramStoppedUntil: -1,
     buntingUntil: -1,
     quarantined: new Set<number>(),
     paperCredibility: 800,
@@ -608,6 +611,7 @@ export function tickCity(city: City): void {
 function tickTrams(city: City): void {
   const route = city.tram.route;
   if (route.length < 2) return;
+  if (city.tramStoppedUntil > city.tick) return;
   const delayed = city.tramDelayedUntil > city.tick;
   const speed = delayed ? TRAM_MILLICELL_PER_MIN / 2 : TRAM_MILLICELL_PER_MIN;
 
@@ -771,7 +775,9 @@ function tickHour(city: City): void {
 
   // The tram runs badly while it is delayed, and the bunting keeps the mood up
   // while it is up. Both are state, both expire, neither is a hidden timer.
-  if (city.tramDelayedUntil > tick) {
+  if (city.tramStoppedUntil > tick) {
+    applyPressure(city.press, 'tram', -42, 'incident', 0, 'the line is stopped', tick);
+  } else if (city.tramDelayedUntil > tick) {
     applyPressure(city.press, 'tram', -20, 'intervention', 0, 'the tram is still not right', tick);
   }
   if (city.buntingUntil > tick) {
@@ -858,7 +864,7 @@ function recomputeBaselines(city: City): void {
   const depot = city.buildingsByKind.get('tramdepot')?.[0];
   const depotFabric = depot !== undefined ? city.buildings[depot].fabric : 600;
   p.tram.baseline = clamp(Math.round(
-    (city.tramDelayedUntil > city.tick ? 120 : 380) + depotFabric * 0.45,
+    (city.tramStoppedUntil > city.tick ? 20 : city.tramDelayedUntil > city.tick ? 120 : 380) + depotFabric * 0.45,
   ));
 
   // Suspicion settles where the constabulary and the rot leave it.
@@ -1049,14 +1055,18 @@ export function hashWorld(city: City): number {
     put(deputation.arrivedIds.length);
     for (const id of deputation.arrivedIds) put(id);
   }
+  put(city.tramDelayedUntil);
+  put(city.tramStoppedUntil);
   put(city.disasters.revision);
   put(city.disasters.next);
   for (const at of city.disasters.lastStartedAt) put(at);
   put(city.disasters.events.length);
   for (const event of city.disasters.events) {
     put(event.id);
-    put(event.kind === 'collapse' ? 1 : event.kind === 'fire' ? 2 : 3);
+    put(event.kind === 'collapse' ? 1 : event.kind === 'fire' ? 2 : event.kind === 'flood' ? 3
+      : event.kind === 'boilerBurst' ? 4 : event.kind === 'outbreak' ? 5 : event.kind === 'riot' ? 6 : 7);
     put(event.buildingId);
+    put(event.nodeId);
     put(event.startedAt);
     put(event.containedAt);
     put(event.clearsAt);
@@ -1067,6 +1077,8 @@ export function hashWorld(city: City): number {
     for (const id of event.affectedBuildingIds) put(id);
     put(event.evacuatedIds.length);
     for (const id of event.evacuatedIds) put(id);
+    put(event.involvedIds.length);
+    for (const id of event.involvedIds) put(id);
   }
   put(city.shelters.revision);
   put(city.shelters.nextId);

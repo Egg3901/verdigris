@@ -139,7 +139,8 @@ describe('storm refuges', () => {
     expect(openShelter(city, provider)).toBeGreaterThan(0);
     const guests = city.shelters.current?.guestIds.slice() ?? [];
     city.disasters.events.push({
-      id: 999, kind: 'flood', buildingId: provider, affectedBuildingIds: [provider], evacuatedIds: [],
+      id: 999, kind: 'flood', buildingId: provider, nodeId: city.buildings[provider].doorNode,
+      affectedBuildingIds: [provider], evacuatedIds: [], involvedIds: [],
       startedAt: city.tick, containedAt: city.tick + 60, clearsAt: city.tick + 1440,
       severity: 800, status: 'active', brokenSegment: -1,
     });

@@ -7,6 +7,7 @@ import { servedCount, serviceAt } from '../networks';
 import { latestOrderFor } from '../works';
 import { weatherAt } from '../weather';
 import { cellKey } from '../district';
+import { IDX } from '../ordinances';
 
 type City = ReturnType<typeof newCity>;
 
@@ -173,6 +174,109 @@ describe('physical disasters', () => {
     expect(order.status).toBe('completed');
     expect(city.buildings[id].fabric).toBeGreaterThan(0);
     expect(isBuildingClosed(city, id)).toBe(false);
+  });
+
+  it('bursts a works boiler, injuring occupants and leaving physical damage', () => {
+    const city = atWorkday();
+    const target = city.buildings.find((b) => (b.kind === 'mill' || b.kind === 'foundry' || b.kind === 'workshop')
+      && b.occupants.length > 0);
+    if (!target) throw new Error('occupied steam works missing');
+    const beforeFabric = target.fabric;
+    const beforeHealth = new Map(target.occupants.map((id) => [id, city.souls[id].health]));
+
+    const burst = startDisaster(city, 'boilerBurst', target.id);
+    if (!burst) throw new Error('boiler did not burst');
+
+    expect(target.fabric).toBeLessThan(beforeFabric);
+    expect(burst.involvedIds.length).toBeGreaterThan(0);
+    expect(burst.evacuatedIds).toEqual(expect.arrayContaining(burst.involvedIds));
+    for (const id of burst.involvedIds) expect(city.souls[id].health).toBeLessThan(beforeHealth.get(id) ?? 1001);
+    expect(isBuildingClosed(city, target.id)).toBe(true);
+  });
+
+  it('starts fever in named residents and lets a street cordon contain it', () => {
+    const city = atWorkday();
+    const target = city.buildings.find((b) => b.householdIds.length > 0 && b.streetId >= 0);
+    if (!target) throw new Error('occupied dwelling missing');
+    const outbreak = startDisaster(city, 'outbreak', target.id);
+    if (!outbreak) throw new Error('outbreak did not start');
+
+    expect(outbreak.involvedIds.length).toBeGreaterThan(0);
+    expect(outbreak.evacuatedIds).toHaveLength(0);
+    expect(isBuildingClosed(city, target.id)).toBe(false);
+    expect(outbreak.involvedIds.some((id) => city.souls[id].health < 850)).toBe(true);
+    city.quarantined.add(target.streetId);
+    warp(city, 60);
+    expect(outbreak.status).toBe('contained');
+    expect(city.log.at(-1)?.text).toContain('checks the fever');
+  });
+
+  it('carries an uncontrolled outbreak to further homes on the same street', () => {
+    const city = atWorkday();
+    city.press.pressures.sanitation.value = 100;
+    city.press.pressures.sanitation.baseline = 100;
+    const target = city.buildings.find((b) => b.householdIds.length > 0 && b.streetId >= 0
+      && city.buildings.filter((other) => other.streetId === b.streetId && other.householdIds.length > 0).length > 1);
+    if (!target) throw new Error('residential street missing');
+    const outbreak = startDisaster(city, 'outbreak', target.id);
+    if (!outbreak) throw new Error('outbreak did not start');
+
+    warp(city, 720);
+    expect(outbreak.status).toBe('active');
+    expect(outbreak.affectedBuildingIds.length).toBeGreaterThan(1);
+    expect(outbreak.involvedIds.length).toBeGreaterThan(4);
+    expect(outbreak.affectedBuildingIds.every((id) => city.buildings[id].streetId === target.streetId)).toBe(true);
+  });
+
+  it('forms a physical riot and damages a frontage when the square is uncontrolled', () => {
+    const city = atWorkday();
+    const hall = city.buildings.find((b) => b.kind === 'townhall');
+    if (!hall) throw new Error('Town Hall missing');
+    const riot = startDisaster(city, 'riot', hall.id);
+    if (!riot) throw new Error('riot did not start');
+    expect(riot.involvedIds).toHaveLength(16);
+    expect(riot.involvedIds.every((id) => city.souls[id].destNode === city.squareNode)).toBe(true);
+
+    warp(city, 180);
+    expect(riot.involvedIds.some((id) => city.souls[id].atNode === city.squareNode)).toBe(true);
+    expect(riot.affectedBuildingIds.length).toBeGreaterThan(1);
+    const struck = city.buildings[riot.affectedBuildingIds.at(-1) ?? -1];
+    expect(struck?.lastIncidentTick).toBeGreaterThanOrEqual(0);
+  });
+
+  it('dispatches constables under public order and clears a riot early', () => {
+    const city = atWorkday();
+    const order = city.laws.slots[IDX.publicOrder];
+    order.inForce = 1;
+    order.captured = 0;
+    const hall = city.buildings.find((b) => b.kind === 'townhall');
+    if (!hall) throw new Error('Town Hall missing');
+    const riot = startDisaster(city, 'riot', hall.id);
+    if (!riot) throw new Error('riot did not start');
+    const originalContainment = riot.containedAt;
+    expect(city.souls.filter((s) => s.trade === 'constable' && s.destNode === city.squareNode).length).toBeGreaterThan(0);
+
+    warp(city, 300);
+    expect(riot.status).toBe('contained');
+    expect(riot.containedAt).toBeLessThan(originalContainment);
+    expect(order.enforced).toBeGreaterThan(0);
+    expect(city.log.some((entry) => entry.text.includes('is taken as the square is cleared'))).toBe(true);
+  });
+
+  it('halts every tram after a wreck and releases the line after containment', () => {
+    const city = atWorkday();
+    const depot = city.buildings.find((b) => b.kind === 'tramdepot');
+    if (!depot) throw new Error('tram depot missing');
+    const wreck = startDisaster(city, 'tramWreck', depot.id);
+    if (!wreck) throw new Error('tram wreck did not start');
+    const stopped = city.trams.map((car) => [car.idx, car.progressMilli]);
+
+    warp(city, 120);
+    expect(city.trams.map((car) => [car.idx, car.progressMilli])).toEqual(stopped);
+    expect(city.tramStoppedUntil).toBe(wreck.containedAt);
+
+    warp(city, wreck.containedAt - city.tick + 1);
+    expect(city.trams.map((car) => [car.idx, car.progressMilli])).not.toEqual(stopped);
   });
 
   it('revises at containment and removal while the physical damage remains', () => {

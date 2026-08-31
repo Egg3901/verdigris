@@ -187,7 +187,7 @@ export function drawBuildingPulse(
   }
 
   if (b.kind === 'tramdepot' && face.span >= 16) {
-    const operating = city.tramDelayedUntil <= city.tick;
+    const operating = city.tramDelayedUntil <= city.tick && city.tramStoppedUntil <= city.tick;
     const wireA = face.at(0.12, -3);
     const wireB = face.at(0.88, -3);
     lineHard(ctx, wireA, wireB, gradeHex(operating ? PAL.soot3 : PAL.soot1, variant));
@@ -759,6 +759,28 @@ export function drawSmoke(
         ctx.fillRect(px - r, py - r, r * 2, r * 2);
         calls++;
       }
+    }
+  }
+  // Boiler and tram failures throw pale steam, visually distinct from a sooty
+  // blaze and still tied to the damaged works in world space.
+  for (const event of city.disasters.events) {
+    if ((event.kind !== 'boilerBurst' && event.kind !== 'tramWreck') || !isDisasterActive(city, event)) continue;
+    const b = city.buildings[event.buildingId];
+    if (!b) continue;
+    const sx = b.ox + b.w - 1;
+    const sy = b.oy + b.d - 1;
+    const wx = isoX(sx, sy);
+    const wy = isoY(sx, sy) - b.storeys * 8 - 12;
+    if (wx < tl.wx - 48 || wx > br.wx + 48 || wy < tl.wy - 90 || wy > br.wy + 40) continue;
+    for (let i = 0; i < 4; i++) {
+      const age = (t * 0.075 + i / 4) % 1;
+      const wobble = ((mix(city.seed, 191, event.id, i) % 7) - 3) * age;
+      const px = Math.round(wx + wobble + weather.windX * age * 16);
+      const py = Math.round(wy - age * 66);
+      const r = Math.max(1, Math.round((1 - age) * 3));
+      ctx.fillStyle = shades[Math.min(2, 1 + Math.floor(age * 2))];
+      ctx.fillRect(px - r, py - r, r * 2, Math.max(1, r * 2 - 1));
+      calls++;
     }
   }
   return calls;

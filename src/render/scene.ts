@@ -601,6 +601,10 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     bunting: !scorched && city.buntingUntil > city.tick && nearSquare(city, b),
     deputationBanner: b.kind === 'townhall' && (isDeputationActive(city) || Boolean(activePublicVisit(city))),
     shelterOpen: isShelterActive(city) && city.shelters.current?.providerId === b.id,
+    boilerBurst: damageEvent?.kind === 'boilerBurst' && isDisasterActive(city, damageEvent),
+    outbreakNotice: damageEvent?.kind === 'outbreak',
+    riotDamage: damageEvent?.kind === 'riot',
+    tramWreck: damageEvent?.kind === 'tramWreck',
     chimneys: finial === 'mast' || shape === 'flat' || shape === 'pyramid' || shape === 'dome' ? 0
       : b.kind === 'mill' || b.kind === 'foundry' ? 1
         : 1 + ((salt >>> 6) % 2),
