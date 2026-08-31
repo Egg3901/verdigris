@@ -93,6 +93,12 @@ export interface HouseSpec {
   deputationBanner?: boolean;
   /** A striped public awning marks the building currently taking storm refugees. */
   shelterOpen?: boolean;
+  /** Authored frontage identity for institutions, works and dwelling classes. */
+  facadeFeature?: 'civicPortico' | 'marketArcade' | 'schoolBoard' | 'watchHouse'
+    | 'dispensaryCanopy' | 'pressOffice' | 'chapelFront' | 'bathEntrance'
+    | 'gallery' | 'leanTo' | 'porch' | 'loadingCanopy';
+  /** Permanent skyline equipment, separate from additions acquired over time. */
+  roofFeature?: 'ventilator' | 'signFrame' | 'waterHead';
   /** Live emergency marks that do not replace the building silhouette. */
   boilerBurst?: boolean;
   outbreakNotice?: boolean;
@@ -261,6 +267,7 @@ export function drawHouse(
       drawDormer(ctx, roofQuad, (i + 1) / (n + 1), detailSkin(spec), spec.skin.roofLit, (spec.salt ?? 0) + i * 7);
     }
   }
+  if (roofQuad && spec.roofFeature) drawRoofFeature(ctx, roofQuad, spec.roofFeature, spec.salt ?? 0);
   if (roofQuad && spec.patched && !((spec.repairMemory ?? 0) & 1)) {
     drawRoofPatch(ctx, roofQuad, shadeHex(skin.roofShade, -0.08));
   }
@@ -980,9 +987,252 @@ function drawFacade(
       drawDoor(ctx, lit, t, spec.wallH, skin);
     }
   }
+  if (spec.facadeFeature) drawArchitecturalFront(ctx, lit, spec, skin);
   if (spec.sign && lit.span >= 10) drawSign(ctx, lit, 0.8, spec.wallH, skin, spec.signGlyph, salt);
   if (spec.bunting && lit.span >= 12) drawBunting(ctx, lit, spec.wallH);
   if (spec.deputationBanner && lit.span >= 18) drawDeputationBanner(ctx, lit, spec.wallH);
+}
+
+/** Building kind has to survive the shared wall and window grammar. These
+ * fronts sit over the generic openings and give each institution or class of
+ * premises one unmistakable piece of architecture. */
+function drawArchitecturalFront(
+  ctx: CanvasRenderingContext2D, face: ReturnType<typeof makeFace>, spec: HouseSpec,
+  skin: ReturnType<typeof detailSkin>,
+): void {
+  if (face.span < 8) return;
+  const wallH = spec.wallH;
+  const feature = spec.facadeFeature;
+  const stone = skin.dress ?? PAL.stone3;
+  const dark = skin.outline;
+
+  if (feature === 'civicPortico') {
+    if (face.span < 14) return;
+    const top = Math.max(3, wallH - 17);
+    const left = face.at(0.24, top + 5);
+    const right = face.at(0.76, top + 5);
+    const crown = face.at(0.5, top);
+    fillPolyHard(ctx, [left, right, crown], stone);
+    lineHard(ctx, left, crown, PAL.stone4);
+    lineHard(ctx, crown, right, PAL.stone1);
+    lineHard(ctx, left, right, PAL.brass1);
+    for (const t of [0.28, 0.4, 0.6, 0.72]) {
+      lineHard(ctx, face.at(t, top + 5), face.at(t, wallH - 1), PAL.stone4);
+      lineHard(ctx, face.at(t + 0.025, top + 5), face.at(t + 0.025, wallH - 1), PAL.stone1);
+    }
+    lineHard(ctx, face.at(0.2, wallH - 1), face.at(0.8, wallH - 1), PAL.stone2);
+    lineHard(ctx, face.at(0.17, wallH + 1), face.at(0.83, wallH + 1), PAL.stone1);
+    return;
+  }
+
+  if (feature === 'marketArcade') {
+    const top = Math.max(4, wallH - 13);
+    for (let i = 0; i < 3; i++) {
+      const a = 0.08 + i * 0.29;
+      const b = a + 0.25;
+      const midT = (a + b) / 2;
+      fillPolyHard(ctx, [
+        face.at(a, top + 3), face.at(midT, top), face.at(b, top + 3),
+        face.at(b, wallH - 1), face.at(a, wallH - 1),
+      ], skin.wallDark);
+      lineHard(ctx, face.at(a, top + 3), face.at(midT, top), stone);
+      lineHard(ctx, face.at(midT, top), face.at(b, top + 3), stone);
+      lineHard(ctx, face.at(a, top + 3), face.at(a, wallH - 1), stone);
+      lineHard(ctx, face.at(b, top + 3), face.at(b, wallH - 1), PAL.stone1);
+    }
+    lineHard(ctx, face.at(0.04, wallH), face.at(0.96, wallH), PAL.stone2);
+    return;
+  }
+
+  if (feature === 'schoolBoard') {
+    const band = Math.max(4, wallH - 18);
+    fillPolyHard(ctx, [face.at(0.12, band), face.at(0.88, band), face.at(0.84, band + 5), face.at(0.16, band + 5)], PAL.stone2);
+    lineHard(ctx, face.at(0.18, band + 2), face.at(0.82, band + 2), PAL.soot2);
+    for (const t of [0.24, 0.5, 0.76]) {
+      const p = face.at(t, band + 3);
+      ctx.fillStyle = PAL.brass1;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 1);
+    }
+    lineHard(ctx, face.at(0.08, wallH - 2), face.at(0.08, band + 1), PAL.stone3);
+    lineHard(ctx, face.at(0.92, wallH - 2), face.at(0.92, band + 1), PAL.stone1);
+    return;
+  }
+
+  if (feature === 'watchHouse') {
+    const top = Math.max(4, wallH - 13);
+    const lamp = face.at(0.64, top + 2);
+    ctx.fillStyle = PAL.soot1;
+    ctx.fillRect(Math.round(lamp.x) - 2, Math.round(lamp.y) - 2, 5, 6);
+    ctx.fillStyle = PAL.buntBlueHi;
+    ctx.fillRect(Math.round(lamp.x) - 1, Math.round(lamp.y) - 1, 3, 4);
+    const a = face.at(0.72, top + 2);
+    const b = face.at(0.92, wallH - 2);
+    fillPolyHard(ctx, [a, face.at(0.92, top + 2), b, face.at(0.72, wallH - 2)], skin.glass);
+    for (const t of [0.76, 0.82, 0.88]) lineHard(ctx, face.at(t, top + 2), face.at(t, wallH - 2), dark);
+    return;
+  }
+
+  if (feature === 'dispensaryCanopy') {
+    const top = Math.max(4, wallH - 11);
+    const a = face.at(0.05, top);
+    const b = face.at(0.64, top);
+    fillPolyHard(ctx, [a, b, { x: b.x + 2, y: b.y + 4 }, { x: a.x + 2, y: a.y + 4 }], PAL.buntCream);
+    for (const t of [0.16, 0.48, 0.8]) {
+      const p = lerp(a, b, t);
+      lineHard(ctx, p, { x: p.x + 2, y: p.y + 4 }, PAL.buntBlueHi);
+    }
+    const mark = face.at(0.76, top + 2);
+    ctx.fillStyle = PAL.buntCream;
+    ctx.fillRect(Math.round(mark.x) - 3, Math.round(mark.y) - 3, 7, 7);
+    ctx.fillStyle = PAL.buntRed;
+    ctx.fillRect(Math.round(mark.x), Math.round(mark.y) - 2, 1, 5);
+    ctx.fillRect(Math.round(mark.x) - 2, Math.round(mark.y), 5, 1);
+    return;
+  }
+
+  if (feature === 'pressOffice') {
+    const top = Math.max(4, wallH - 18);
+    fillPolyHard(ctx, [face.at(0.06, top), face.at(0.94, top), face.at(0.9, top + 6), face.at(0.1, top + 6)], PAL.buntCream);
+    lineHard(ctx, face.at(0.14, top + 2), face.at(0.86, top + 2), PAL.soot1);
+    lineHard(ctx, face.at(0.22, top + 4), face.at(0.78, top + 4), PAL.soot2);
+    for (const t of [0.2, 0.36, 0.68, 0.82]) {
+      const p = face.at(t, wallH - 2);
+      ctx.fillStyle = PAL.buntCream;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), 3, 4);
+      ctx.fillStyle = PAL.soot2;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y) + 1, 2, 1);
+    }
+    return;
+  }
+
+  if (feature === 'chapelFront') {
+    const top = Math.max(3, wallH - 17);
+    for (const t of [0.25, 0.5, 0.75]) {
+      const half = 0.07;
+      const peak = face.at(t, top);
+      fillPolyHard(ctx, [peak, face.at(t + half, top + 4), face.at(t + half, wallH - 5), face.at(t - half, wallH - 5), face.at(t - half, top + 4)], skin.glass);
+      lineHard(ctx, peak, face.at(t - half, top + 4), stone);
+      lineHard(ctx, peak, face.at(t + half, top + 4), stone);
+      lineHard(ctx, face.at(t, top + 2), face.at(t, wallH - 5), stone);
+    }
+    const cross = face.at(0.5, Math.max(2, top - 5));
+    lineHard(ctx, { x: cross.x, y: cross.y - 3 }, { x: cross.x, y: cross.y + 3 }, PAL.stone4);
+    lineHard(ctx, { x: cross.x - 2, y: cross.y - 1 }, { x: cross.x + 2, y: cross.y - 1 }, PAL.stone4);
+    return;
+  }
+
+  if (feature === 'bathEntrance') {
+    const top = Math.max(3, wallH - 15);
+    const centre = face.at(0.5, top);
+    fillPolyHard(ctx, [centre, face.at(0.68, top + 5), face.at(0.68, wallH - 1), face.at(0.32, wallH - 1), face.at(0.32, top + 5)], skin.wallDark);
+    lineHard(ctx, centre, face.at(0.32, top + 5), PAL.stone4);
+    lineHard(ctx, centre, face.at(0.68, top + 5), PAL.stone2);
+    for (const t of [0.24, 0.76]) {
+      lineHard(ctx, face.at(t, top + 4), face.at(t, wallH - 1), PAL.stone3);
+      const lamp = face.at(t, top + 2);
+      ctx.fillStyle = PAL.gas2;
+      ctx.fillRect(Math.round(lamp.x), Math.round(lamp.y), 2, 2);
+    }
+    return;
+  }
+
+  if (feature === 'gallery') {
+    const level = Math.max(7, Math.round(wallH * 0.48));
+    lineHard(ctx, face.at(0.04, level), face.at(0.96, level), PAL.soot2);
+    lineHard(ctx, face.at(0.04, level + 3), face.at(0.96, level + 3), PAL.soot1);
+    for (let t = 0.08; t < 0.96; t += 0.11) lineHard(ctx, face.at(t, level), face.at(t, level + 3), PAL.soot2);
+    lineHard(ctx, face.at(0.12, level + 3), face.at(0.38, wallH), PAL.soot1);
+    lineHard(ctx, face.at(0.18, level + 3), face.at(0.44, wallH), PAL.soot2);
+    for (let i = 1; i < 5; i++) {
+      const u = i / 5;
+      lineHard(ctx, face.at(0.12 + 0.26 * u, level + 3 + (wallH - level - 3) * u),
+        face.at(0.18 + 0.26 * u, level + 3 + (wallH - level - 3) * u), PAL.soot2);
+    }
+    return;
+  }
+
+  if (feature === 'leanTo') {
+    const top = Math.max(5, wallH - 8);
+    const a = face.at(0.04, top);
+    const b = face.at(0.72, top + 2);
+    const c = face.at(0.68, top + 5);
+    const d = face.at(0.08, top + 4);
+    fillPolyHard(ctx, [a, b, c, d], PAL.thatch1);
+    lineHard(ctx, a, b, PAL.wood1);
+    for (const t of [0.12, 0.65]) lineHard(ctx, face.at(t, top + 3), face.at(t, wallH + 1), PAL.wood1);
+    return;
+  }
+
+  if (feature === 'porch') {
+    const top = Math.max(4, wallH - 10);
+    const left = face.at(0.12, top + 3);
+    const right = face.at(0.48, top + 3);
+    const peak = face.at(0.3, top);
+    fillPolyHard(ctx, [left, right, peak], spec.polite ? PAL.slate2 : PAL.tileRed1);
+    lineHard(ctx, left, peak, skin.outline);
+    lineHard(ctx, peak, right, skin.outline);
+    for (const t of [0.14, 0.46]) lineHard(ctx, face.at(t, top + 3), face.at(t, wallH + 1), stone);
+    return;
+  }
+
+  if (feature === 'loadingCanopy') {
+    const top = Math.max(4, wallH - 13);
+    const a = face.at(0.03, top);
+    const b = face.at(0.68, top + 1);
+    const c = { x: b.x + 3, y: b.y + 5 };
+    const d = { x: a.x + 3, y: a.y + 5 };
+    fillPolyHard(ctx, [a, b, c, d], PAL.slate1);
+    lineHard(ctx, a, b, PAL.wood2);
+    lineHard(ctx, d, c, PAL.soot2);
+    lineHard(ctx, a, d, PAL.wood1);
+    lineHard(ctx, b, c, PAL.wood1);
+  }
+}
+
+function drawRoofFeature(
+  ctx: CanvasRenderingContext2D, quad: readonly Pt[], kind: NonNullable<HouseSpec['roofFeature']>, salt: number,
+): void {
+  if (quad.length < 4) return;
+  const at = (u: number, v: number) => lerp(lerp(quad[0], quad[1], u), lerp(quad[3], quad[2], u), v);
+  if (kind === 'ventilator') {
+    const count = 1 + ((salt >>> 2) & 1);
+    for (let i = 0; i < count; i++) {
+      const p = at((i + 1) / (count + 1), 0.58);
+      const x = Math.round(p.x);
+      const y = Math.round(p.y);
+      ctx.fillStyle = PAL.soot2;
+      ctx.fillRect(x - 3, y - 5, 7, 5);
+      ctx.fillStyle = PAL.slate2;
+      ctx.fillRect(x - 4, y - 6, 9, 2);
+      for (let bar = -2; bar <= 2; bar += 2) {
+        ctx.fillStyle = PAL.soot0;
+        ctx.fillRect(x + bar, y - 4, 1, 3);
+      }
+    }
+    return;
+  }
+  if (kind === 'signFrame') {
+    const p = at(0.5, 0.56);
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    lineHard(ctx, { x: x - 8, y }, { x: x - 8, y: y - 9 }, PAL.soot2);
+    lineHard(ctx, { x: x + 8, y }, { x: x + 8, y: y - 9 }, PAL.soot2);
+    ctx.fillStyle = PAL.buntCream;
+    ctx.fillRect(x - 10, y - 10, 20, 6);
+    ctx.fillStyle = PAL.soot1;
+    ctx.fillRect(x - 7, y - 8, 14, 1);
+    ctx.fillRect(x - 4, y - 6, 8, 1);
+    return;
+  }
+  const p = at(0.55, 0.52);
+  const x = Math.round(p.x);
+  const y = Math.round(p.y);
+  ctx.fillStyle = PAL.verd1;
+  ctx.fillRect(x - 4, y - 6, 9, 6);
+  lineHard(ctx, { x: x - 4, y: y - 6 }, { x: x + 5, y: y - 6 }, PAL.verd3);
+  lineHard(ctx, { x: x + 4, y }, { x: x + 7, y: y + 4 }, PAL.soot2);
+  ctx.fillStyle = PAL.brass2;
+  ctx.fillRect(x + 6, y + 3, 2, 2);
 }
 
 /**
