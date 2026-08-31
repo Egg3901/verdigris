@@ -103,6 +103,8 @@ export interface HouseSpec {
   massingFeature?: 'cornerTower' | 'crossGable' | 'steppedParapet' | 'gatehouse';
   /** Low secondary structures built against the main frontage. */
   additionFeature?: 'washhouse' | 'glassLeanTo' | 'coalShed';
+  /** Raised party-wall firebreaks at the two ridge ends: bit 1 first, bit 2 second. */
+  partyWalls?: number;
   /** Live emergency marks that do not replace the building silhouette. */
   boilerBurst?: boolean;
   outbreakNotice?: boolean;
@@ -259,6 +261,7 @@ export function drawHouse(
       drawFlatRoofSnow(ctx, eave, lying);
     }
   }
+  if (roofQuad && spec.partyWalls) drawPartyWallBreaks(ctx, roofQuad, spec, lying);
   if (spec.massingFeature && spec.massingFeature !== 'cornerTower') {
     drawRoofMassing(ctx, eave, spec, lying);
   }
@@ -1195,6 +1198,37 @@ function drawArchitecturalFront(
     lineHard(ctx, d, c, PAL.soot2);
     lineHard(ctx, a, d, PAL.wood1);
     lineHard(ctx, b, c, PAL.wood1);
+  }
+}
+
+/** Attached rows are one piece of urban fabric. The masonry party wall rises
+ * through the covering at each real join, stopping a terrace from reading as a
+ * row of detached cottages placed a pixel apart. */
+function drawPartyWallBreaks(
+  ctx: CanvasRenderingContext2D, quad: readonly Pt[], spec: HouseSpec, snow: number,
+): void {
+  if (quad.length < 4) return;
+  const wall = spec.material === 'brick' ? PAL.brick1
+    : spec.polite ? PAL.stone2 : PAL.stone1;
+  const cap = snow >= 380 ? PAL.stone4 : shadeHex(wall, 0.06);
+  const ink = spec.skin.outline;
+  const bits = spec.partyWalls ?? 0;
+  const edges: readonly [number, Pt, Pt][] = [
+    [1, quad[0], quad[3]],
+    [2, quad[1], quad[2]],
+  ];
+  for (const [bit, a, b] of edges) {
+    if ((bits & bit) === 0) continue;
+    const lift = 2;
+    const ua = up(a, lift);
+    const ub = up(b, lift);
+    fillPolyHard(ctx, [a, b, ub, ua], wall);
+    ditherPolyHard(ctx, [a, b, ub, ua], shadeHex(wall, -0.16), 2);
+    lineHard(ctx, ua, ub, cap);
+    lineHard(ctx, a, ua, ink);
+    const saddle = lerp(ua, ub, 0.72);
+    ctx.fillStyle = cap;
+    ctx.fillRect(Math.round(saddle.x), Math.round(saddle.y), 2, 1);
   }
 }
 

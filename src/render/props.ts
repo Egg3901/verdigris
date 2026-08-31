@@ -9,6 +9,7 @@ import type { Variant } from './palette';
 import { mix } from '../sim/rng';
 import { fillEllipseHard, ditherPolyHard, hardenAlpha, fillPolyHard, lineHard, BAYER } from './raster';
 import { Tile } from '../sim/types';
+import type { BuildingKind } from '../sim/types';
 import type { District } from '../sim/district';
 import type { Ward } from '../sim/gen/wards';
 import { cellKey, insideIsland } from '../sim/district';
@@ -1039,6 +1040,147 @@ function bakeBench(variant: Variant): HTMLCanvasElement {
   ctx.fillRect(10, 9, 2, 4);
   hardenAlpha(ctx, c.width, c.height, variant);
   return c;
+}
+
+export type ServiceYardClass = 'domestic' | 'garden' | 'works' | 'delivery';
+
+/** The neighboring premises decide what an open yard is for. */
+export function serviceYardClassFor(kind: BuildingKind): ServiceYardClass | null {
+  if (kind === 'tenement' || kind === 'courtdwelling' || kind === 'lodging' || kind === 'terrace') {
+    return 'domestic';
+  }
+  if (kind === 'villa' || kind === 'glasshouse') return 'garden';
+  if (kind === 'mill' || kind === 'foundry' || kind === 'gasworks' || kind === 'tramdepot'
+    || kind === 'pumphouse' || kind === 'workshop' || kind === 'warehouse' || kind === 'wharfshed') {
+    return 'works';
+  }
+  if (kind === 'shop' || kind === 'pub') return 'delivery';
+  return null;
+}
+
+/** One compound sprite is clearer than four unrelated yard props occupying the
+ * same cell. Each class gets a small working arrangement with a shared ground
+ * anchor and one silhouette. */
+function bakeServiceYard(kind: ServiceYardClass, variant: Variant): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 30; c.height = 25;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  ctx.imageSmoothingEnabled = false;
+  const g = (colour: string) => gradeHex(colour, variant);
+
+  if (kind === 'domestic') {
+    // Two privies against the wall, then a wash line and copper tub in front.
+    ctx.fillStyle = g(PAL.wood1);
+    ctx.fillRect(3, 8, 12, 12);
+    ctx.fillStyle = g(PAL.wood2);
+    ctx.fillRect(3, 8, 12, 2);
+    ctx.fillStyle = g(PAL.wood0);
+    ctx.fillRect(8, 10, 1, 10);
+    ctx.fillRect(5, 14, 2, 3);
+    ctx.fillRect(11, 14, 2, 3);
+    fillPolyHard(ctx, [{ x: 2, y: 8 }, { x: 15, y: 8 }, { x: 12, y: 4 }, { x: 5, y: 4 }], g(PAL.slate1));
+    lineHard(ctx, { x: 18, y: 8 }, { x: 18, y: 22 }, g(PAL.wood0));
+    lineHard(ctx, { x: 28, y: 5 }, { x: 28, y: 22 }, g(PAL.wood0));
+    lineHard(ctx, { x: 18, y: 9 }, { x: 28, y: 6 }, g(PAL.thatch1));
+    ctx.fillStyle = g(PAL.buntCream);
+    ctx.fillRect(20, 8, 3, 4);
+    ctx.fillStyle = g(PAL.buntBlue);
+    ctx.fillRect(24, 7, 3, 3);
+    fillEllipseHard(ctx, 22, 21, 4, 2, g(PAL.verd1));
+    fillEllipseHard(ctx, 22, 20, 3, 1, g(PAL.riv1));
+  } else if (kind === 'garden') {
+    // A cold frame, potting shed and clipped bed make the polite back plot useful.
+    fillPolyHard(ctx, [{ x: 4, y: 17 }, { x: 14, y: 21 }, { x: 22, y: 17 }, { x: 12, y: 13 }], g(PAL.riv2));
+    lineHard(ctx, { x: 4, y: 17 }, { x: 12, y: 13 }, g(PAL.verd2));
+    lineHard(ctx, { x: 12, y: 13 }, { x: 22, y: 17 }, g(PAL.verd3));
+    lineHard(ctx, { x: 9, y: 19 }, { x: 17, y: 15 }, g(PAL.verd1));
+    ctx.fillStyle = g(PAL.wood1);
+    ctx.fillRect(21, 8, 7, 11);
+    fillPolyHard(ctx, [{ x: 20, y: 8 }, { x: 29, y: 8 }, { x: 25, y: 4 }], g(PAL.slate2));
+    ctx.fillStyle = g(PAL.darkWindow);
+    ctx.fillRect(23, 11, 3, 4);
+    for (let x = 3; x < 18; x += 4) {
+      lineHard(ctx, { x, y: 23 }, { x: x + 6, y: 20 }, g(PAL.grass3));
+    }
+  } else if (kind === 'works') {
+    // Stock rack, coal bunker and oil drums, arranged as one working yard.
+    lineHard(ctx, { x: 3, y: 7 }, { x: 3, y: 22 }, g(PAL.wood0));
+    lineHard(ctx, { x: 17, y: 4 }, { x: 17, y: 22 }, g(PAL.wood0));
+    for (const y of [8, 13, 18]) lineHard(ctx, { x: 3, y }, { x: 17, y: y - 3 }, g(PAL.wood2));
+    for (let i = 0; i < 3; i++) {
+      lineHard(ctx, { x: 5, y: 7 + i * 5 }, { x: 15, y: 5 + i * 5 }, g(i === 1 ? PAL.soot2 : PAL.wood1));
+    }
+    fillEllipseHard(ctx, 22, 21, 7, 3, g(PAL.soot0));
+    ditherPolyHard(ctx, [{ x: 15, y: 20 }, { x: 22, y: 15 }, { x: 29, y: 20 }, { x: 22, y: 24 }], g(PAL.soot2), 6);
+    for (const x of [20, 25]) {
+      ctx.fillStyle = g(PAL.brick1);
+      ctx.fillRect(x, 8, 4, 9);
+      ctx.fillStyle = g(PAL.brassInk);
+      ctx.fillRect(x, 10, 4, 1);
+      ctx.fillRect(x, 15, 4, 1);
+    }
+  } else {
+    // Deliveries for a shop or public house: lock-up shed, barrels and handcart.
+    ctx.fillStyle = g(PAL.wood1);
+    ctx.fillRect(3, 8, 11, 12);
+    fillPolyHard(ctx, [{ x: 2, y: 8 }, { x: 15, y: 8 }, { x: 11, y: 4 }, { x: 6, y: 4 }], g(PAL.tileRed1));
+    lineHard(ctx, { x: 5, y: 10 }, { x: 12, y: 18 }, g(PAL.wood0));
+    for (const x of [18, 23]) {
+      fillEllipseHard(ctx, x, 18, 3, 4, g(PAL.wood1));
+      lineHard(ctx, { x: x - 3, y: 18 }, { x: x + 3, y: 18 }, g(PAL.soot1));
+    }
+    lineHard(ctx, { x: 17, y: 22 }, { x: 28, y: 17 }, g(PAL.wood2));
+    lineHard(ctx, { x: 22, y: 19 }, { x: 28, y: 22 }, g(PAL.wood1));
+    fillEllipseHard(ctx, 19, 22, 3, 3, g(PAL.soot1));
+  }
+
+  hardenAlpha(ctx, c.width, c.height, variant);
+  return c;
+}
+
+/** Service compounds placed only on open Yard or Court cells touching a
+ * building. The city grid supplies the relationship, so the props remain tied
+ * to real premises and survive camera and lighting changes deterministically. */
+export function buildServiceYardProps(city: City, variant: Variant): Prop[] {
+  const district = city.district;
+  const sprites: Record<ServiceYardClass, HTMLCanvasElement> = {
+    domestic: bakeServiceYard('domestic', variant),
+    garden: bakeServiceYard('garden', variant),
+    works: bakeServiceYard('works', variant),
+    delivery: bakeServiceYard('delivery', variant),
+  };
+  const out: Prop[] = [];
+  const offsets = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const;
+  for (let ty = 0; ty < district.height; ty++) {
+    for (let tx = 0; tx < district.width; tx++) {
+      const k = cellKey(district, tx, ty);
+      const tile = district.tile[k];
+      if ((tile !== Tile.Yard && tile !== Tile.Court) || district.buildingId[k] >= 0) continue;
+      const neighbors: number[] = [];
+      for (const [dx, dy] of offsets) {
+        const nx = tx + dx;
+        const ny = ty + dy;
+        if (nx < 0 || ny < 0 || nx >= district.width || ny >= district.height) continue;
+        const id = district.buildingId[cellKey(district, nx, ny)];
+        const neighbor = city.buildings[id];
+        if (neighbor && !neighbors.includes(id) && serviceYardClassFor(neighbor.kind)) neighbors.push(id);
+      }
+      if (neighbors.length === 0) continue;
+      const salt = mix(city.seed, 119, tx, ty);
+      const chance = tile === Tile.Court ? 58 : 42;
+      if (salt % 100 >= chance || ((tx + ty + (salt >>> 8)) & 1) !== 0) continue;
+      const building = city.buildings[neighbors[(salt >>> 11) % neighbors.length]];
+      const yardClass = serviceYardClassFor(building.kind);
+      if (!yardClass) continue;
+      out.push({
+        sprite: sprites[yardClass], ax: 15, ay: 23,
+        wx: isoX(tx, ty) + ((salt >>> 16) % 5) - 2,
+        wy: isoY(tx, ty) + ((salt >>> 20) % 3) - 1,
+        depth: depthKey(tx, ty, LAYER_STRUCT) + 2,
+      });
+    }
+  }
+  return out;
 }
 
 /**

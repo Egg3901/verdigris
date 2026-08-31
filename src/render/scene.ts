@@ -31,7 +31,7 @@ import type { CartRoute } from './fx';
 import type { HouseSpec, HouseSkin, RoofShape, Finial, Frontage } from './house';
 import type { RoofKind, SignGlyph, WallMaterial, WindowLight } from './detail';
 import { mix, Stream } from '../sim/rng';
-import { buildMarketProps, buildProps, buildSquareProps, buildStreetProps, textureCell } from './props';
+import { buildMarketProps, buildProps, buildServiceYardProps, buildSquareProps, buildStreetProps, textureCell } from './props';
 import type { Prop } from './props';
 import { worksStageFor, latestOrderFor } from '../sim/works';
 import { noticeVisualStage } from '../sim/notices';
@@ -310,6 +310,40 @@ function plotOf(city: City, b: Building): 'x' | 'y' {
   // dir 2 and 3 are south and north, so the street runs east to west and the
   // frontage with it.
   return p.dir === 2 || p.dir === 3 ? 'x' : 'y';
+}
+
+const ROW_BUILDINGS = new Set<BuildingKind>([
+  'terrace', 'tenement', 'courtdwelling', 'lodging', 'shop', 'pub',
+  'workshop', 'warehouse', 'wharfshed',
+]);
+
+/** Bitmask of occupied joins at the two ends of a building's street-facing
+ * ridge. This is grid geometry, not visual hashing: a firebreak appears only
+ * where another structure actually touches the row. */
+export function attachedRowEdges(
+  district: Pick<District, 'width' | 'height' | 'buildingId'>,
+  b: Pick<Building, 'id' | 'ox' | 'oy' | 'w' | 'd'>,
+  alongX: boolean,
+): number {
+  const occupiedByOther = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= district.width || y >= district.height) return false;
+    const id = district.buildingId[y * district.width + x];
+    return id >= 0 && id !== b.id;
+  };
+  let first = false;
+  let second = false;
+  if (alongX) {
+    for (let y = b.oy; y < b.oy + b.d; y++) {
+      first ||= occupiedByOther(b.ox - 1, y);
+      second ||= occupiedByOther(b.ox + b.w, y);
+    }
+  } else {
+    for (let x = b.ox; x < b.ox + b.w; x++) {
+      first ||= occupiedByOther(x, b.oy - 1);
+      second ||= occupiedByOther(x, b.oy + b.d);
+    }
+  }
+  return (first ? 1 : 0) | (second ? 2 : 0);
 }
 
 /**
@@ -666,6 +700,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     ? buildingArchitectureFor(b.kind, salt, polite, wardKind, buildingEvolutionBandAt(city.tick))
     : {};
 
+  const ridgeAlongX = plotOf(city, b) === 'x';
   return {
     w: b.w, d: b.d, wallH, roofH,
     shape,
@@ -707,7 +742,10 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     // where its roof should be and the roof itself was reduced to two thin strips
     // either side. Terraces are built in a row with the ridge along the row; you
     // see gable ends only where the row stops.
-    ridgeAlongX: plotOf(city, b) === 'x',
+    ridgeAlongX,
+    // Each physical join belongs to two sprites. Paint it only from the building
+    // on the negative side, or every firebreak doubles into a bright roof frame.
+    partyWalls: ROW_BUILDINGS.has(b.kind) ? attachedRowEdges(city.district, b, ridgeAlongX) & 2 : 0,
     material,
     frontage,
     polite,
@@ -907,6 +945,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
     workSetOut: daily.workSetOut && weather.precipitation === 0,
     washingOut: daily.washingOut && weather.precipitation === 0,
   });
+  const serviceYardProps = buildServiceYardProps(city, variant);
   const squareProps = buildSquareProps(
     d, city.seed, variant, city.streetPlan.squareX, city.streetPlan.squareY, city.streetPlan.squareW,
   );
@@ -1215,7 +1254,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
       { x: pr.wx + 1, y: pr.wy + 5 }, { x: pr.wx - 6, y: pr.wy + 1 },
     ], PAL.soot0, 6);
   }
-  for (const pr of streetProps) {
+  for (const pr of streetProps.concat(serviceYardProps)) {
     ditherPolyHard(gctx, [
       { x: pr.wx - 2, y: pr.wy }, { x: pr.wx + 4, y: pr.wy + 2 },
       { x: pr.wx - 2, y: pr.wy + 3 }, { x: pr.wx - 6, y: pr.wy + 2 },
@@ -1270,7 +1309,7 @@ export function buildScene(city: City, variant: Variant = variantFor(minuteOfDay
   }
   statics.sort((p, q) => p.depth - q.depth);
 
-  const props = naturalProps.concat(squareProps, streetProps, marketProps);
+  const props = naturalProps.concat(squareProps, streetProps, serviceYardProps, marketProps);
   props.sort((a, b) => a.depth - b.depth);
   return {
     cartRoutes: buildCartRoutes(city), variant,
