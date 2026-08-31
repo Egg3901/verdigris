@@ -385,7 +385,11 @@ shell = mountShell(shellRoot, {
       }
     }
     if (id < 0) {
-      shell.toast(`Nothing in the ward can take ${kind === 'collapse' ? 'a collapse' : `a ${kind}`} right now.`, 'loss');
+      const label: Record<DisasterKind, string> = {
+        fire: 'a fire', flood: 'a flood', collapse: 'a collapse', boilerBurst: 'a boiler burst',
+        outbreak: 'an outbreak', riot: 'a riot', tramWreck: 'a tram wreck',
+      };
+      shell.toast(`Nothing in the ward can take ${label[kind]} right now.`, 'loss');
       return;
     }
     if (startDisaster(city, kind, id)) {

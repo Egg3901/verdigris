@@ -9,6 +9,7 @@ import type { Soul } from '../sim/souls';
 import { isDeputationActive } from '../sim/deputations';
 import { isOccasionActive } from '../sim/occasions';
 import { activePublicVisit } from '../sim/civic-visits';
+import { isDisasterActive } from '../sim/disasters';
 import { PAL } from './palette';
 import { isoX, isoY, depthKey, LAYER_AGENT } from './iso';
 
@@ -48,6 +49,11 @@ const DEPUTATION_WEDGE: readonly [side: number, outward: number][] = [
 const MARKET_FAN: readonly [side: number, outward: number][] = [
   [-0.62, 0.22], [0.62, 0.22], [0, 0.76],
   [-0.28, 0.42], [0.28, 0.42], [-0.52, 0.68], [0.52, 0.68], [0, 0.5],
+];
+const RIOT_RING: readonly [side: number, outward: number][] = [
+  [-0.72, 0.18], [-0.48, 0.12], [-0.24, 0.2], [0, 0.12], [0.24, 0.2], [0.48, 0.12], [0.72, 0.18],
+  [-0.62, 0.48], [-0.35, 0.55], [-0.1, 0.42], [0.15, 0.58], [0.4, 0.44], [0.66, 0.56],
+  [-0.42, 0.82], [-0.08, 0.76], [0.3, 0.84],
 ];
 
 /**
@@ -125,8 +131,11 @@ export function collectAgents(city: City, fracMin: number, out: AgentDraw[]): nu
   const deputation = isDeputationActive(city) ? city.deputations.current : null;
   const civic = !deputation ? activePublicVisit(city) : null;
   const occasion = !deputation && !civic && isOccasionActive(city) ? city.occasions.current : null;
-  const squareNode = deputation?.squareNode ?? civic?.nodeId ?? occasion?.squareNode ?? -1;
-  const attendeeIds = deputation?.attendeeIds ?? civic?.actorIds ?? occasion?.attendeeIds ?? [];
+  const riot = !deputation && !civic && !occasion
+    ? city.disasters.events.find((event) => event.kind === 'riot' && isDisasterActive(city, event)) : null;
+  const squareNode = deputation?.squareNode ?? civic?.nodeId ?? occasion?.squareNode
+    ?? (riot ? riot.nodeId : -1);
+  const attendeeIds = deputation?.attendeeIds ?? civic?.actorIds ?? occasion?.attendeeIds ?? riot?.involvedIds ?? [];
 
   for (const s of city.souls) {
     if (s.inId >= 0 || s.atNode < 0) continue;
@@ -143,10 +152,10 @@ export function collectAgents(city: City, fracMin: number, out: AgentDraw[]): nu
     n++;
   }
 
-  if ((deputation || civic || occasion) && squareNode >= 0) {
+  if ((deputation || civic || occasion || riot) && squareNode >= 0) {
     const baseX = city.graph.cx[squareNode];
     const baseY = city.graph.cy[squareNode];
-    const formation = deputation || civic?.kind === 'petition' ? DEPUTATION_WEDGE : MARKET_FAN;
+    const formation = riot ? RIOT_RING : deputation || civic?.kind === 'petition' ? DEPUTATION_WEDGE : MARKET_FAN;
     for (let i = 0; i < attendeeIds.length && i < formation.length; i++) {
       const s = city.souls[attendeeIds[i]];
       if (!s || s.inId >= 0 || s.activity !== 'gathering' || s.atNode !== squareNode || s.toNode >= 0) continue;

@@ -93,6 +93,11 @@ export interface HouseSpec {
   deputationBanner?: boolean;
   /** A striped public awning marks the building currently taking storm refugees. */
   shelterOpen?: boolean;
+  /** Live emergency marks that do not replace the building silhouette. */
+  boilerBurst?: boolean;
+  outbreakNotice?: boolean;
+  riotDamage?: boolean;
+  tramWreck?: boolean;
   /** Awning colour for a shopfront. */
   awning?: string;
   /** Stable per-building number, so detail varies without being random. */
@@ -247,6 +252,7 @@ export function drawHouse(
   drawFinial(ctx, ground, eave, spec, alongX);
   drawFacade(ctx, eave, spec, lights);
   if (spec.damage === 'flooded') drawFloodDamage(ctx, eave, spec);
+  if (spec.outbreakNotice || spec.riotDamage || spec.tramWreck) drawEmergencyFront(ctx, eave, spec);
   if (spec.drainState) drawRainwaterGoods(ctx, eave, spec);
   if (spec.rainStrength) drawRainRunoff(ctx, eave, roofQuad, spec);
   if (roofQuad && spec.dormers) {
@@ -265,6 +271,7 @@ export function drawHouse(
     drawRoofLife(ctx, roofQuad, spec.roofLife, spec.salt ?? 0);
   }
   if (roofQuad && spec.damage === 'burning') drawBurnedRoof(ctx, roofQuad, spec);
+  if (roofQuad && spec.boilerBurst) drawBurstRoof(ctx, roofQuad, spec);
   if (roofQuad && spec.scorched) drawCharredRoof(ctx, roofQuad, spec);
   if (spec.shelterOpen) drawShelterEntrance(ctx, eave, roofQuad, spec);
 
@@ -591,6 +598,49 @@ function drawBurnedRoof(ctx: CanvasRenderingContext2D, roof: Pt[], spec: HouseSp
   ctx.fillRect(Math.round(emberA.x), Math.round(emberA.y), 2, 1);
   ctx.fillStyle = PAL.brass2;
   ctx.fillRect(Math.round(emberB.x), Math.round(emberB.y), 1, 1);
+}
+
+/** A steam failure punches a clean mechanical tear through the roof, with
+ * splintered rafters rather than the char and embers of a fire. */
+function drawBurstRoof(ctx: CanvasRenderingContext2D, roof: Pt[], spec: HouseSpec): void {
+  const a = lerp(roof[0], roof[1], 0.38);
+  const b = lerp(roof[0], roof[1], 0.64);
+  const c = lerp(roof[3], roof[2], 0.58);
+  const d = lerp(roof[3], roof[2], 0.34);
+  fillPolyHard(ctx, [a, b, c, d], PAL.soot0);
+  lineHard(ctx, { x: a.x - 3, y: a.y - 4 }, { x: c.x + 4, y: c.y + 1 }, PAL.wood1);
+  lineHard(ctx, { x: b.x + 2, y: b.y - 5 }, { x: d.x - 3, y: d.y + 2 }, PAL.wood2);
+  ctx.fillStyle = spec.skin.outline;
+  ctx.fillRect(Math.round(a.x) - 5, Math.round(a.y) - 3, 2, 1);
+  ctx.fillRect(Math.round(c.x) + 3, Math.round(c.y) + 1, 3, 1);
+}
+
+function drawEmergencyFront(
+  ctx: CanvasRenderingContext2D, eave: { W: Pt; N: Pt; E: Pt; S: Pt }, spec: HouseSpec,
+): void {
+  const face = makeFace(eave.W, eave.S, true);
+  if (face.span < 8) return;
+  if (spec.outbreakNotice) {
+    const p = face.at(0.18, Math.max(5, spec.wallH - 9));
+    ctx.fillStyle = PAL.buntCream;
+    ctx.fillRect(Math.round(p.x) - 3, Math.round(p.y) - 3, 7, 7);
+    ctx.fillStyle = PAL.buntRed;
+    ctx.fillRect(Math.round(p.x), Math.round(p.y) - 2, 1, 5);
+    ctx.fillRect(Math.round(p.x) - 2, Math.round(p.y), 5, 1);
+  }
+  if (spec.riotDamage) {
+    const y = Math.max(5, spec.wallH - 9);
+    lineHard(ctx, face.at(0.36, y), face.at(0.52, y + 5), PAL.buntCream);
+    lineHard(ctx, face.at(0.52, y), face.at(0.36, y + 5), PAL.buntCream);
+    lineHard(ctx, face.at(0.58, spec.wallH - 2), face.at(0.86, spec.wallH - 5), PAL.wood1);
+    lineHard(ctx, face.at(0.6, spec.wallH - 5), face.at(0.88, spec.wallH - 2), PAL.wood1);
+  }
+  if (spec.tramWreck) {
+    const a = face.at(0.15, spec.wallH - 2);
+    const b = face.at(0.85, spec.wallH - 2);
+    lineHard(ctx, a, { x: b.x, y: b.y - 5 }, PAL.buntRed);
+    lineHard(ctx, { x: a.x, y: a.y - 5 }, b, PAL.buntRed);
+  }
 }
 
 /**

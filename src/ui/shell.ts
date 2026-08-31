@@ -10,6 +10,7 @@ import { describeBuilding, describeSoul, insideList, boundFor, carrying } from '
 import { worksSummary } from '../sim/works';
 import { deputationSummary } from '../sim/deputations';
 import { disasterSummary } from '../sim/disasters';
+import type { DisasterKind } from '../sim/disasters';
 import { fullName } from '../sim/souls';
 import type { Selection } from '../render/frame';
 import type { ZoomStep } from '../render/iso';
@@ -62,7 +63,7 @@ export interface ShellHooks {
   /** Sandbox: pin the weather to a kind, or null to hand it back to the clock. */
   onForceWeather: (kind: 'fair' | 'overcast' | 'rain' | 'storm' | 'fog' | 'snow' | 'drought' | null) => void;
   /** Sandbox: loose a disaster on the selected building, or a random fit one. */
-  onTriggerDisaster: (kind: 'fire' | 'flood' | 'collapse') => void;
+  onTriggerDisaster: (kind: DisasterKind) => void;
 }
 
 export interface Shell {
@@ -455,8 +456,12 @@ export function mountShell(root: HTMLElement, hooks: ShellHooks): Shell {
     ['Fire', () => hooks.onTriggerDisaster('fire')],
     ['Flood', () => hooks.onTriggerDisaster('flood')],
     ['Collapse', () => hooks.onTriggerDisaster('collapse')],
+    ['Boiler burst', () => hooks.onTriggerDisaster('boilerBurst')],
+    ['Fever', () => hooks.onTriggerDisaster('outbreak')],
+    ['Riot', () => hooks.onTriggerDisaster('riot')],
+    ['Tram wreck', () => hooks.onTriggerDisaster('tramWreck')],
   ]);
-  sandbox.append(el('p', 'hint', 'Disasters strike the selected building, or a fitting one if you have chosen none.'));
+  sandbox.append(el('p', 'hint', 'Choose a fitting address, or let the ward find one. Fever follows occupied houses, riots gather at public houses or the Town Hall, and a wreck stops the tram.'));
 
   const toggleSandbox = () => {
     if (sandbox.hidden) {

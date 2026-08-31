@@ -6,7 +6,8 @@ import type { Disaster } from './disasters';
 import type { WorkOrder } from './works';
 import type { BuildingId, HouseholdId, SoulId } from './types';
 
-export type CivicCause = 'none' | 'fire' | 'flood' | 'collapse' | 'fabric' | 'drain' | 'gas';
+export type CivicCause = 'none' | 'fire' | 'flood' | 'collapse' | 'boilerBurst'
+  | 'outbreak' | 'riot' | 'tramWreck' | 'fabric' | 'drain' | 'gas';
 export type CivicVerdict = 'none' | 'open' | 'madeGood' | 'failed';
 
 export interface CivicRecord {
@@ -95,6 +96,7 @@ function householdsForDisaster(city: City, event: Disaster): HouseholdId[] {
     if (householdId !== undefined && householdId >= 0) found.add(householdId);
   };
   for (const id of event.evacuatedIds) addSoul(id);
+  for (const id of event.involvedIds) addSoul(id);
   for (const id of event.affectedBuildingIds) {
     const b = city.buildings[id];
     if (!b) continue;
