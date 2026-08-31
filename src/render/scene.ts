@@ -17,7 +17,7 @@ import { DEFS } from '../sim/buildings';
 import { cellKey, insideIsland } from '../sim/district';
 import type { District } from '../sim/district';
 import { Tile } from '../sim/types';
-import type { TileCode } from '../sim/types';
+import type { BuildingKind, TileCode } from '../sim/types';
 import { PAL, shadeHex, hexToRgb, rgbToHex, gradeHex, variantFor, isDarkVariant } from './palette';
 import type { Variant } from './palette';
 import { MIN_PER_DAY, minuteOfDay } from '../sim/clock';
@@ -326,6 +326,54 @@ function glyphFor(b: Building, salt: number): SignGlyph {
   return (['boot', 'loaf', 'scissors'] as const)[(salt >>> 17) % 3];
 }
 
+export interface BuildingArchitecture {
+  facadeFeature?: HouseSpec['facadeFeature'];
+  roofFeature?: HouseSpec['roofFeature'];
+}
+
+/** Authored identity shared by the compositor and render tests. Stable salt
+ * makes repeated residential and industrial kinds vary without hidden state. */
+export function buildingArchitectureFor(
+  kind: BuildingKind, salt: number, polite: boolean, wardKind: WardKind | undefined,
+  evolutionBand: 0 | 1 | 2 | 3,
+): BuildingArchitecture {
+  switch (kind) {
+    case 'townhall':
+    case 'bank': return { facadeFeature: 'civicPortico' };
+    case 'exchange':
+    case 'postexchange': return { facadeFeature: 'marketArcade' };
+    case 'school': return { facadeFeature: 'schoolBoard' };
+    case 'constabulary': return { facadeFeature: 'watchHouse' };
+    case 'dispensary': return { facadeFeature: 'dispensaryCanopy' };
+    case 'newspaper': return { facadeFeature: 'pressOffice', roofFeature: 'signFrame' };
+    case 'chapel': return { facadeFeature: 'chapelFront' };
+    case 'bathhouse': return { facadeFeature: 'bathEntrance' };
+    case 'pumphouse': return { facadeFeature: 'loadingCanopy', roofFeature: 'waterHead' };
+    case 'workshop':
+    case 'warehouse':
+    case 'wharfshed': return { facadeFeature: 'loadingCanopy', roofFeature: 'ventilator' };
+    case 'mill':
+    case 'foundry':
+    case 'tramdepot':
+    case 'gasworks': return { facadeFeature: 'loadingCanopy' };
+    case 'tenement':
+      return ((salt >>> 13) % 3) < 2 ? { facadeFeature: 'gallery' } : {};
+    case 'courtdwelling':
+      return ((salt >>> 15) & 3) !== 0 ? { facadeFeature: 'leanTo' } : {};
+    case 'villa':
+      return ((salt >>> 17) % 3) !== 0 ? { facadeFeature: 'porch' } : {};
+    case 'lodging':
+      return wardKind === 'courts' || wardKind === 'quayside'
+        ? { facadeFeature: 'gallery' } : { facadeFeature: 'porch' };
+    case 'terrace': {
+      const candidate = (salt >>> 19) & 3;
+      return evolutionBand > candidate && (polite || wardKind === 'garden')
+        ? { facadeFeature: 'porch' } : {};
+    }
+    default: return {};
+  }
+}
+
 function specFor(city: City, b: Building, grime: number, variant: Variant): HouseSpec {
   const fam = FAMILY[b.kind] ?? DEFAULT_FAMILY;
   const def = DEFS[b.kind];
@@ -577,6 +625,9 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     skin.window = gradeHex(PAL.soot0, variant);
     skin.windowLit = false;
   }
+  const architecture = damage !== 'collapsed' && damage !== 'burning' && !scorched
+    ? buildingArchitectureFor(b.kind, salt, polite, wardKind, buildingEvolutionBandAt(city.tick))
+    : {};
 
   return {
     w: b.w, d: b.d, wallH, roofH,
@@ -601,6 +652,7 @@ function specFor(city: City, b: Building, grime: number, variant: Variant): Hous
     bunting: !scorched && city.buntingUntil > city.tick && nearSquare(city, b),
     deputationBanner: b.kind === 'townhall' && (isDeputationActive(city) || Boolean(activePublicVisit(city))),
     shelterOpen: isShelterActive(city) && city.shelters.current?.providerId === b.id,
+    ...architecture,
     boilerBurst: damageEvent?.kind === 'boilerBurst' && isDisasterActive(city, damageEvent),
     outbreakNotice: damageEvent?.kind === 'outbreak',
     riotDamage: damageEvent?.kind === 'riot',
