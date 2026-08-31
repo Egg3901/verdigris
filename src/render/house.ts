@@ -99,6 +99,10 @@ export interface HouseSpec {
     | 'gallery' | 'leanTo' | 'porch' | 'loadingCanopy';
   /** Permanent skyline equipment, separate from additions acquired over time. */
   roofFeature?: 'ventilator' | 'signFrame' | 'waterHead';
+  /** Large authored forms that break the shared roof and wall silhouette. */
+  massingFeature?: 'cornerTower' | 'crossGable' | 'steppedParapet' | 'gatehouse';
+  /** Low secondary structures built against the main frontage. */
+  additionFeature?: 'washhouse' | 'glassLeanTo' | 'coalShed';
   /** Live emergency marks that do not replace the building silhouette. */
   boilerBurst?: boolean;
   outbreakNotice?: boolean;
@@ -255,8 +259,13 @@ export function drawHouse(
       drawFlatRoofSnow(ctx, eave, lying);
     }
   }
+  if (spec.massingFeature && spec.massingFeature !== 'cornerTower') {
+    drawRoofMassing(ctx, eave, spec, lying);
+  }
   drawFinial(ctx, ground, eave, spec, alongX);
   drawFacade(ctx, eave, spec, lights);
+  if (spec.additionFeature) drawFrontageAddition(ctx, eave, spec, lying);
+  if (spec.massingFeature === 'cornerTower') drawCornerTower(ctx, ground, spec, lying);
   if (spec.damage === 'flooded') drawFloodDamage(ctx, eave, spec);
   if (spec.outbreakNotice || spec.riotDamage || spec.tramWreck) drawEmergencyFront(ctx, eave, spec);
   if (spec.drainState) drawRainwaterGoods(ctx, eave, spec);
@@ -1187,6 +1196,161 @@ function drawArchitecturalFront(
     lineHard(ctx, a, d, PAL.wood1);
     lineHard(ctx, b, c, PAL.wood1);
   }
+}
+
+/** Broad roof and frontage forms. These are deliberately much larger than a
+ * sign or canopy: at district zoom they alter the outline before they reveal
+ * their windows and masonry. */
+function drawRoofMassing(
+  ctx: CanvasRenderingContext2D,
+  eave: { W: Pt; N: Pt; E: Pt; S: Pt },
+  spec: HouseSpec,
+  snow: number,
+): void {
+  const face = makeFace(eave.W, eave.S, true);
+  if (face.span < 10) return;
+  const kind = spec.massingFeature;
+  const coping = spec.skin.trim ?? PAL.stone3;
+
+  if (kind === 'steppedParapet') {
+    const profile = [
+      face.at(0.02, 2), face.at(0.98, 2),
+      face.at(0.98, -4), face.at(0.76, -4),
+      face.at(0.76, -7), face.at(0.59, -7),
+      face.at(0.59, -10), face.at(0.41, -10),
+      face.at(0.41, -7), face.at(0.24, -7),
+      face.at(0.24, -4), face.at(0.02, -4),
+    ];
+    fillPolyHard(ctx, profile, spec.skin.gableLit);
+    ditherPolyHard(ctx, profile, shadeHex(spec.skin.gableLit, -0.12), 3);
+    const crown = [
+      [face.at(0.02, -4), face.at(0.24, -4)],
+      [face.at(0.24, -7), face.at(0.41, -7)],
+      [face.at(0.41, -10), face.at(0.59, -10)],
+      [face.at(0.59, -7), face.at(0.76, -7)],
+      [face.at(0.76, -4), face.at(0.98, -4)],
+    ] as const;
+    for (const [a, b] of crown) lineHard(ctx, a, b, snow >= 380 ? PAL.stone4 : coping);
+    const tablet = face.at(0.5, -4);
+    ctx.fillStyle = PAL.stone2;
+    ctx.fillRect(Math.round(tablet.x) - 4, Math.round(tablet.y) - 2, 9, 3);
+    ctx.fillStyle = PAL.soot2;
+    ctx.fillRect(Math.round(tablet.x) - 2, Math.round(tablet.y) - 1, 5, 1);
+    return;
+  }
+
+  const gate = kind === 'gatehouse';
+  const t0 = gate ? 0.13 : 0.25;
+  const t1 = gate ? 0.87 : 0.75;
+  const baseA = face.at(t0, 0);
+  const baseB = face.at(t1, 0);
+  const rise = Math.min(spec.roofH + 2, gate ? 13 : Math.max(8, Math.round(spec.roofH * 0.72)));
+  const peak = {
+    x: (baseA.x + baseB.x) / 2,
+    y: (baseA.y + baseB.y) / 2 - rise,
+  };
+  const lower = gate ? spec.wallH - 2 : Math.max(8, Math.round(spec.wallH * 0.48));
+  const wall = [baseA, baseB, face.at(t1, lower), face.at(t0, lower)];
+  fillPolyHard(ctx, wall, shadeHex(spec.skin.wallLit, gate ? -0.02 : 0.04));
+  ditherPolyHard(ctx, wall, spec.skin.wallShade, gate ? 2 : 1);
+  fillPolyHard(ctx, [baseA, baseB, peak], spec.skin.gableLit);
+  lineHard(ctx, { x: baseA.x - 2, y: baseA.y }, { x: peak.x - 1, y: peak.y - 1 },
+    snow >= 380 ? PAL.stone4 : spec.skin.roofLit);
+  lineHard(ctx, { x: peak.x - 1, y: peak.y - 1 }, { x: baseB.x + 2, y: baseB.y },
+    snow >= 380 ? PAL.stone3 : spec.skin.roofShade);
+  lineHard(ctx, face.at(t0, 0), face.at(t0, lower), spec.skin.outline);
+  lineHard(ctx, face.at(t1, 0), face.at(t1, lower), shadeHex(spec.skin.outline, 0.14));
+
+  const roundel = { x: Math.round(peak.x), y: Math.round(peak.y + Math.max(4, rise * 0.5)) };
+  ctx.fillStyle = coping;
+  ctx.fillRect(roundel.x - 3, roundel.y - 2, 7, 5);
+  ctx.fillStyle = spec.skin.window ?? PAL.darkWindow;
+  ctx.fillRect(roundel.x - 1, roundel.y - 1, 3, 3);
+  if (gate) {
+    lineHard(ctx, face.at(0.2, lower), face.at(0.2, spec.wallH), PAL.stone2);
+    lineHard(ctx, face.at(0.8, lower), face.at(0.8, spec.wallH), PAL.stone1);
+  }
+}
+
+/** A turret at the nearest corner gives villas, banks and watch houses a true
+ * second volume. It is drawn after the generic facade so its own narrow lights
+ * replace, rather than collide with, the window grid below. */
+function drawCornerTower(
+  ctx: CanvasRenderingContext2D, ground: Corners, spec: HouseSpec, snow: number,
+): void {
+  const left = lerp(ground.S, ground.W, 0.3);
+  const right = lerp(ground.S, ground.E, 0.3);
+  const towerH = spec.wallH + Math.min(7, Math.max(5, Math.round(spec.roofH * 0.34)));
+  const topL = up(left, towerH);
+  const topC = up(ground.S, towerH);
+  const topR = up(right, towerH);
+  poly(ctx, [topL, left, ground.S, topC], shadeHex(spec.skin.wallLit, 0.03), 2);
+  poly(ctx, [topC, ground.S, right, topR], shadeHex(spec.skin.wallShade, -0.03), 3);
+
+  const litFace = makeFace(topL, topC, true);
+  const shadeFace = makeFace(topC, topR, false);
+  const window = spec.skin.window ?? PAL.darkWindow;
+  for (const h of [7, 16]) {
+    if (h + 4 >= towerH) continue;
+    for (const f of [litFace, shadeFace]) {
+      fillPolyHard(ctx, [f.at(0.34, h), f.at(0.7, h), f.at(0.7, h + 4), f.at(0.34, h + 4)], window);
+      lineHard(ctx, f.at(0.52, h), f.at(0.52, h + 4), spec.skin.outline);
+      lineHard(ctx, f.at(0.34, h + 4), f.at(0.7, h + 4), PAL.stone2);
+    }
+  }
+  lineHard(ctx, topL, topC, spec.skin.trim ?? PAL.stone3);
+  lineHard(ctx, topC, topR, spec.skin.trim ?? PAL.stone1);
+
+  const apex = up(topC, 7);
+  fillPolyHard(ctx, [topL, topC, apex], spec.skin.roofLit);
+  fillPolyHard(ctx, [topC, topR, apex], spec.skin.roofShade);
+  lineHard(ctx, topL, apex, snow >= 380 ? PAL.stone4 : spec.skin.roofRidge);
+  lineHard(ctx, apex, topR, snow >= 380 ? PAL.stone3 : spec.skin.roofRidge);
+  ctx.fillStyle = spec.skin.outline;
+  ctx.fillRect(Math.round(apex.x), Math.round(apex.y) - 2, 1, 3);
+}
+
+/** Secondary buildings accumulate against the main frontage. They occupy the
+ * existing plot and sprite, but change a clean wall into an inhabited compound. */
+function drawFrontageAddition(
+  ctx: CanvasRenderingContext2D,
+  eave: { W: Pt; N: Pt; E: Pt; S: Pt },
+  spec: HouseSpec,
+  snow: number,
+): void {
+  const face = makeFace(eave.W, eave.S, true);
+  if (face.span < 9) return;
+  const kind = spec.additionFeature;
+  const top = Math.max(7, spec.wallH - (kind === 'glassLeanTo' ? 13 : 10));
+  const t0 = kind === 'glassLeanTo' ? 0.04 : 0.6;
+  const t1 = kind === 'glassLeanTo' ? 0.52 : 0.96;
+
+  if (kind === 'glassLeanTo') {
+    const glass = spec.skin.windowLit ? shadeHex(PAL.litWindow, -0.25) : shadeHex(PAL.riv2, -0.08);
+    const shell = [face.at(t0, top + 2), face.at(t1, top + 5), face.at(t1, spec.wallH), face.at(t0, spec.wallH)];
+    fillPolyHard(ctx, shell, glass);
+    ditherPolyHard(ctx, shell, PAL.rivGlint, 3);
+    for (const t of [t0, t0 + (t1 - t0) / 3, t0 + 2 * (t1 - t0) / 3, t1]) {
+      lineHard(ctx, face.at(t, top + 2 + (t - t0) * 6), face.at(t, spec.wallH), PAL.soot2);
+    }
+    lineHard(ctx, face.at(t0, top + 1), face.at(t1, top + 4),
+      snow >= 380 ? PAL.stone4 : PAL.verd2);
+    return;
+  }
+
+  const body = [face.at(t0, top), face.at(t1, top), face.at(t1, spec.wallH), face.at(t0, spec.wallH)];
+  const wall = kind === 'coalShed' ? PAL.wood1 : shadeHex(spec.skin.wallLit, -0.08);
+  fillPolyHard(ctx, body, wall);
+  ditherPolyHard(ctx, body, kind === 'coalShed' ? PAL.wood0 : spec.skin.wallShade, 3);
+  const peak = face.at((t0 + t1) / 2, top - 4);
+  fillPolyHard(ctx, [face.at(t0 - 0.02, top), face.at(t1 + 0.02, top), peak],
+    kind === 'coalShed' ? PAL.slate1 : spec.skin.roofLit);
+  lineHard(ctx, face.at(t0 - 0.02, top), peak, snow >= 380 ? PAL.stone4 : PAL.soot2);
+  lineHard(ctx, peak, face.at(t1 + 0.02, top), snow >= 380 ? PAL.stone3 : PAL.soot1);
+  const door = face.at((t0 + t1) / 2, spec.wallH - 5);
+  ctx.fillStyle = kind === 'coalShed' ? PAL.wood0 : PAL.wood1;
+  ctx.fillRect(Math.round(door.x) - 2, Math.round(door.y) - 3, 5, 7);
+  lineHard(ctx, { x: door.x - 2, y: door.y - 3 }, { x: door.x + 2, y: door.y + 3 }, PAL.wood2);
 }
 
 function drawRoofFeature(

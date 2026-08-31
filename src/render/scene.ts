@@ -329,6 +329,8 @@ function glyphFor(b: Building, salt: number): SignGlyph {
 export interface BuildingArchitecture {
   facadeFeature?: HouseSpec['facadeFeature'];
   roofFeature?: HouseSpec['roofFeature'];
+  massingFeature?: HouseSpec['massingFeature'];
+  additionFeature?: HouseSpec['additionFeature'];
 }
 
 /** Authored identity shared by the compositor and render tests. Stable salt
@@ -338,37 +340,72 @@ export function buildingArchitectureFor(
   evolutionBand: 0 | 1 | 2 | 3,
 ): BuildingArchitecture {
   switch (kind) {
-    case 'townhall':
-    case 'bank': return { facadeFeature: 'civicPortico' };
+    case 'townhall': return { facadeFeature: 'civicPortico' };
+    case 'bank': return { facadeFeature: 'civicPortico', massingFeature: 'cornerTower' };
     case 'exchange':
     case 'postexchange': return { facadeFeature: 'marketArcade' };
-    case 'school': return { facadeFeature: 'schoolBoard' };
-    case 'constabulary': return { facadeFeature: 'watchHouse' };
+    case 'school': return { facadeFeature: 'schoolBoard', massingFeature: 'crossGable' };
+    case 'constabulary': return { facadeFeature: 'watchHouse', massingFeature: 'cornerTower' };
     case 'dispensary': return { facadeFeature: 'dispensaryCanopy' };
-    case 'newspaper': return { facadeFeature: 'pressOffice', roofFeature: 'signFrame' };
+    case 'newspaper': return {
+      facadeFeature: 'pressOffice', roofFeature: 'signFrame', massingFeature: 'steppedParapet',
+    };
     case 'chapel': return { facadeFeature: 'chapelFront' };
     case 'bathhouse': return { facadeFeature: 'bathEntrance' };
-    case 'pumphouse': return { facadeFeature: 'loadingCanopy', roofFeature: 'waterHead' };
-    case 'workshop':
+    case 'pumphouse': return {
+      facadeFeature: 'loadingCanopy', roofFeature: 'waterHead', massingFeature: 'steppedParapet',
+    };
+    case 'workshop': return {
+      facadeFeature: 'loadingCanopy', roofFeature: 'ventilator', massingFeature: 'steppedParapet',
+    };
     case 'warehouse':
-    case 'wharfshed': return { facadeFeature: 'loadingCanopy', roofFeature: 'ventilator' };
+    case 'wharfshed': return {
+      facadeFeature: 'loadingCanopy', roofFeature: 'ventilator', massingFeature: 'gatehouse',
+    };
     case 'mill':
-    case 'foundry':
-    case 'tramdepot':
-    case 'gasworks': return { facadeFeature: 'loadingCanopy' };
-    case 'tenement':
-      return ((salt >>> 13) % 3) < 2 ? { facadeFeature: 'gallery' } : {};
-    case 'courtdwelling':
-      return ((salt >>> 15) & 3) !== 0 ? { facadeFeature: 'leanTo' } : {};
-    case 'villa':
-      return ((salt >>> 17) % 3) !== 0 ? { facadeFeature: 'porch' } : {};
+    case 'foundry': return { facadeFeature: 'loadingCanopy', massingFeature: 'gatehouse' };
+    case 'tramdepot': return { facadeFeature: 'loadingCanopy', massingFeature: 'gatehouse' };
+    case 'gasworks': return { facadeFeature: 'loadingCanopy', massingFeature: 'steppedParapet' };
+    case 'tenement': {
+      const form = (salt >>> 13) % 5;
+      return {
+        ...(form < 2 ? { facadeFeature: 'gallery' as const } : {}),
+        ...(form === 0 ? { massingFeature: 'crossGable' as const } : {}),
+        ...(evolutionBand >= 2 && form >= 3 ? { additionFeature: 'washhouse' as const } : {}),
+      };
+    }
+    case 'courtdwelling': {
+      const leanTo = ((salt >>> 15) & 3) !== 0;
+      return {
+        ...(leanTo ? { facadeFeature: 'leanTo' as const } : {}),
+        ...(evolutionBand >= 1 && ((salt >>> 18) & 1) === 0
+          ? { additionFeature: 'coalShed' as const } : {}),
+      };
+    }
+    case 'villa': {
+      const form = (salt >>> 17) % 3;
+      return {
+        ...(form !== 0 ? { facadeFeature: 'porch' as const } : {}),
+        ...(form === 0 ? { massingFeature: 'cornerTower' as const }
+          : form === 1 ? { massingFeature: 'crossGable' as const } : {}),
+        ...(evolutionBand >= 2 && form === 2 ? { additionFeature: 'glassLeanTo' as const } : {}),
+      };
+    }
     case 'lodging':
       return wardKind === 'courts' || wardKind === 'quayside'
-        ? { facadeFeature: 'gallery' } : { facadeFeature: 'porch' };
+        ? { facadeFeature: 'gallery', massingFeature: 'crossGable' }
+        : { facadeFeature: 'porch', massingFeature: 'crossGable' };
+    case 'pub':
+      return ((salt >>> 18) & 1) === 0
+        ? { massingFeature: 'cornerTower' } : { massingFeature: 'crossGable' };
+    case 'shop':
+      return ((salt >>> 16) % 3) === 0 ? { massingFeature: 'steppedParapet' } : {};
     case 'terrace': {
       const candidate = (salt >>> 19) & 3;
-      return evolutionBand > candidate && (polite || wardKind === 'garden')
-        ? { facadeFeature: 'porch' } : {};
+      if (evolutionBand <= candidate) return {};
+      return polite || wardKind === 'garden'
+        ? { facadeFeature: 'porch' }
+        : { additionFeature: 'washhouse' };
     }
     default: return {};
   }
